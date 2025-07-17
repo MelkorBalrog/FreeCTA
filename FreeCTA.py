@@ -1112,70 +1112,6 @@ class ADRiskAssessmentHelper:
         node.display_label = f"P={prob:.2e}"
         return prob
 
-    def calculate_probability_recursive(self, node, visited=None):
-        """Recursively propagate failure probabilities using classical FTA rules."""
-        if visited is None:
-            visited = set()
-        if node.unique_id in visited:
-            return node.probability if node.probability is not None else 0.0
-        visited.add(node.unique_id)
-        t = node.node_type.upper()
-        if t == "BASIC EVENT":
-            prob = float(node.failure_prob)
-            node.probability = prob
-            node.display_label = f"P={prob:.2e}"
-            return prob
-
-        if not node.children:
-            prob = float(getattr(node, "failure_prob", 0.0))
-            node.probability = prob
-            node.display_label = f"P={prob:.2e}"
-            return prob
-
-        child_probs = [self.calculate_probability_recursive(c, visited) for c in node.children]
-        gate = (node.gate_type or "AND").upper()
-        if gate == "AND":
-            prob = 1.0
-            for p in child_probs:
-                prob *= p
-        else:
-            prod = 1.0
-            for p in child_probs:
-                prod *= (1 - p)
-            prob = 1 - prod
-        node.probability = prob
-        node.display_label = f"P={prob:.2e}"
-        return prob
-
-    def calculate_probability_recursive(self, node):
-        """Recursively propagate failure probabilities using classical FTA rules."""
-        t = node.node_type.upper()
-        if t == "BASIC EVENT":
-            prob = float(node.failure_prob)
-            node.probability = prob
-            node.display_label = f"P={prob:.2e}"
-            return prob
-
-        if not node.children:
-            prob = float(getattr(node, "failure_prob", 0.0))
-            node.probability = prob
-            node.display_label = f"P={prob:.2e}"
-            return prob
-
-        child_probs = [self.calculate_probability_recursive(c) for c in node.children]
-        gate = (node.gate_type or "AND").upper()
-        if gate == "AND":
-            prob = 1.0
-            for p in child_probs:
-                prob *= p
-        else:
-            prod = 1.0
-            for p in child_probs:
-                prod *= (1 - p)
-            prob = 1 - prod
-        node.probability = prob
-        node.display_label = f"P={prob:.2e}"
-        return prob
 
 class FTADrawingHelper:
     """
@@ -4373,22 +4309,6 @@ class FaultTreeApp:
         new_node.parents.append(parent_node)
         self.update_views()
 
-    def edit_selected(self):
-        sel = self.treeview.selection()
-        target = None
-        if sel:
-            try:
-                node_id = int(self.treeview.item(sel[0], "tags")[0])
-            except (IndexError, ValueError):
-                return
-            target = self.find_node_by_id_all(node_id)
-        elif self.selected_node:
-            target = self.selected_node
-        if not target:
-            messagebox.showwarning("No selection", "Select a node to edit.")
-            return
-        EditNodeDialog(self.root, target, self)
-        self.update_views()
 
     def remove_node(self):
         sel = self.treeview.selection()
@@ -4483,48 +4403,6 @@ class FaultTreeApp:
                 linked = any(r.get("id") == req.get("id") for r in getattr(be, "safety_requirements", []))
                 row.append("X" if linked else "")
             tree.insert("", "end", values=row)
-
-    def calculate_pmfh(self):
-        for te in self.top_events:
-            AD_RiskAssessment_Helper.calculate_probability_recursive(te)
-        self.update_views()
-        results = ""
-        for te in self.top_events:
-            results += f"Top Event {te.name}: PMHF = {te.probability:.2e}\n"
-        messagebox.showinfo("PMHF Calculation", results.strip())
-
-    def show_requirements_matrix(self):
-        """Display a matrix table of requirements vs. basic events."""
-        basic_events = [n for n in self.get_all_nodes(self.root_node)
-                        if n.node_type.upper() == "BASIC EVENT"]
-        reqs = list(global_requirements.values())
-        reqs.sort(key=lambda r: r.get("req_type", ""))
-
-        win = tk.Toplevel(self.root)
-        win.title("Requirements Matrix")
-
-        columns = ["Req ID", "Type", "Text"] + [be.user_name or f"BE {be.unique_id}" for be in basic_events]
-        tree = ttk.Treeview(win, columns=columns, show="headings")
-        for col in columns:
-            tree.heading(col, text=col)
-            tree.column(col, width=120 if col not in ["Text"] else 300, anchor="center")
-        tree.pack(fill=tk.BOTH, expand=True)
-
-        for req in reqs:
-            row = [req.get("id", ""), req.get("req_type", ""), req.get("text", "")]
-            for be in basic_events:
-                linked = any(r.get("id") == req.get("id") for r in getattr(be, "safety_requirements", []))
-                row.append("X" if linked else "")
-            tree.insert("", "end", values=row)
-
-    def calculate_pmfh(self):
-        for te in self.top_events:
-            AD_RiskAssessment_Helper.calculate_probability_recursive(te)
-        self.update_views()
-        results = ""
-        for te in self.top_events:
-            results += f"Top Event {te.name}: PMHF = {te.probability:.2e}\n"
-        messagebox.showinfo("PMHF Calculation", results.strip())
 
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
@@ -5216,48 +5094,6 @@ class PageDiagram:
         # If there was no significant drag, show the context menu.
         if not self.rc_dragged:
             self.show_context_menu(event)
-
-    def show_context_menu(self, event):
-        x = self.canvas.canvasx(event.x) / self.zoom
-        y = self.canvas.canvasy(event.y) / self.zoom
-        clicked_node = None
-        for n in self.get_all_nodes(self.root_node):
-            # Hit test using a radius (here, 45 * zoom)
-            if (x - n.x) ** 2 + (y - n.y) ** 2 < (45 * self.zoom) ** 2:
-                clicked_node = n
-                break
-        if not clicked_node:
-            return
-
-        self.selected_node = clicked_node
-        # Create a simple context menu.
-        menu = tk.Menu(self.canvas, tearoff=0)
-        menu.add_command(label="Edit", command=lambda: self.context_edit(clicked_node))
-        menu.add_command(label="Delete Node", command=lambda: self.context_delete(clicked_node))
-        menu.add_command(label="Copy", command=lambda: self.context_copy(clicked_node))
-        menu.add_command(label="Cut", command=lambda: self.context_cut(clicked_node))
-        menu.add_command(label="Paste", command=lambda: self.context_paste(clicked_node))
-        menu.tk_popup(event.x_root, event.y_root)
-
-    # Example context methods that call back to the main app:
-    def context_edit(self, node):
-        EditNodeDialog(self.app.root, node, self.app)
-        self.redraw_canvas()
-        self.app.update_views()
-
-    def context_delete(self, node):
-        self.app.delete_node_and_subtree(node)
-        self.redraw_canvas()
-        self.app.update_views()
-
-    def context_copy(self, node):
-        self.app.copy_node()
-
-    def context_cut(self, node):
-        self.app.cut_node()
-
-    def context_paste(self, node):
-        self.app.paste_node()
 
     def find_node_at_position(self, x, y):
         # Adjust the radius (here using 45 as an example)
