@@ -2049,6 +2049,7 @@ class FaultTreeApp:
         file_menu.add_command(label="New Vehicle Level Function", command=self.add_top_level_event)
         file_menu.add_command(label="Project Properties", command=self.edit_project_properties)
         file_menu.add_command(label="Save PDF Report", command=self.generate_pdf_report)
+        file_menu.add_command(label="Save PDF Without Assurance", command=self.generate_pdf_without_assurance)
         file_menu.add_command(label="Export SG Requirements", command=self.export_safety_goal_requirements)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=root.quit)
@@ -3262,7 +3263,7 @@ class FaultTreeApp:
         )
         return summary_sentence
 
-    def generate_pdf_report(self):
+    def _generate_pdf_report(self, include_assurance=True):
         report_title = self.project_properties.get("pdf_report_name", "Autonomous Driving Risk Assessment PDF Report")
         path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
         if not path:
@@ -3322,201 +3323,202 @@ class FaultTreeApp:
         # -------------------------------------------------------------
         Story.append(Paragraph(report_title, pdf_styles["Title"]))
         Story.append(Spacer(1, 12))
-        
-        exec_summary_text = (
+
+        if include_assurance:
+            exec_summary_text = (
             "<b>Executive Summary: Manual Calculation of Assurance Level</b><br/><br/>"
-            "This document provides a step-by-step procedure to manually calculate the Assurance Level for a subsystem in an "
-            "autonomous system. The Assurance Level is a single metric ranging from 1 to 5 (mapped to qualitative labels: "
-            "Extra Low, Low, Moderate, High, High+). Follow these instructions using the provided tables.<br/><br/>"
-            
-            "<b>Calculation Instructions:</b><br/>"
-            "1. <u>Base Assurance Derivation</u>:<br/>"
-            " a. Assign a Confidence Level (CL) and a Robustness Score (RS) to the component, each on a scale from 1 (Extra Low) to 5 (High+).<br/>"
-            " b. Using Table 1 (Base Assurance Inversion Matrix), locate the cell at the intersection of the CL (row) and RS (column).<br/>"
-            "  For example, a CL of 1 and an RS of 1 yields a base assurance value of 5, indicating a very high requirement for additional safety measures.<br/><br/>"
-            "2. <u>Combining Multiple Components</u>:<br/>"
-            " a. If the subsystem consists of multiple components, first compute the base assurance value for each component individually as described above.<br/>"
-            " b. Then, combine these values based on how the components interact:<br/>"
-            "  - If the components must all perform reliably (an AND configuration), use a complement-product method as outlined in Table 3 (AND Decomposition Guidelines).<br/>"
-            "  - If the components function as alternative options (an OR configuration), simply compute the average of their assurance values (see Table 4 for OR Decomposition Guidelines).<br/>"
-            " c. When both types of inputs are present, average the base-derived values with the aggregated values to obtain a combined score.<br/><br/>"
-            "3. <u>Severity Adjustment</u>:<br/>"
-            " a. Adjust the combined assurance value to reflect hazard severity.<br/>"
-            " b. For most subsystems, take the highest severity rating from the related elements and compute the average with the combined assurance score.<br/>"
-            " c. For vehicle-level functions, use the formula: <br/>"
-            "  Final Assurance = (Combined Value + Severity) / 2 <br/>"
-            " Ensure the final score remains within the 1 to 5 range.<br/><br/>"
-            "4. <u>Final Discretization</u>:<br/>"
-            " a. Round the adjusted assurance value to the nearest 0.5.<br/>"
-            " b. Refer to Table 2 (Output Discretization Mapping) to map the rounded value to one of the five discrete Assurance Levels, "
-            "which correspond to the qualitative labels (Extra Low, Low, Moderate, High, High+).<br/><br/>"
-            "By following these steps—deriving a base assurance from individual Confidence and Robustness ratings, combining multiple values "
-            "through averaging or using complement-product methods (depending on the configuration), adjusting for hazard severity, and finally "
-            "discretizing the result—you can manually calculate the Assurance Level for any subsystem in a clear and systematic manner."
-        )
-        Story.append(Paragraph(exec_summary_text, pdf_styles["Normal"]))
-        Story.append(Spacer(1, 12))
-        
-        # --- Table 1: Base Assurance Inversion Matrix ---
-        header_style = ParagraphStyle(name="SafetyGoalsHeader", parent=pdf_styles["Normal"], fontSize=10, leading=12, alignment=1)
-        base_matrix_data = [
-            [Paragraph("<b>Robustness \\ Confidence</b>", header_style),
-             Paragraph("<b>1 (Extra Low)</b>", header_style),
-             Paragraph("<b>2 (Low)</b>", header_style),
-             Paragraph("<b>3 (Moderate)</b>", header_style),
-             Paragraph("<b>4 (High)</b>", header_style),
-             Paragraph("<b>5 (High+)</b>", header_style)],
-            [Paragraph("<b>1 (Extra Low)</b>", header_style),
-             Paragraph("High+", pdf_styles["Normal"]),
-             Paragraph("High+", pdf_styles["Normal"]),
-             Paragraph("High", pdf_styles["Normal"]),
-             Paragraph("High", pdf_styles["Normal"]),
-             Paragraph("High", pdf_styles["Normal"])],
-            [Paragraph("<b>2 (Low)</b>", header_style),
-             Paragraph("High+", pdf_styles["Normal"]),
-             Paragraph("High+", pdf_styles["Normal"]),
-             Paragraph("High", pdf_styles["Normal"]),
-             Paragraph("Moderate", pdf_styles["Normal"]),
-             Paragraph("Moderate", pdf_styles["Normal"])],
-            [Paragraph("<b>3 (Moderate)</b>", header_style),
-             Paragraph("High", pdf_styles["Normal"]),
-             Paragraph("High", pdf_styles["Normal"]),
-             Paragraph("Moderate", pdf_styles["Normal"]),
-             Paragraph("Moderate", pdf_styles["Normal"]),
-             Paragraph("Extra Low", pdf_styles["Normal"])],
-            [Paragraph("<b>4 (High)</b>", header_style),
-             Paragraph("High", pdf_styles["Normal"]),
-             Paragraph("Moderate", pdf_styles["Normal"]),
-             Paragraph("Moderate", pdf_styles["Normal"]),
-             Paragraph("Extra Low", pdf_styles["Normal"]),
-             Paragraph("Extra Low", pdf_styles["Normal"])],
-            [Paragraph("<b>5 (High+)</b>", header_style),
-             Paragraph("High", pdf_styles["Normal"]),
-             Paragraph("Moderate", pdf_styles["Normal"]),
-             Paragraph("Extra Low", pdf_styles["Normal"]),
-             Paragraph("Extra Low", pdf_styles["Normal"]),
-             Paragraph("Extra Low", pdf_styles["Normal"])]
-        ]
-        base_matrix_table = Table(base_matrix_data, colWidths=[80, 70, 70, 70, 70, 70])
-        base_matrix_table.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.lightblue),
-            ('BACKGROUND', (0,0), (0,-1), colors.lightblue),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-            ('FONTSIZE', (0,0), (-1,-1), 8)
-        ]))
-        Story.append(Paragraph("Table 1: Base Assurance Inversion Matrix", pdf_styles["Heading3"]))
-        Story.append(Spacer(1, 6))
-        Story.append(base_matrix_table)
-        Story.append(Spacer(1, 12))
-        
-        # --- Table 2: Output Discretization Mapping ---
-        discretization_data = [
-            [Paragraph("<b>Continuous Value (Rounded)</b>", header_style),
-             Paragraph("<b>Assurance Level</b>", header_style)],
-            [Paragraph("< 1.5", header_style), Paragraph("Level 1 (Extra Low)", pdf_styles["Normal"])],
-            [Paragraph("1.5 – < 2.5", header_style), Paragraph("Level 2 (Low)", pdf_styles["Normal"])],
-            [Paragraph("2.5 – < 3.5", header_style), Paragraph("Level 3 (Moderate)", pdf_styles["Normal"])],
-            [Paragraph("3.5 – < 4.5", header_style), Paragraph("Level 4 (High)", pdf_styles["Normal"])],
-            [Paragraph("≥ 4.5", header_style), Paragraph("Level 5 (High+)", pdf_styles["Normal"])]
-        ]
-        discretization_table = Table(discretization_data, colWidths=[150, 200])
-        discretization_table.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.lightblue),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-            ('FONTSIZE', (0,0), (-1,-1), 8)
-        ]))
-        Story.append(Paragraph("Table 2: Output Discretization Mapping", pdf_styles["Heading3"]))
-        Story.append(Spacer(1, 6))
-        Story.append(discretization_table)
-        Story.append(Spacer(1, 12))
-        
-        # Define mapping from numeric level to qualitative label.
-        level_labels = {1: "Extra Low", 2: "Low", 3: "Moderate", 4: "High", 5: "High+"}
-
-        # ------------------------------------------------------------------
-        # Helper: Get the highest assurance level from immediate parents.
-        # For a given node (or its clone), this returns the maximum assurance (as an integer 1-5)
-        # among all its immediate parents. If no parent exists, it returns the node's own assurance.
-        def get_immediate_parent_assurance(node):
-            if node.parents:
-                assurances = []
-                for p in node.parents:
-                    # For clones, use the original parent's assurance value.
-                    parent = p if p.is_primary_instance else p.original
-                    try:
-                        val = int(parent.quant_value)
-                    except (TypeError, ValueError):
-                        val = 1
-                    assurances.append(val)
-                return max(assurances) if assurances else int(node.quant_value if node.quant_value is not None else 1)
-            else:
-                return int(node.quant_value if node.quant_value is not None else 1)
-        # ------------------------------------------------------------------
-
-        # --- Safety Goals Summary Table ---
-        safety_goals_data = []
-        header_style = ParagraphStyle(name="SafetyGoalsHeader", parent=pdf_styles["Normal"], fontSize=10, leading=12, alignment=1)
-        safety_goals_data.append([
-            Paragraph("<b>Safety Goal</b>", header_style),
-            Paragraph("<b>Highest Immediate Parent Assurance</b>", header_style),
-            Paragraph("<b>Linked Recommendations</b>", header_style)
-        ])
+                "This document provides a step-by-step procedure to manually calculate the Assurance Level for a subsystem in an "
+                "autonomous system. The Assurance Level is a single metric ranging from 1 to 5 (mapped to qualitative labels: "
+                "Extra Low, Low, Moderate, High, High+). Follow these instructions using the provided tables.<br/><br/>"
                 
-        # Instead of iterating over only top-level events,
-        # we iterate over all nodes that have safety requirements.
-        grouped_by_linked = {}
-        for node in self.get_all_nodes_in_model():
-            if hasattr(node, "safety_requirements") and node.safety_requirements:
-                # Determine the safety goal from the node.
-                safety_goal = node.safety_goal_description.strip() if node.safety_goal_description.strip() != "" else node.name
-                # Get the highest assurance from its immediate parent(s)
-                parent_assur = get_immediate_parent_assurance(node)
-                assurance_str = f"Level {parent_assur} ({level_labels.get(parent_assur, 'N/A')})"
-                # Use the node's description to generate a linked recommendation.
-                # (You can adjust this method as needed.)
-                linked_rec = self.generate_recommendations_for_top_event(node)
-                extra_recs = self.get_extra_recommendations_list(node.description,
-                                                                  AD_RiskAssessment_Helper.discretize_level(node.quant_value))
-                if not extra_recs:
-                    extra_recs = ["No Extra Recommendation"]
-                # Group by the linked recommendation text.
-                grouped_by_linked.setdefault(linked_rec, {})
-                for extra in extra_recs:
-                    grouped_by_linked[linked_rec].setdefault(extra, [])
-                    grouped_by_linked[linked_rec][extra].append(f"- {safety_goal} (Assurance: {assurance_str})")
-
-        sg_data = []
-        sg_data.append([
-            Paragraph("<b>Linked Recommendation</b>", header_style),
-            Paragraph("<b>Safety Goals Grouped by Extra Recommendation</b>", header_style)
-        ])
-        for linked_rec, extra_groups in grouped_by_linked.items():
-            nested_text = ""
-            for extra_rec, goals in extra_groups.items():
-                nested_text += f"<b>{extra_rec}:</b><br/>" + "<br/>".join(goals) + "<br/><br/>"
-            sg_data.append([
-                Paragraph(linked_rec, pdf_styles["Normal"]),
-                Paragraph(nested_text, pdf_styles["Normal"])
-            ])
-        if len(sg_data) > 1:
-            sg_table = Table(sg_data, colWidths=[200, 400])
-            sg_table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+                "<b>Calculation Instructions:</b><br/>"
+                "1. <u>Base Assurance Derivation</u>:<br/>"
+                " a. Assign a Confidence Level (CL) and a Robustness Score (RS) to the component, each on a scale from 1 (Extra Low) to 5 (High+).<br/>"
+                " b. Using Table 1 (Base Assurance Inversion Matrix), locate the cell at the intersection of the CL (row) and RS (column).<br/>"
+                "  For example, a CL of 1 and an RS of 1 yields a base assurance value of 5, indicating a very high requirement for additional safety measures.<br/><br/>"
+                "2. <u>Combining Multiple Components</u>:<br/>"
+                " a. If the subsystem consists of multiple components, first compute the base assurance value for each component individually as described above.<br/>"
+                " b. Then, combine these values based on how the components interact:<br/>"
+                "  - If the components must all perform reliably (an AND configuration), use a complement-product method as outlined in Table 3 (AND Decomposition Guidelines).<br/>"
+                "  - If the components function as alternative options (an OR configuration), simply compute the average of their assurance values (see Table 4 for OR Decomposition Guidelines).<br/>"
+                " c. When both types of inputs are present, average the base-derived values with the aggregated values to obtain a combined score.<br/><br/>"
+                "3. <u>Severity Adjustment</u>:<br/>"
+                " a. Adjust the combined assurance value to reflect hazard severity.<br/>"
+                " b. For most subsystems, take the highest severity rating from the related elements and compute the average with the combined assurance score.<br/>"
+                " c. For vehicle-level functions, use the formula: <br/>"
+                "  Final Assurance = (Combined Value + Severity) / 2 <br/>"
+                " Ensure the final score remains within the 1 to 5 range.<br/><br/>"
+                "4. <u>Final Discretization</u>:<br/>"
+                " a. Round the adjusted assurance value to the nearest 0.5.<br/>"
+                " b. Refer to Table 2 (Output Discretization Mapping) to map the rounded value to one of the five discrete Assurance Levels, "
+                "which correspond to the qualitative labels (Extra Low, Low, Moderate, High, High+).<br/><br/>"
+                "By following these steps—deriving a base assurance from individual Confidence and Robustness ratings, combining multiple values "
+                "through averaging or using complement-product methods (depending on the configuration), adjusting for hazard severity, and finally "
+                "discretizing the result—you can manually calculate the Assurance Level for any subsystem in a clear and systematic manner."
+            )
+            Story.append(Paragraph(exec_summary_text, pdf_styles["Normal"]))
+            Story.append(Spacer(1, 12))
+            
+            # --- Table 1: Base Assurance Inversion Matrix ---
+            header_style = ParagraphStyle(name="SafetyGoalsHeader", parent=pdf_styles["Normal"], fontSize=10, leading=12, alignment=1)
+            base_matrix_data = [
+                [Paragraph("<b>Robustness \\ Confidence</b>", header_style),
+                 Paragraph("<b>1 (Extra Low)</b>", header_style),
+                 Paragraph("<b>2 (Low)</b>", header_style),
+                 Paragraph("<b>3 (Moderate)</b>", header_style),
+                 Paragraph("<b>4 (High)</b>", header_style),
+                 Paragraph("<b>5 (High+)</b>", header_style)],
+                [Paragraph("<b>1 (Extra Low)</b>", header_style),
+                 Paragraph("High+", pdf_styles["Normal"]),
+                 Paragraph("High+", pdf_styles["Normal"]),
+                 Paragraph("High", pdf_styles["Normal"]),
+                 Paragraph("High", pdf_styles["Normal"]),
+                 Paragraph("High", pdf_styles["Normal"])],
+                [Paragraph("<b>2 (Low)</b>", header_style),
+                 Paragraph("High+", pdf_styles["Normal"]),
+                 Paragraph("High+", pdf_styles["Normal"]),
+                 Paragraph("High", pdf_styles["Normal"]),
+                 Paragraph("Moderate", pdf_styles["Normal"]),
+                 Paragraph("Moderate", pdf_styles["Normal"])],
+                [Paragraph("<b>3 (Moderate)</b>", header_style),
+                 Paragraph("High", pdf_styles["Normal"]),
+                 Paragraph("High", pdf_styles["Normal"]),
+                 Paragraph("Moderate", pdf_styles["Normal"]),
+                 Paragraph("Moderate", pdf_styles["Normal"]),
+                 Paragraph("Extra Low", pdf_styles["Normal"])],
+                [Paragraph("<b>4 (High)</b>", header_style),
+                 Paragraph("High", pdf_styles["Normal"]),
+                 Paragraph("Moderate", pdf_styles["Normal"]),
+                 Paragraph("Moderate", pdf_styles["Normal"]),
+                 Paragraph("Extra Low", pdf_styles["Normal"]),
+                 Paragraph("Extra Low", pdf_styles["Normal"])],
+                [Paragraph("<b>5 (High+)</b>", header_style),
+                 Paragraph("High", pdf_styles["Normal"]),
+                 Paragraph("Moderate", pdf_styles["Normal"]),
+                 Paragraph("Extra Low", pdf_styles["Normal"]),
+                 Paragraph("Extra Low", pdf_styles["Normal"]),
+                 Paragraph("Extra Low", pdf_styles["Normal"])]
+            ]
+            base_matrix_table = Table(base_matrix_data, colWidths=[80, 70, 70, 70, 70, 70])
+            base_matrix_table.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.lightblue),
+                ('BACKGROUND', (0,0), (0,-1), colors.lightblue),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-                ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('FONTSIZE', (0,0), (-1,-1), 10),
-                ('ALIGN', (0,0), (-1,0), 'CENTER')
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                ('FONTSIZE', (0,0), (-1,-1), 8)
             ]))
-            Story.append(Paragraph("Safety Goals Summary:", pdf_styles["Heading2"]))
+            Story.append(Paragraph("Table 1: Base Assurance Inversion Matrix", pdf_styles["Heading3"]))
+            Story.append(Spacer(1, 6))
+            Story.append(base_matrix_table)
             Story.append(Spacer(1, 12))
-            Story.append(sg_table)
+            
+            # --- Table 2: Output Discretization Mapping ---
+            discretization_data = [
+                [Paragraph("<b>Continuous Value (Rounded)</b>", header_style),
+                 Paragraph("<b>Assurance Level</b>", header_style)],
+                [Paragraph("< 1.5", header_style), Paragraph("Level 1 (Extra Low)", pdf_styles["Normal"])],
+                [Paragraph("1.5 – < 2.5", header_style), Paragraph("Level 2 (Low)", pdf_styles["Normal"])],
+                [Paragraph("2.5 – < 3.5", header_style), Paragraph("Level 3 (Moderate)", pdf_styles["Normal"])],
+                [Paragraph("3.5 – < 4.5", header_style), Paragraph("Level 4 (High)", pdf_styles["Normal"])],
+                [Paragraph("≥ 4.5", header_style), Paragraph("Level 5 (High+)", pdf_styles["Normal"])]
+            ]
+            discretization_table = Table(discretization_data, colWidths=[150, 200])
+            discretization_table.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.lightblue),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+                ('FONTSIZE', (0,0), (-1,-1), 8)
+            ]))
+            Story.append(Paragraph("Table 2: Output Discretization Mapping", pdf_styles["Heading3"]))
+            Story.append(Spacer(1, 6))
+            Story.append(discretization_table)
             Story.append(Spacer(1, 12))
-        Story.append(PageBreak())
-        
+            
+            # Define mapping from numeric level to qualitative label.
+            level_labels = {1: "Extra Low", 2: "Low", 3: "Moderate", 4: "High", 5: "High+"}
+    
+            # ------------------------------------------------------------------
+            # Helper: Get the highest assurance level from immediate parents.
+            # For a given node (or its clone), this returns the maximum assurance (as an integer 1-5)
+            # among all its immediate parents. If no parent exists, it returns the node's own assurance.
+            def get_immediate_parent_assurance(node):
+                if node.parents:
+                    assurances = []
+                    for p in node.parents:
+                        # For clones, use the original parent's assurance value.
+                        parent = p if p.is_primary_instance else p.original
+                        try:
+                            val = int(parent.quant_value)
+                        except (TypeError, ValueError):
+                            val = 1
+                        assurances.append(val)
+                    return max(assurances) if assurances else int(node.quant_value if node.quant_value is not None else 1)
+                else:
+                    return int(node.quant_value if node.quant_value is not None else 1)
+            # ------------------------------------------------------------------
+    
+            # --- Safety Goals Summary Table ---
+            safety_goals_data = []
+            header_style = ParagraphStyle(name="SafetyGoalsHeader", parent=pdf_styles["Normal"], fontSize=10, leading=12, alignment=1)
+            safety_goals_data.append([
+                Paragraph("<b>Safety Goal</b>", header_style),
+                Paragraph("<b>Highest Immediate Parent Assurance</b>", header_style),
+                Paragraph("<b>Linked Recommendations</b>", header_style)
+            ])
+                    
+            # Instead of iterating over only top-level events,
+            # we iterate over all nodes that have safety requirements.
+            grouped_by_linked = {}
+            for node in self.get_all_nodes_in_model():
+                if hasattr(node, "safety_requirements") and node.safety_requirements:
+                    # Determine the safety goal from the node.
+                    safety_goal = node.safety_goal_description.strip() if node.safety_goal_description.strip() != "" else node.name
+                    # Get the highest assurance from its immediate parent(s)
+                    parent_assur = get_immediate_parent_assurance(node)
+                    assurance_str = f"Level {parent_assur} ({level_labels.get(parent_assur, 'N/A')})"
+                    # Use the node's description to generate a linked recommendation.
+                    # (You can adjust this method as needed.)
+                    linked_rec = self.generate_recommendations_for_top_event(node)
+                    extra_recs = self.get_extra_recommendations_list(node.description,
+                                                                      AD_RiskAssessment_Helper.discretize_level(node.quant_value))
+                    if not extra_recs:
+                        extra_recs = ["No Extra Recommendation"]
+                    # Group by the linked recommendation text.
+                    grouped_by_linked.setdefault(linked_rec, {})
+                    for extra in extra_recs:
+                        grouped_by_linked[linked_rec].setdefault(extra, [])
+                        grouped_by_linked[linked_rec][extra].append(f"- {safety_goal} (Assurance: {assurance_str})")
+    
+            sg_data = []
+            sg_data.append([
+                Paragraph("<b>Linked Recommendation</b>", header_style),
+                Paragraph("<b>Safety Goals Grouped by Extra Recommendation</b>", header_style)
+            ])
+            for linked_rec, extra_groups in grouped_by_linked.items():
+                nested_text = ""
+                for extra_rec, goals in extra_groups.items():
+                    nested_text += f"<b>{extra_rec}:</b><br/>" + "<br/>".join(goals) + "<br/><br/>"
+                sg_data.append([
+                    Paragraph(linked_rec, pdf_styles["Normal"]),
+                    Paragraph(nested_text, pdf_styles["Normal"])
+                ])
+            if len(sg_data) > 1:
+                sg_table = Table(sg_data, colWidths=[200, 400])
+                sg_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+                    ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                    ('FONTSIZE', (0,0), (-1,-1), 10),
+                    ('ALIGN', (0,0), (-1,0), 'CENTER')
+                ]))
+                Story.append(Paragraph("Safety Goals Summary:", pdf_styles["Heading2"]))
+                Story.append(Spacer(1, 12))
+                Story.append(sg_table)
+                Story.append(Spacer(1, 12))
+            Story.append(PageBreak())
+            
         # --- Per-Top-Level-Event Content (Diagrams and Argumentation) ---
         def scale_image(pil_img):
             """Scale images so they fit within the doc page nicely."""
@@ -3656,10 +3658,18 @@ class FaultTreeApp:
         except Exception as e:
             messagebox.showerror("Report", f"Failed to generate PDF: {e}")
             return
+
         messagebox.showinfo(
             "Report",
-            "PDF report generated with highest assurance levels for requirements!",
+            "PDF report generated!",
         )
+
+    def generate_pdf_report(self):
+        self._generate_pdf_report(include_assurance=True)
+
+    def generate_pdf_without_assurance(self):
+        """Generate a PDF report without the assurance level pages."""
+        self._generate_pdf_report(include_assurance=False)
 
     def capture_event_diagram(self, event_node):
         temp = tk.Toplevel(self.root)
