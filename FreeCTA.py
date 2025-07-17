@@ -4761,6 +4761,8 @@ class FaultTreeApp:
         btn_frame.pack(side=tk.TOP, pady=2)
         add_btn = ttk.Button(btn_frame, text="Add Failure Mode")
         add_btn.pack(side=tk.LEFT, padx=2)
+        remove_btn = ttk.Button(btn_frame, text="Remove from FMEA")
+        remove_btn.pack(side=tk.LEFT, padx=2)
         del_btn = ttk.Button(btn_frame, text="Delete Selected")
         del_btn.pack(side=tk.LEFT, padx=2)
         tree = ttk.Treeview(win, columns=columns, show="tree headings")
@@ -4777,6 +4779,11 @@ class FaultTreeApp:
             tree.delete(*tree.get_children())
             node_map.clear()
             comp_items.clear()
+            # remove any duplicate nodes based on unique_id
+            unique = {}
+            for be in entries:
+                unique[be.unique_id] = be
+            entries[:] = list(unique.values())
             events = entries
 
             for be in events:
@@ -4825,13 +4832,28 @@ class FaultTreeApp:
                     related = [be for be in basic_events if not be.parents and getattr(be, "fmea_component", "") == comp]
                 if node not in related:
                     related.append(node)
+                existing_ids = {be.unique_id for be in entries}
                 for be in related:
-                    if be not in entries:
+                    if be.unique_id not in existing_ids:
                         entries.append(be)
+                        existing_ids.add(be.unique_id)
                     self.FMEARowDialog(win, be, self, entries)
             refresh_tree()
 
         add_btn.config(command=add_failure_mode)
+
+        def remove_from_fmea():
+            sel = tree.selection()
+            if not sel:
+                messagebox.showwarning("Remove Entry", "Select a row to remove.")
+                return
+            for iid in sel:
+                node = node_map.get(iid)
+                if node in entries:
+                    entries.remove(node)
+            refresh_tree()
+
+        remove_btn.config(command=remove_from_fmea)
 
         def delete_failure_mode():
             nonlocal basic_events
