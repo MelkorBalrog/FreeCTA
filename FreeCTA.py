@@ -1616,6 +1616,15 @@ class EditNodeDialog(simpledialog.Dialog):
             self.add_existing_req_button = ttk.Button(self.safety_req_frame, text="Add Existing", command=self.add_existing_requirement)
             self.add_existing_req_button.grid(row=1, column=3, padx=2, pady=2)
 
+        elif self.node.node_type.upper() == "BASIC EVENT":
+            try:
+                prob = float(self.prob_entry.get().strip())
+                if prob < 0:
+                    raise ValueError
+                target_node.failure_prob = prob
+            except ValueError:
+                messagebox.showerror("Invalid Input", "Enter a valid probability")
+
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
             ttk.Label(master, text="Gate Type:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
             self.gate_var = tk.StringVar(value=self.node.gate_type if self.node.gate_type else "AND")
