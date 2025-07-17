@@ -4067,6 +4067,10 @@ class FaultTreeApp:
             all_nodes.extend(nodes)
         return all_nodes
 
+    def get_all_basic_events(self):
+        """Return a list of all basic events across all top-level trees."""
+        return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]
+
     def get_all_nodes(self, node=None):
         if node is None:
             result = []
@@ -4549,8 +4553,7 @@ class FaultTreeApp:
             else:
                 comp = getattr(self.node, "fmea_component", "")
             comp_names = set()
-            basic_events = [n for n in self.app.get_all_nodes(self.app.root_node)
-                            if n.node_type.upper() == "BASIC EVENT"]
+            basic_events = self.app.get_all_basic_events()
             for be in basic_events + self.fmea_entries:
                 parent = be.parents[0] if be.parents else None
                 if parent and parent.user_name:
@@ -4565,8 +4568,12 @@ class FaultTreeApp:
             self.comp_combo.grid(row=0, column=1, padx=5, pady=5)
 
             ttk.Label(master, text="Failure Mode:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+            mode_names = [be.description or (be.user_name or f"BE {be.unique_id}")
+                          for be in basic_events]
             self.mode_var = tk.StringVar(value=self.node.description or self.node.user_name)
-            ttk.Entry(master, textvariable=self.mode_var, width=30).grid(row=1, column=1, padx=5, pady=5)
+            self.mode_combo = ttk.Combobox(master, textvariable=self.mode_var,
+                                          values=mode_names, width=30)
+            self.mode_combo.grid(row=1, column=1, padx=5, pady=5)
 
             ttk.Label(master, text="Failure Effect:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
             self.effect_text = tk.Text(master, width=30, height=3)
@@ -4732,8 +4739,7 @@ class FaultTreeApp:
 
     def show_fmea_table(self, fmea=None):
         """Display an editable AIAG-compliant FMEA table."""
-        basic_events = [n for n in self.get_all_nodes(self.root_node)
-                        if n.node_type.upper() == "BASIC EVENT"]
+        basic_events = self.get_all_basic_events()
         entries = self.fmea_entries if fmea is None else fmea['entries']
         win = tk.Toplevel(self.root)
         title = f"FMEA Table - {fmea['name']}" if fmea else "FMEA Table"
