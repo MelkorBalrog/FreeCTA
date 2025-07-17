@@ -5076,6 +5076,29 @@ class FaultTreeApp:
                     writer.writerow([sg_text, sg_asil, rid, req.get("asil", ""), req.get("text", "")])
         messagebox.showinfo("Export", "Safety goal requirements exported.")
 
+    def export_safety_goal_requirements(self):
+        """Export requirements traced to safety goals including their ASIL."""
+        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+        if not path:
+            return
+
+        columns = ["Safety Goal", "SG ASIL", "Requirement ID", "Req ASIL", "Text"]
+        with open(path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(columns)
+            for te in self.top_events:
+                sg_text = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
+                sg_asil = te.safety_goal_asil
+                reqs = self.collect_requirements_recursive(te)
+                seen = set()
+                for req in reqs:
+                    rid = req.get("id")
+                    if rid in seen:
+                        continue
+                    seen.add(rid)
+                    writer.writerow([sg_text, sg_asil, rid, req.get("asil", ""), req.get("text", "")])
+        messagebox.showinfo("Export", "Safety goal requirements exported.")
+
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
             self.clipboard_node = self.selected_node
