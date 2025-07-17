@@ -3867,7 +3867,6 @@ class FaultTreeApp:
         self.root_node = new_root
         self.fmea_entries = []
         self.fmeas = []
-
         self.update_views()
         self.canvas.update()
 
@@ -4066,6 +4065,10 @@ class FaultTreeApp:
             nodes = self.get_all_nodes_table(te)  # your existing method for one root
             all_nodes.extend(nodes)
         return all_nodes
+
+    def get_all_basic_events(self):
+        """Return a list of all basic events across all top-level trees."""
+        return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]
 
     def get_all_basic_events(self):
         """Return a list of all basic events across all top-level trees."""
@@ -4746,7 +4749,6 @@ class FaultTreeApp:
                 else:
                     self.selected = self.events[idx]
 
-
     def show_fmea_table(self, fmea=None):
         """Display an editable AIAG-compliant FMEA table."""
         basic_events = self.get_all_basic_events()
@@ -4772,6 +4774,7 @@ class FaultTreeApp:
             node_map.clear()
             comp_items.clear()
             events = basic_events + entries
+
             for be in events:
                 parent = be.parents[0] if be.parents else None
                 if parent:
@@ -4840,6 +4843,30 @@ class FaultTreeApp:
                 rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
                 failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
                 row = [comp, failure_mode, be.fmea_effect, be.fmea_cause, be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
+                writer.writerow(row)
+
+        def on_close():
+            if fmea is not None:
+                self.export_fmea_to_csv(fmea, fmea['file'])
+            win.destroy()
+
+        win.protocol("WM_DELETE_WINDOW", on_close)
+
+    def export_fmea_to_csv(self, fmea, path):
+        columns = ["Component", "Failure Mode", "Failure Effect", "S", "O", "D", "RPN", "Requirements"]
+        with open(path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(columns)
+            for be in fmea['entries']:
+                parent = be.parents[0] if be.parents else None
+                if parent:
+                    comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                else:
+                    comp = getattr(be, "fmea_component", "") or "N/A"
+                req_ids = ", ".join([req.get("id") for req in getattr(be, "safety_requirements", [])])
+                rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
+                failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
+                row = [comp, failure_mode, be.fmea_effect, be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
                 writer.writerow(row)
 
     def show_traceability_matrix(self):
