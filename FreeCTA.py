@@ -1665,6 +1665,22 @@ class EditNodeDialog(simpledialog.Dialog):
                 self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
+                ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
+                self.sg_asil_combo = ttk.Combobox(master, textvariable=self.sg_asil_var,
+                                                  values=["QM", "A", "B", "C", "D"],
+                                                  state="readonly", width=5)
+                self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
+                row_next += 1
+
+                ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
+                self.sg_asil_combo = ttk.Combobox(master, textvariable=self.sg_asil_var,
+                                                  values=["QM", "A", "B", "C", "D"],
+                                                  state="readonly", width=5)
+                self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
+                row_next += 1
+
         if self.node.node_type.upper() not in ["TOP EVENT", "BASIC EVENT"]:
             self.is_page_var = tk.BooleanVar(value=self.node.is_page)
             ttk.Checkbutton(master, text="Is Page Gate?", variable=self.is_page_var)\
@@ -1816,6 +1832,7 @@ class EditNodeDialog(simpledialog.Dialog):
     def add_new_requirement(self,custom_id, req_type, text, asil="QM"):
         # When a requirement is created, register it in the global registry.
         req = {"id": custom_id, "req_type": req_type, "text": text, "custom_id": custom_id, "asil": asil}
+
         global_requirements[custom_id] = req
         print(f"Added new requirement: {req}")
         return req
