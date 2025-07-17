@@ -4757,8 +4757,12 @@ class FaultTreeApp:
         title = f"FMEA Table - {fmea['name']}" if fmea else "FMEA Table"
         win.title(title)
         columns = ["Component", "Failure Mode", "Failure Effect", "Cause", "S", "O", "D", "RPN", "Requirements"]
-        btn = ttk.Button(win, text="Add Failure Mode")
-        btn.pack(side=tk.TOP, pady=2)
+        btn_frame = ttk.Frame(win)
+        btn_frame.pack(side=tk.TOP, pady=2)
+        add_btn = ttk.Button(btn_frame, text="Add Failure Mode")
+        add_btn.pack(side=tk.LEFT, padx=2)
+        del_btn = ttk.Button(btn_frame, text="Delete Selected")
+        del_btn.pack(side=tk.LEFT, padx=2)
         tree = ttk.Treeview(win, columns=columns, show="tree headings")
         for col in columns:
             tree.heading(col, text=col)
@@ -4773,7 +4777,7 @@ class FaultTreeApp:
             tree.delete(*tree.get_children())
             node_map.clear()
             comp_items.clear()
-            events = basic_events + entries
+            events = entries
 
             for be in events:
                 parent = be.parents[0] if be.parents else None
@@ -4811,13 +4815,26 @@ class FaultTreeApp:
                 node = FaultTreeNode("", "Basic Event")
                 entries.append(node)
                 self.FMEARowDialog(win, node, self, entries)
-            elif node and node not in node_map.values():
-                if node not in entries and node not in basic_events:
+            elif node:
+                if node not in entries:
                     entries.append(node)
                 self.FMEARowDialog(win, node, self, entries)
             refresh_tree()
 
-        btn.config(command=add_failure_mode)
+        add_btn.config(command=add_failure_mode)
+
+        def delete_failure_mode():
+            sel = tree.selection()
+            if not sel:
+                messagebox.showwarning("Delete Failure Mode", "Select a row to delete.")
+                return
+            for iid in sel:
+                node = node_map.get(iid)
+                if node in entries:
+                    entries.remove(node)
+            refresh_tree()
+
+        del_btn.config(command=delete_failure_mode)
 
         def on_close():
             if fmea is not None:
