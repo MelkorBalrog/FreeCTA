@@ -966,7 +966,12 @@ class ADRiskAssessmentHelper:
         inverted = 6 - avg
         return max(1, min(5, round(inverted)))
 
-    def calculate_assurance_recursive(self, node, all_top_events):
+    def calculate_assurance_recursive(self, node, all_top_events, visited=None):
+        if visited is None:
+            visited = set()
+        if node.unique_id in visited:
+            return node.quant_value if node.quant_value is not None else 1
+        visited.add(node.unique_id)
         t = node.node_type.upper()
 
         # --- Base Events ---
@@ -992,7 +997,7 @@ class ADRiskAssessmentHelper:
 
         # Process all children recursively.
         for child in node.children:
-            self.calculate_assurance_recursive(child, all_top_events)
+            self.calculate_assurance_recursive(child, all_top_events, visited)
 
         # --- Separate children into base events and composite children ---
         base_values = []
@@ -1064,6 +1069,41 @@ class ADRiskAssessmentHelper:
                 f"Combined Children Assurance (average) = {combined}\n"
             )
             return combined
+
+    def calculate_probability_recursive(self, node, visited=None):
+        """Recursively propagate failure probabilities using classical FTA rules."""
+        if visited is None:
+            visited = set()
+        if node.unique_id in visited:
+            return node.probability if node.probability is not None else 0.0
+        visited.add(node.unique_id)
+        t = node.node_type.upper()
+        if t == "BASIC EVENT":
+            prob = float(node.failure_prob)
+            node.probability = prob
+            node.display_label = f"P={prob:.2e}"
+            return prob
+
+        if not node.children:
+            prob = float(getattr(node, "failure_prob", 0.0))
+            node.probability = prob
+            node.display_label = f"P={prob:.2e}"
+            return prob
+
+        child_probs = [self.calculate_probability_recursive(c, visited) for c in node.children]
+        gate = (node.gate_type or "AND").upper()
+        if gate == "AND":
+            prob = 1.0
+            for p in child_probs:
+                prob *= p
+        else:
+            prod = 1.0
+            for p in child_probs:
+                prod *= (1 - p)
+            prob = 1 - prod
+        node.probability = prob
+        node.display_label = f"P={prob:.2e}"
+        return prob
 
     def calculate_probability_recursive(self, node):
         """Recursively propagate failure probabilities using classical FTA rules."""
@@ -1616,15 +1656,6 @@ class EditNodeDialog(simpledialog.Dialog):
             self.add_existing_req_button = ttk.Button(self.safety_req_frame, text="Add Existing", command=self.add_existing_requirement)
             self.add_existing_req_button.grid(row=1, column=3, padx=2, pady=2)
 
-        elif self.node.node_type.upper() == "BASIC EVENT":
-            try:
-                prob = float(self.prob_entry.get().strip())
-                if prob < 0:
-                    raise ValueError
-                target_node.failure_prob = prob
-            except ValueError:
-                messagebox.showerror("Invalid Input", "Enter a valid probability")
-
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
             ttk.Label(master, text="Gate Type:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
             self.gate_var = tk.StringVar(value=self.node.gate_type if self.node.gate_type else "AND")
@@ -1648,7 +1679,7 @@ class EditNodeDialog(simpledialog.Dialog):
                 self.safety_goal_text.bind("<Return>", self.on_enter_pressed)
                 row_next += 1
 
-        if self.node.node_type.upper() != "TOP EVENT":
+        if self.node.node_type.upper() not in ["TOP EVENT", "BASIC EVENT"]:
             self.is_page_var = tk.BooleanVar(value=self.node.is_page)
             ttk.Checkbutton(master, text="Is Page Gate?", variable=self.is_page_var)\
                 .grid(row=row_next, column=0, columnspan=2, padx=5, pady=5, sticky="w")
@@ -1989,6 +2020,7 @@ class FaultTreeApp:
         view_menu.add_command(label="Zoom In", command=self.zoom_in, accelerator="Ctrl++")
         view_menu.add_command(label="Zoom Out", command=self.zoom_out, accelerator="Ctrl+-")
         view_menu.add_command(label="Auto Arrange", command=self.auto_arrange, accelerator="Ctrl+A")
+        view_menu.add_command(label="Requirements Matrix", command=self.show_requirements_matrix)
         menubar.add_cascade(label="View", menu=view_menu)
         root.config(menu=menubar)
         root.bind("<Control-n>", lambda event: self.new_model())
@@ -4386,6 +4418,39 @@ class FaultTreeApp:
             results += f"Top Event {te.name}: PMHF = {te.probability:.2e}\n"
         messagebox.showinfo("PMHF Calculation", results.strip())
 
+    def show_requirements_matrix(self):
+        """Display a matrix table of requirements vs. basic events."""
+        basic_events = [n for n in self.get_all_nodes(self.root_node)
+                        if n.node_type.upper() == "BASIC EVENT"]
+        reqs = list(global_requirements.values())
+        reqs.sort(key=lambda r: r.get("req_type", ""))
+
+        win = tk.Toplevel(self.root)
+        win.title("Requirements Matrix")
+
+        columns = ["Req ID", "Type", "Text"] + [be.user_name or f"BE {be.unique_id}" for be in basic_events]
+        tree = ttk.Treeview(win, columns=columns, show="headings")
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=120 if col not in ["Text"] else 300, anchor="center")
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        for req in reqs:
+            row = [req.get("id", ""), req.get("req_type", ""), req.get("text", "")]
+            for be in basic_events:
+                linked = any(r.get("id") == req.get("id") for r in getattr(be, "safety_requirements", []))
+                row.append("X" if linked else "")
+            tree.insert("", "end", values=row)
+
+    def calculate_pmfh(self):
+        for te in self.top_events:
+            AD_RiskAssessment_Helper.calculate_probability_recursive(te)
+        self.update_views()
+        results = ""
+        for te in self.top_events:
+            results += f"Top Event {te.name}: PMHF = {te.probability:.2e}\n"
+        messagebox.showinfo("PMHF Calculation", results.strip())
+
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
             self.clipboard_node = self.selected_node
@@ -4615,8 +4680,8 @@ class FaultTreeApp:
         # If this is a clone, update its original.
         target = self.selected_node if self.selected_node.is_primary_instance else self.selected_node.original
 
-        if target.node_type.upper() == "TOP EVENT":
-            messagebox.showwarning("Edit Page Flag", "Top Event cannot be a page.")
+        if target.node_type.upper() in ["TOP EVENT", "BASIC EVENT"]:
+            messagebox.showwarning("Edit Page Flag", "This node type cannot be a page.")
             return
 
         # Ask for the new page flag value.
@@ -5187,7 +5252,7 @@ class PageDiagram:
         menu.add_command(label="Copy", command=lambda: self.context_copy(node))
         menu.add_command(label="Cut", command=lambda: self.context_cut(node))
         menu.add_command(label="Paste", command=lambda: self.context_paste(node))
-        if node.node_type.upper() != "TOP EVENT":
+        if node.node_type.upper() not in ["TOP EVENT", "BASIC EVENT"]:
             menu.add_command(label="Edit Page Flag", command=lambda: self.context_edit_page_flag(node))
         menu.add_separator()
         menu.add_command(label="Add Confidence", command=lambda: self.context_add("Confidence Level"))
