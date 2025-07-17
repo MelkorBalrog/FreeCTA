@@ -4825,11 +4825,19 @@ class FaultTreeApp:
             elif node:
                 # gather all failure modes under the same component/parent
                 if node.parents:
-                    parent = node.parents[0]
-                    related = [be for be in basic_events if be.parents and be.parents[0] == parent]
+                    parent_id = node.parents[0].unique_id
+                    related = [
+                        be
+                        for be in basic_events
+                        if be.parents and be.parents[0].unique_id == parent_id
+                    ]
                 else:
                     comp = getattr(node, "fmea_component", "")
-                    related = [be for be in basic_events if not be.parents and getattr(be, "fmea_component", "") == comp]
+                    related = [
+                        be
+                        for be in basic_events
+                        if not be.parents and getattr(be, "fmea_component", "") == comp
+                    ]
                 if node not in related:
                     related.append(node)
                 existing_ids = {be.unique_id for be in entries}
