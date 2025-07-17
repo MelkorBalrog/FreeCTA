@@ -3611,17 +3611,19 @@ class FaultTreeApp:
             Story.append(Spacer(1, 12))
             for fmea in self.fmeas:
                 Story.append(Paragraph(fmea['name'], pdf_styles["Heading3"]))
-                data = [["Component", "Failure Mode", "Failure Effect", "Cause", "S", "O", "D", "RPN", "Requirements"]]
+                data = [["Component", "Parent", "Failure Mode", "Failure Effect", "Cause", "S", "O", "D", "RPN", "Requirements"]]
                 for be in fmea['entries']:
                     parent = be.parents[0] if be.parents else None
                     if parent:
                         comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                        parent_name = comp
                     else:
                         comp = getattr(be, "fmea_component", "") or "N/A"
+                        parent_name = ""
                     req_ids = "; ".join([r.get("id") for r in getattr(be, 'safety_requirements', [])])
                     rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
                     failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
-                    row = [comp, failure_mode, be.fmea_effect, getattr(be, 'fmea_cause', ''), be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
+                    row = [comp, parent_name, failure_mode, be.fmea_effect, getattr(be, 'fmea_cause', ''), be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
                     data.append(row)
                 table = Table(data, repeatRows=1)
                 table.setStyle(TableStyle([
@@ -4838,7 +4840,7 @@ class FaultTreeApp:
         win = tk.Toplevel(self.root)
         title = f"FMEA Table - {fmea['name']}" if fmea else "FMEA Table"
         win.title(title)
-        columns = ["Component", "Failure Mode", "Failure Effect", "Cause", "S", "O", "D", "RPN", "Requirements"]
+        columns = ["Component", "Parent", "Failure Mode", "Failure Effect", "Cause", "S", "O", "D", "RPN", "Requirements"]
         btn_frame = ttk.Frame(win)
         btn_frame.pack(side=tk.TOP, pady=2)
         add_btn = ttk.Button(btn_frame, text="Add Failure Mode")
@@ -4850,7 +4852,11 @@ class FaultTreeApp:
         tree = ttk.Treeview(win, columns=columns, show="tree headings")
         for col in columns:
             tree.heading(col, text=col)
-            width = 120 if col not in ["Requirements", "Failure Effect", "Cause"] else 200
+            width = 120
+            if col in ["Requirements", "Failure Effect", "Cause"]:
+                width = 200
+            elif col == "Parent":
+                width = 150
             tree.column(col, width=width, anchor="center")
         tree.pack(fill=tk.BOTH, expand=True)
 
@@ -4872,15 +4878,17 @@ class FaultTreeApp:
                 parent = be.parents[0] if be.parents else None
                 if parent:
                     comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                    parent_name = comp
                 else:
                     comp = getattr(be, "fmea_component", "") or "N/A"
+                    parent_name = ""
                 if comp not in comp_items:
-                    comp_items[comp] = tree.insert("", "end", text=comp, values=[comp, "", "", "", "", "", "", "", ""])
+                    comp_items[comp] = tree.insert("", "end", text=comp, values=[comp, "", "", "", "", "", "", "", "", ""])
                 comp_iid = comp_items[comp]
                 req_ids = "; ".join([f"{req['req_type']}:{req['text']}" for req in getattr(be, 'safety_requirements', [])])
                 rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
                 failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
-                vals = ["", failure_mode, be.fmea_effect, be.fmea_cause, be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
+                vals = ["", parent_name, failure_mode, be.fmea_effect, be.fmea_cause, be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
                 iid = tree.insert(comp_iid, "end", text="", values=vals)
                 node_map[iid] = be
             for iid in comp_items.values():
@@ -4946,22 +4954,16 @@ class FaultTreeApp:
         remove_btn.config(command=remove_from_fmea)
 
         def delete_failure_mode():
-            nonlocal basic_events
             sel = tree.selection()
             if not sel:
                 messagebox.showwarning("Delete Failure Mode", "Select a row to delete.")
                 return
+            if not messagebox.askyesno("Delete Failure Mode", "Remove selected failure modes from the FMEA?"):
+                return
             for iid in sel:
                 node = node_map.get(iid)
                 if node in entries:
-                    if messagebox.askyesno(
-                        "Delete Failure Mode",
-                        "This will also remove the base event from the FTA. Continue?",
-                    ):
-                        entries.remove(node)
-                        if node.parents or node in self.top_events:
-                            self.delete_node_and_subtree(node)
-                        basic_events = self.get_all_basic_events()
+                    entries.remove(node)
             refresh_tree()
 
         del_btn.config(command=delete_failure_mode)
@@ -4974,7 +4976,7 @@ class FaultTreeApp:
         win.protocol("WM_DELETE_WINDOW", on_close)
 
     def export_fmea_to_csv(self, fmea, path):
-        columns = ["Component", "Failure Mode", "Failure Effect", "Cause", "S", "O", "D", "RPN", "Requirements"]
+        columns = ["Component", "Parent", "Failure Mode", "Failure Effect", "Cause", "S", "O", "D", "RPN", "Requirements"]
         with open(path, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(columns)
@@ -4984,37 +4986,16 @@ class FaultTreeApp:
                     comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
                     if parent.description:
                         comp = f"{comp} - {parent.description}"
+                    parent_name = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
                 else:
                     comp = getattr(be, "fmea_component", "") or "N/A"
+                    parent_name = ""
                 req_ids = "; ".join([f"{req['req_type']}:{req['text']}" for req in getattr(be, 'safety_requirements', [])])
                 rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
                 failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
-                row = [comp, failure_mode, be.fmea_effect, be.fmea_cause, be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
+                row = [comp, parent_name, failure_mode, be.fmea_effect, be.fmea_cause, be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
                 writer.writerow(row)
 
-        def on_close():
-            if fmea is not None:
-                self.export_fmea_to_csv(fmea, fmea['file'])
-            win.destroy()
-
-        win.protocol("WM_DELETE_WINDOW", on_close)
-
-    def export_fmea_to_csv(self, fmea, path):
-        columns = ["Component", "Failure Mode", "Failure Effect", "S", "O", "D", "RPN", "Requirements"]
-        with open(path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(columns)
-            for be in fmea['entries']:
-                parent = be.parents[0] if be.parents else None
-                if parent:
-                    comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
-                else:
-                    comp = getattr(be, "fmea_component", "") or "N/A"
-                req_ids = ", ".join([req.get("id") for req in getattr(be, "safety_requirements", [])])
-                rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
-                failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
-                row = [comp, failure_mode, be.fmea_effect, be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
-                writer.writerow(row)
 
     def show_traceability_matrix(self):
         """Display a traceability matrix linking FTA basic events to FMEA components."""
@@ -5071,6 +5052,29 @@ class FaultTreeApp:
                     text="",
                     values=[req_id, req.get("asil", ""), req.get("text", "")],
                 )
+
+    def export_safety_goal_requirements(self):
+        """Export requirements traced to safety goals including their ASIL."""
+        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+        if not path:
+            return
+
+        columns = ["Safety Goal", "SG ASIL", "Requirement ID", "Req ASIL", "Text"]
+        with open(path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(columns)
+            for te in self.top_events:
+                sg_text = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
+                sg_asil = te.safety_goal_asil
+                reqs = self.collect_requirements_recursive(te)
+                seen = set()
+                for req in reqs:
+                    rid = req.get("id")
+                    if rid in seen:
+                        continue
+                    seen.add(rid)
+                    writer.writerow([sg_text, sg_asil, rid, req.get("asil", ""), req.get("text", "")])
+        messagebox.showinfo("Export", "Safety goal requirements exported.")
 
     def export_safety_goal_requirements(self):
         """Export requirements traced to safety goals including their ASIL."""
