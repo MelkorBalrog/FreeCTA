@@ -3268,13 +3268,29 @@ class FaultTreeApp:
         if not path:
             return
 
-        from reportlab.lib.pagesizes import letter, landscape
-        from reportlab.lib.units import inch
-        from reportlab.platypus import Paragraph, Spacer, PageBreak, SimpleDocTemplate, Image as RLImage, Table, TableStyle
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib import colors
-        from io import BytesIO
-        import PIL.Image as PILImage
+        try:
+            from reportlab.lib.pagesizes import letter, landscape
+            from reportlab.lib.units import inch
+            from reportlab.platypus import (
+                Paragraph,
+                Spacer,
+                PageBreak,
+                SimpleDocTemplate,
+                Image as RLImage,
+                Table,
+                TableStyle,
+            )
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib import colors
+            from io import BytesIO
+            import PIL.Image as PILImage
+        except ImportError:
+            messagebox.showerror(
+                "Report",
+                "Reportlab package is required to generate PDF reports. "
+                "Please install it and try again.",
+            )
+            return
 
         # Build a dictionary of all nodes (using each node’s to_dict())
         all_nodes = {}
@@ -3635,8 +3651,15 @@ class FaultTreeApp:
             Story.append(Spacer(1, 12))
 
         # --- Final Build ---
-        doc.build(Story)
-        messagebox.showinfo("Report", "PDF report generated with highest assurance levels for requirements!")
+        try:
+            doc.build(Story)
+        except Exception as e:
+            messagebox.showerror("Report", f"Failed to generate PDF: {e}")
+            return
+        messagebox.showinfo(
+            "Report",
+            "PDF report generated with highest assurance levels for requirements!",
+        )
 
     def capture_event_diagram(self, event_node):
         temp = tk.Toplevel(self.root)
