@@ -1681,6 +1681,14 @@ class EditNodeDialog(simpledialog.Dialog):
                 self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
+                ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
+                self.sg_asil_combo = ttk.Combobox(master, textvariable=self.sg_asil_var,
+                                                  values=["QM", "A", "B", "C", "D"],
+                                                  state="readonly", width=5)
+                self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
+                row_next += 1
+
         if self.node.node_type.upper() not in ["TOP EVENT", "BASIC EVENT"]:
             self.is_page_var = tk.BooleanVar(value=self.node.is_page)
             ttk.Checkbutton(master, text="Is Page Gate?", variable=self.is_page_var)\
@@ -1832,7 +1840,6 @@ class EditNodeDialog(simpledialog.Dialog):
     def add_new_requirement(self,custom_id, req_type, text, asil="QM"):
         # When a requirement is created, register it in the global registry.
         req = {"id": custom_id, "req_type": req_type, "text": text, "custom_id": custom_id, "asil": asil}
-
         global_requirements[custom_id] = req
         print(f"Added new requirement: {req}")
         return req
@@ -4448,8 +4455,9 @@ class FaultTreeApp:
             tree.insert("", "end", values=row)
 
     class FMEARowDialog(simpledialog.Dialog):
-        def __init__(self, parent, node):
+        def __init__(self, parent, node, app):
             self.node = node
+            self.app = app
             super().__init__(parent, title="Edit FMEA Entry")
 
         def body(self, master):
@@ -4460,8 +4468,21 @@ class FaultTreeApp:
                 comp = self.node.parents[0].user_name or f"Node {self.node.parents[0].unique_id}"
             else:
                 comp = getattr(self.node, "fmea_component", "")
+            comp_names = set()
+            basic_events = [n for n in self.app.get_all_nodes(self.app.root_node)
+                            if n.node_type.upper() == "BASIC EVENT"]
+            for be in basic_events + self.app.fmea_entries:
+                parent = be.parents[0] if be.parents else None
+                if parent and parent.user_name:
+                    comp_names.add(parent.user_name)
+                else:
+                    name = getattr(be, "fmea_component", "")
+                    if name:
+                        comp_names.add(name)
             self.comp_var = tk.StringVar(value=comp)
-            ttk.Entry(master, textvariable=self.comp_var, width=30).grid(row=0, column=1, padx=5, pady=5)
+            self.comp_combo = ttk.Combobox(master, textvariable=self.comp_var,
+                                           values=sorted(comp_names), width=30)
+            self.comp_combo.grid(row=0, column=1, padx=5, pady=5)
 
             ttk.Label(master, text="Failure Mode:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
             self.mode_var = tk.StringVar(value=self.node.description or self.node.user_name)
@@ -4489,6 +4510,20 @@ class FaultTreeApp:
             self.det_spin.delete(0, tk.END)
             self.det_spin.insert(0, str(self.node.fmea_detection))
             self.det_spin.grid(row=5, column=1, sticky="w", padx=5, pady=5)
+
+            ttk.Label(master, text="Requirements:").grid(row=6, column=0, sticky="ne", padx=5, pady=5)
+            self.req_frame = ttk.Frame(master)
+            self.req_frame.grid(row=6, column=1, padx=5, pady=5, sticky="w")
+            self.req_listbox = tk.Listbox(self.req_frame, height=4, width=40)
+            self.req_listbox.grid(row=0, column=0, columnspan=3, sticky="w")
+            if not hasattr(self.node, "safety_requirements"):
+                self.node.safety_requirements = []
+            for req in self.node.safety_requirements:
+                self.req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
+            ttk.Button(self.req_frame, text="Add New", command=self.add_safety_requirement).grid(row=1, column=0, padx=2, pady=2)
+            ttk.Button(self.req_frame, text="Edit", command=self.edit_safety_requirement).grid(row=1, column=1, padx=2, pady=2)
+            ttk.Button(self.req_frame, text="Delete", command=self.delete_safety_requirement).grid(row=1, column=2, padx=2, pady=2)
+            ttk.Button(self.req_frame, text="Add Existing", command=self.add_existing_requirement).grid(row=1, column=3, padx=2, pady=2)
             return self.effect_text
 
         def apply(self):
@@ -4511,6 +4546,82 @@ class FaultTreeApp:
                 self.node.fmea_detection = int(self.det_spin.get())
             except ValueError:
                 self.node.fmea_detection = 1
+
+        def add_existing_requirement(self):
+            global global_requirements
+            if not global_requirements:
+                messagebox.showinfo("No Existing Requirements", "There are no existing requirements to add.")
+                return
+            dialog = EditNodeDialog.SelectExistingRequirementsDialog(self, title="Select Existing Requirements")
+            if dialog.result:
+                if not hasattr(self.node, "safety_requirements"):
+                    self.node.safety_requirements = []
+                for req_id in dialog.result:
+                    req = global_requirements.get(req_id)
+                    if req and not any(r["id"] == req_id for r in self.node.safety_requirements):
+                        self.node.safety_requirements.append(req)
+                        self.req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
+            else:
+                messagebox.showinfo("No Selection", "No existing requirements were selected.")
+
+        def add_safety_requirement(self):
+            global global_requirements
+            dialog = EditNodeDialog.RequirementDialog(self, title="Add Safety Requirement")
+            if dialog.result is None or dialog.result["text"] == "":
+                return
+            custom_id = dialog.result.get("custom_id", "").strip()
+            if not custom_id:
+                custom_id = str(uuid.uuid4())
+            if custom_id in global_requirements:
+                req = global_requirements[custom_id]
+                req["req_type"] = dialog.result["req_type"]
+                req["text"] = dialog.result["text"]
+                req["asil"] = dialog.result.get("asil", "QM")
+            else:
+                req = {
+                    "id": custom_id,
+                    "req_type": dialog.result["req_type"],
+                    "text": dialog.result["text"],
+                    "custom_id": custom_id,
+                    "asil": dialog.result.get("asil", "QM")
+                }
+                global_requirements[custom_id] = req
+            if not hasattr(self.node, "safety_requirements"):
+                self.node.safety_requirements = []
+            if not any(r["id"] == custom_id for r in self.node.safety_requirements):
+                self.node.safety_requirements.append(req)
+                self.req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
+
+        def edit_safety_requirement(self):
+            selected = self.req_listbox.curselection()
+            if not selected:
+                messagebox.showwarning("Edit Requirement", "Select a requirement to edit.")
+                return
+            index = selected[0]
+            current_req = self.node.safety_requirements[index]
+            initial_req = current_req.copy()
+            dialog = EditNodeDialog.RequirementDialog(self, title="Edit Safety Requirement", initial_req=initial_req)
+            if dialog.result is None or dialog.result["text"] == "":
+                return
+            new_custom_id = dialog.result["custom_id"].strip() or current_req.get("custom_id") or current_req.get("id") or str(uuid.uuid4())
+            current_req["req_type"] = dialog.result["req_type"]
+            current_req["text"] = dialog.result["text"]
+            current_req["asil"] = dialog.result.get("asil", "QM")
+            current_req["custom_id"] = new_custom_id
+            current_req["id"] = new_custom_id
+            global_requirements[new_custom_id] = current_req
+            self.node.safety_requirements[index] = current_req
+            self.req_listbox.delete(index)
+            self.req_listbox.insert(index, f"[{current_req['id']}] [{current_req['req_type']}] [{current_req.get('asil','')}] {current_req['text']}")
+
+        def delete_safety_requirement(self):
+            selected = self.req_listbox.curselection()
+            if not selected:
+                messagebox.showwarning("Delete Requirement", "Select a requirement to delete.")
+                return
+            index = selected[0]
+            del self.node.safety_requirements[index]
+            self.req_listbox.delete(index)
 
     class SelectBaseEventDialog(simpledialog.Dialog):
         def __init__(self, parent, events, allow_new=False):
@@ -4548,7 +4659,7 @@ class FaultTreeApp:
         columns = ["Component", "Failure Mode", "Failure Effect", "S", "O", "D", "RPN", "Requirements"]
         btn = ttk.Button(win, text="Add Failure Mode")
         btn.pack(side=tk.TOP, pady=2)
-        tree = ttk.Treeview(win, columns=columns, show="headings")
+        tree = ttk.Treeview(win, columns=columns, show="tree headings")
         for col in columns:
             tree.heading(col, text=col)
             width = 120 if col not in ["Requirements", "Failure Effect"] else 200
@@ -4556,56 +4667,40 @@ class FaultTreeApp:
         tree.pack(fill=tk.BOTH, expand=True)
 
         node_map = {}
+        comp_items = {}
 
-        def add_entry(be):
-            parent = be.parents[0] if be.parents else None
-            if parent:
-                comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
-            else:
-                comp = getattr(be, "fmea_component", "") or "N/A"
-            req_ids = ", ".join([req.get("id") for req in getattr(be, "safety_requirements", [])])
-            rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
-            failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
-            values = [comp,
-                      failure_mode,
-                      be.fmea_effect,
-                      be.fmea_severity,
-                      be.fmea_occurrence,
-                      be.fmea_detection,
-                      rpn,
-                      req_ids]
-            iid = tree.insert("", "end", values=values)
-            node_map[iid] = be
+        def refresh_tree():
+            tree.delete(*tree.get_children())
+            node_map.clear()
+            comp_items.clear()
+            events = basic_events + self.fmea_entries if not new else self.fmea_entries
+            for be in events:
+                parent = be.parents[0] if be.parents else None
+                if parent:
+                    comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                else:
+                    comp = getattr(be, "fmea_component", "") or "N/A"
+                if comp not in comp_items:
+                    comp_items[comp] = tree.insert("", "end", text=comp, values=[comp, "", "", "", "", "", "", ""])
+                comp_iid = comp_items[comp]
+                req_ids = ", ".join([req.get("id") for req in getattr(be, "safety_requirements", [])])
+                rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
+                failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
+                vals = ["", failure_mode, be.fmea_effect, be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
+                iid = tree.insert(comp_iid, "end", text="", values=vals)
+                node_map[iid] = be
+            for iid in comp_items.values():
+                tree.item(iid, open=True)
 
         if not new:
-            for be in all_events:
-                add_entry(be)
+            refresh_tree()
 
         def on_double(event):
             sel = tree.focus()
-            if sel:
-                node = node_map.get(sel)
-                if node:
-                    self.FMEARowDialog(win, node)
-                    rpn = node.fmea_severity * node.fmea_occurrence * node.fmea_detection
-                    parent = node.parents[0] if node.parents else None
-                    if parent:
-                        comp_name = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
-                    else:
-                        comp_name = getattr(node, "fmea_component", "") or "N/A"
-                    req_ids = ", ".join([req.get("id") for req in getattr(node, "safety_requirements", [])])
-                    failure_mode = node.description or (node.user_name or f"BE {node.unique_id}")
-                    new_vals = [
-                        comp_name,
-                        failure_mode,
-                        node.fmea_effect,
-                        node.fmea_severity,
-                        node.fmea_occurrence,
-                        node.fmea_detection,
-                        rpn,
-                        req_ids
-                    ]
-                    tree.item(sel, values=new_vals)
+            node = node_map.get(sel)
+            if node:
+                self.FMEARowDialog(win, node, self)
+                refresh_tree()
 
         tree.bind("<Double-1>", on_double)
 
@@ -4615,10 +4710,12 @@ class FaultTreeApp:
             if node == "NEW":
                 node = FaultTreeNode("", "Basic Event")
                 self.fmea_entries.append(node)
-                self.FMEARowDialog(win, node)
-                add_entry(node)
+                self.FMEARowDialog(win, node, self)
             elif node and node not in node_map.values():
-                add_entry(node)
+                if node not in self.fmea_entries and node not in basic_events:
+                    self.fmea_entries.append(node)
+                self.FMEARowDialog(win, node, self)
+            refresh_tree()
 
         btn.config(command=add_failure_mode)
 
@@ -4942,6 +5039,8 @@ class FaultTreeApp:
         else:
             messagebox.showerror("Error", "Invalid model file format.")
             return
+
+        self.fmea_entries = [FaultTreeNode.from_dict(e) for e in data.get("fmea_entries", [])]
 
         self.fmea_entries = [FaultTreeNode.from_dict(e) for e in data.get("fmea_entries", [])]
 
