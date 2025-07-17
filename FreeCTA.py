@@ -1595,7 +1595,7 @@ class EditNodeDialog(simpledialog.Dialog):
             self.safety_req_listbox.grid(row=0, column=0, columnspan=3, sticky="w")
             # Populate listbox with existing requirements.
             for req in self.node.safety_requirements:
-                self.safety_req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] {req['text']}")
+                self.safety_req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
 
             # Buttons for Add, Edit, and Delete.
             self.add_req_button = ttk.Button(self.safety_req_frame, text="Add New", command=self.add_safety_requirement)
@@ -1624,7 +1624,7 @@ class EditNodeDialog(simpledialog.Dialog):
             self.safety_req_listbox = tk.Listbox(self.safety_req_frame, height=4, width=50)
             self.safety_req_listbox.grid(row=0, column=0, columnspan=3, sticky="w")
             for req in self.node.safety_requirements:
-                self.safety_req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] {req['text']}")
+                self.safety_req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
             self.add_req_button = ttk.Button(self.safety_req_frame, text="Add New", command=self.add_safety_requirement)
             self.add_req_button.grid(row=1, column=0, padx=2, pady=2)
             self.edit_req_button = ttk.Button(self.safety_req_frame, text="Edit", command=self.edit_safety_requirement)
@@ -1655,6 +1655,14 @@ class EditNodeDialog(simpledialog.Dialog):
                 self.safety_goal_text.insert("1.0", self.node.safety_goal_description)
                 self.safety_goal_text.grid(row=row_next, column=1, padx=5, pady=5)
                 self.safety_goal_text.bind("<Return>", self.on_enter_pressed)
+                row_next += 1
+
+                ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
+                self.sg_asil_combo = ttk.Combobox(master, textvariable=self.sg_asil_var,
+                                                  values=["QM", "A", "B", "C", "D"],
+                                                  state="readonly", width=5)
+                self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
         if self.node.node_type.upper() not in ["TOP EVENT", "BASIC EVENT"]:
@@ -1717,15 +1725,24 @@ class EditNodeDialog(simpledialog.Dialog):
             self.req_entry = tk.Entry(master, width=40, font=dialog_font)
             self.req_entry.grid(row=2, column=1, padx=5, pady=5)
 
+            ttk.Label(master, text="ASIL:").grid(row=3, column=0, sticky="e", padx=5, pady=5)
+            self.req_asil_var = tk.StringVar()
+            self.req_asil_combo = ttk.Combobox(master, textvariable=self.req_asil_var,
+                                               values=["QM", "A", "B", "C", "D"],
+                                               state="readonly", width=5)
+            self.req_asil_combo.grid(row=3, column=1, padx=5, pady=5, sticky="w")
+
             self.type_var.set(self.initial_req.get("req_type", "vehicle"))
             self.req_entry.insert(0, self.initial_req.get("text", ""))
+            self.req_asil_var.set(self.initial_req.get("asil", "QM"))
             return self.req_entry
 
         def apply(self):
             req_type = self.type_var.get().strip()
             req_text = self.req_entry.get().strip()
             custom_id = self.custom_id_entry.get().strip()
-            self.result = {"req_type": req_type, "text": req_text, "custom_id": custom_id}
+            asil = self.req_asil_var.get().strip()
+            self.result = {"req_type": req_type, "text": req_text, "custom_id": custom_id, "asil": asil}
 
     class SelectExistingRequirementsDialog(simpledialog.Dialog):
         """
@@ -1765,7 +1782,7 @@ class EditNodeDialog(simpledialog.Dialog):
             for req_id, req in global_requirements.items():
                 var = tk.BooleanVar(value=False)
                 self.selected_vars[req_id] = var
-                text = f"[{req['id']}] [{req['req_type']}] {req['text']}"
+                text = f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}"
                 ttk.Checkbutton(self.check_frame, text=text, variable=var).pack(anchor="w", padx=2, pady=2)
             return self.check_frame
 
@@ -1792,20 +1809,20 @@ class EditNodeDialog(simpledialog.Dialog):
                 if req and not any(r["id"] == req_id for r in self.node.safety_requirements):
                     # For clone semantics, we simply add the same dictionary reference.
                     self.node.safety_requirements.append(req)
-                    self.safety_req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] {req['text']}")
+                    self.safety_req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
         else:
             messagebox.showinfo("No Selection", "No existing requirements were selected.")
    
-    def add_new_requirement(self,custom_id, req_type, text):
+    def add_new_requirement(self,custom_id, req_type, text, asil="QM"):
         # When a requirement is created, register it in the global registry.
-        req = {"id": custom_id, "req_type": req_type, "text": text, "custom_id": custom_id}
+        req = {"id": custom_id, "req_type": req_type, "text": text, "custom_id": custom_id, "asil": asil}
         global_requirements[custom_id] = req
         print(f"Added new requirement: {req}")
         return req
         
     def list_all_requirements(self):
         # This function returns a list of formatted strings for all requirements
-        return [f"[{req['id']}] [{req['req_type']}] {req['text']}" for req in global_requirements.values()]
+        return [f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}" for req in global_requirements.values()]
     
     def add_safety_requirement(self):
         """
@@ -1825,12 +1842,14 @@ class EditNodeDialog(simpledialog.Dialog):
             req = global_requirements[custom_id]
             req["req_type"] = dialog.result["req_type"]
             req["text"] = dialog.result["text"]
+            req["asil"] = dialog.result.get("asil", "QM")
         else:
             req = {
                 "id": custom_id,
                 "req_type": dialog.result["req_type"],
                 "text": dialog.result["text"],
-                "custom_id": custom_id
+                "custom_id": custom_id,
+                "asil": dialog.result.get("asil", "QM")
             }
             global_requirements[custom_id] = req
 
@@ -1839,7 +1858,7 @@ class EditNodeDialog(simpledialog.Dialog):
             self.node.safety_requirements = []
         if not any(r["id"] == custom_id for r in self.node.safety_requirements):
             self.node.safety_requirements.append(req)
-            self.safety_req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] {req['text']}")
+            self.safety_req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
 
     def edit_safety_requirement(self):
         """
@@ -1860,12 +1879,13 @@ class EditNodeDialog(simpledialog.Dialog):
         new_custom_id = dialog.result["custom_id"].strip() or current_req.get("custom_id") or current_req.get("id") or str(uuid.uuid4())
         current_req["req_type"] = dialog.result["req_type"]
         current_req["text"] = dialog.result["text"]
+        current_req["asil"] = dialog.result.get("asil", "QM")
         current_req["custom_id"] = new_custom_id
         current_req["id"] = new_custom_id
         global_requirements[new_custom_id] = current_req
         self.node.safety_requirements[index] = current_req
         self.safety_req_listbox.delete(index)
-        self.safety_req_listbox.insert(index, f"[{current_req['id']}] [{current_req['req_type']}] {current_req['text']}")
+        self.safety_req_listbox.insert(index, f"[{current_req['id']}] [{current_req['req_type']}] [{current_req.get('asil','')}] {current_req['text']}")
 
     def delete_safety_requirement(self):
         selected = self.safety_req_listbox.curselection()
@@ -1927,6 +1947,7 @@ class EditNodeDialog(simpledialog.Dialog):
                     messagebox.showerror("Invalid Input", "Select a severity between 1 and 5.")
                 target_node.is_page = False
                 target_node.safety_goal_description = self.safety_goal_text.get("1.0", "end-1c")
+                target_node.safety_goal_asil = self.sg_asil_var.get().strip()
             else:
                 target_node.is_page = self.is_page_var.get()
 
@@ -1999,6 +2020,9 @@ class FaultTreeApp:
         view_menu.add_command(label="Zoom Out", command=self.zoom_out, accelerator="Ctrl+-")
         view_menu.add_command(label="Auto Arrange", command=self.auto_arrange, accelerator="Ctrl+A")
         view_menu.add_command(label="Requirements Matrix", command=self.show_requirements_matrix)
+        view_menu.add_command(label="FMEA Table", command=self.show_fmea_table)
+        view_menu.add_command(label="FTA-FMEA Traceability", command=self.show_traceability_matrix)
+        view_menu.add_command(label="Safety Goals Matrix", command=self.show_safety_goals_matrix)
         menubar.add_cascade(label="View", menu=view_menu)
         root.config(menu=menubar)
         root.bind("<Control-n>", lambda event: self.new_model())
@@ -4390,7 +4414,7 @@ class FaultTreeApp:
         win = tk.Toplevel(self.root)
         win.title("Requirements Matrix")
 
-        columns = ["Req ID", "Type", "Text"] + [be.user_name or f"BE {be.unique_id}" for be in basic_events]
+        columns = ["Req ID", "ASIL", "Type", "Text"] + [be.user_name or f"BE {be.unique_id}" for be in basic_events]
         tree = ttk.Treeview(win, columns=columns, show="headings")
         for col in columns:
             tree.heading(col, text=col)
@@ -4398,11 +4422,77 @@ class FaultTreeApp:
         tree.pack(fill=tk.BOTH, expand=True)
 
         for req in reqs:
-            row = [req.get("id", ""), req.get("req_type", ""), req.get("text", "")]
+            row = [req.get("id", ""), req.get("asil", ""), req.get("req_type", ""), req.get("text", "")]
             for be in basic_events:
                 linked = any(r.get("id") == req.get("id") for r in getattr(be, "safety_requirements", []))
                 row.append("X" if linked else "")
             tree.insert("", "end", values=row)
+
+    def show_fmea_table(self):
+        """Display a simplified FMEA table using basic events as causes."""
+        basic_events = [n for n in self.get_all_nodes(self.root_node)
+                        if n.node_type.upper() == "BASIC EVENT"]
+        win = tk.Toplevel(self.root)
+        win.title("FMEA Table")
+        columns = ["Component", "Potential Cause", "Requirements"]
+        tree = ttk.Treeview(win, columns=columns, show="headings")
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=150 if col != "Requirements" else 250, anchor="center")
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        for be in basic_events:
+            parent = be.parents[0] if be.parents else None
+            comp = parent.user_name if parent and parent.user_name else (f"Node {parent.unique_id}" if parent else "N/A")
+            req_ids = ", ".join([req.get("id") for req in getattr(be, "safety_requirements", [])])
+            tree.insert("", "end", values=[comp, be.user_name or f"BE {be.unique_id}", req_ids])
+
+    def show_traceability_matrix(self):
+        """Display a traceability matrix linking FTA basic events to FMEA components."""
+        basic_events = [n for n in self.get_all_nodes(self.root_node)
+                        if n.node_type.upper() == "BASIC EVENT"]
+        win = tk.Toplevel(self.root)
+        win.title("FTA-FMEA Traceability")
+        columns = ["Basic Event", "Component"]
+        tree = ttk.Treeview(win, columns=columns, show="headings")
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=200, anchor="center")
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        for be in basic_events:
+            parent = be.parents[0] if be.parents else None
+            comp = parent.user_name if parent and parent.user_name else (f"Node {parent.unique_id}" if parent else "N/A")
+            tree.insert("", "end", values=[be.user_name or f"BE {be.unique_id}", comp])
+
+    def collect_requirements_recursive(self, node):
+        reqs = list(getattr(node, "safety_requirements", []))
+        for child in node.children:
+            reqs.extend(self.collect_requirements_recursive(child))
+        return reqs
+
+    def show_safety_goals_matrix(self):
+        """Display safety goals and derived requirements in a tree view."""
+        win = tk.Toplevel(self.root)
+        win.title("Safety Goals Matrix")
+        tree = ttk.Treeview(win, columns=["ID", "ASIL", "Text"], show="tree headings")
+        tree.heading("ID", text="Requirement ID")
+        tree.heading("ASIL", text="ASIL")
+        tree.heading("Text", text="Text")
+        tree.column("ID", width=120)
+        tree.column("ASIL", width=60)
+        tree.column("Text", width=300)
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        for te in self.top_events:
+            sg_text = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
+            sg_id = te.user_name or f"SG {te.unique_id}"
+            parent_iid = tree.insert("", "end", text=sg_text,
+                                    values=[sg_id, te.safety_goal_asil, sg_text])
+            reqs = self.collect_requirements_recursive(te)
+            for req in reqs:
+                tree.insert(parent_iid, "end", text="",
+                            values=[req.get("id"), req.get("asil", ""), req.get("text", "")])
 
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
@@ -4976,6 +5066,7 @@ class FaultTreeNode:
         self.is_primary_instance = True
         self.original = self
         self.safety_goal_description = ""
+        self.safety_goal_asil = ""
         self.vehicle_safety_requirements = []          # List of vehicle safety requirements
         self.operational_safety_requirements = []        # List of operational safety requirements
         # Each requirement is a dict with keys: "id", "req_type" and "text"
@@ -5008,6 +5099,7 @@ class FaultTreeNode:
             "is_page": self.is_page,
             "is_primary_instance": self.is_primary_instance,
             "safety_goal_description": self.safety_goal_description,
+            "safety_goal_asil": self.safety_goal_asil,
             # Save the safety requirements list (which now includes custom_id)
             "safety_requirements": self.safety_requirements,
             "failure_prob": self.failure_prob,
@@ -5038,6 +5130,7 @@ class FaultTreeNode:
         node.is_page = boolify(data.get("is_page", False), False)
         node.is_primary_instance = boolify(data.get("is_primary_instance", True), True)
         node.safety_goal_description = data.get("safety_goal_description", "")
+        node.safety_goal_asil = data.get("safety_goal_asil", "")
         # NEW: Load safety_requirements (or default to empty list)
         node.safety_requirements = data.get("safety_requirements", [])
         node.failure_prob = data.get("failure_prob", 0.0)
