@@ -1665,6 +1665,14 @@ class EditNodeDialog(simpledialog.Dialog):
                 self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
+                ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
+                self.sg_asil_combo = ttk.Combobox(master, textvariable=self.sg_asil_var,
+                                                  values=["QM", "A", "B", "C", "D"],
+                                                  state="readonly", width=5)
+                self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
+                row_next += 1
+
         if self.node.node_type.upper() not in ["TOP EVENT", "BASIC EVENT"]:
             self.is_page_var = tk.BooleanVar(value=self.node.is_page)
             ttk.Checkbutton(master, text="Is Page Gate?", variable=self.is_page_var)\
@@ -1808,6 +1816,7 @@ class EditNodeDialog(simpledialog.Dialog):
                 req = global_requirements.get(req_id)
                 if req and not any(r["id"] == req_id for r in self.node.safety_requirements):
                     # For clone semantics, we simply add the same dictionary reference.
+
                     self.node.safety_requirements.append(req)
                     self.safety_req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
         else:
@@ -1816,6 +1825,7 @@ class EditNodeDialog(simpledialog.Dialog):
     def add_new_requirement(self,custom_id, req_type, text, asil="QM"):
         # When a requirement is created, register it in the global registry.
         req = {"id": custom_id, "req_type": req_type, "text": text, "custom_id": custom_id, "asil": asil}
+
         global_requirements[custom_id] = req
         print(f"Added new requirement: {req}")
         return req
@@ -1983,6 +1993,7 @@ class FaultTreeApp:
         file_menu.add_command(label="New", command=self.new_model, accelerator="Ctrl+N")
         file_menu.add_command(label="Save Model", command=self.save_model, accelerator="Ctrl+S")
         file_menu.add_command(label="Load Model", command=self.load_model, accelerator="Ctrl+O")
+        file_menu.add_command(label="New FMEA", command=lambda: self.show_fmea_table(new=True))
         file_menu.add_command(label="New Vehicle Level Function", command=self.add_top_level_event)
         file_menu.add_command(label="Project Properties", command=self.edit_project_properties)
         file_menu.add_command(label="Save PDF Report", command=self.generate_pdf_report)
@@ -2020,7 +2031,6 @@ class FaultTreeApp:
         view_menu.add_command(label="Zoom Out", command=self.zoom_out, accelerator="Ctrl+-")
         view_menu.add_command(label="Auto Arrange", command=self.auto_arrange, accelerator="Ctrl+A")
         view_menu.add_command(label="Requirements Matrix", command=self.show_requirements_matrix)
-        view_menu.add_command(label="FMEA Table", command=self.show_fmea_table)
         view_menu.add_command(label="FTA-FMEA Traceability", command=self.show_traceability_matrix)
         view_menu.add_command(label="Safety Goals Matrix", command=self.show_safety_goals_matrix)
         menubar.add_cascade(label="View", menu=view_menu)
@@ -4474,13 +4484,34 @@ class FaultTreeApp:
             except ValueError:
                 self.node.fmea_detection = 1
 
-    def show_fmea_table(self):
+    class SelectBaseEventDialog(simpledialog.Dialog):
+        def __init__(self, parent, events):
+            self.events = events
+            self.selected = None
+            super().__init__(parent, title="Select Base Event")
+
+        def body(self, master):
+            self.listbox = tk.Listbox(master, height=10, width=40)
+            for be in self.events:
+                label = be.description or (be.user_name or f"BE {be.unique_id}")
+                self.listbox.insert(tk.END, label)
+            self.listbox.grid(row=0, column=0, padx=5, pady=5)
+            return self.listbox
+
+        def apply(self):
+            sel = self.listbox.curselection()
+            if sel:
+                self.selected = self.events[sel[0]]
+
+    def show_fmea_table(self, new=False):
         """Display an editable AIAG-compliant FMEA table."""
         basic_events = [n for n in self.get_all_nodes(self.root_node)
                         if n.node_type.upper() == "BASIC EVENT"]
         win = tk.Toplevel(self.root)
         win.title("FMEA Table")
-        columns = ["Component", "Failure Effect", "Potential Cause", "S", "O", "D", "RPN", "Requirements"]
+        columns = ["Component", "Failure Mode", "Failure Effect", "S", "O", "D", "RPN", "Requirements"]
+        btn = ttk.Button(win, text="Add Failure Mode")
+        btn.pack(side=tk.TOP, pady=2)
         tree = ttk.Treeview(win, columns=columns, show="headings")
         for col in columns:
             tree.heading(col, text=col)
@@ -4490,15 +4521,15 @@ class FaultTreeApp:
 
         node_map = {}
 
-        for be in basic_events:
+        def add_entry(be):
             parent = be.parents[0] if be.parents else None
             comp = parent.user_name if parent and parent.user_name else (f"Node {parent.unique_id}" if parent else "N/A")
             req_ids = ", ".join([req.get("id") for req in getattr(be, "safety_requirements", [])])
-
             rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
+            failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
             values = [comp,
+                      failure_mode,
                       be.fmea_effect,
-                      be.user_name or f"BE {be.unique_id}",
                       be.fmea_severity,
                       be.fmea_occurrence,
                       be.fmea_detection,
@@ -4507,6 +4538,10 @@ class FaultTreeApp:
             iid = tree.insert("", "end", values=values)
             node_map[iid] = be
 
+        if not new:
+            for be in basic_events:
+                add_entry(be)
+
         def on_double(event):
             sel = tree.focus()
             if sel:
@@ -4514,19 +4549,31 @@ class FaultTreeApp:
                 if node:
                     self.FMEARowDialog(win, node)
                     rpn = node.fmea_severity * node.fmea_occurrence * node.fmea_detection
+                    parent = node.parents[0] if node.parents else None
+                    comp_name = parent.user_name if parent and parent.user_name else (f"Node {parent.unique_id}" if parent else "N/A")
+                    req_ids = ", ".join([req.get("id") for req in getattr(node, "safety_requirements", [])])
+                    failure_mode = node.description or (node.user_name or f"BE {node.unique_id}")
                     new_vals = [
-                        node.parents[0].user_name if node.parents else "N/A",
+                        comp_name,
+                        failure_mode,
                         node.fmea_effect,
-                        node.user_name or f"BE {node.unique_id}",
                         node.fmea_severity,
                         node.fmea_occurrence,
                         node.fmea_detection,
                         rpn,
-                        ", ".join([req.get("id") for req in getattr(node, "safety_requirements", [])])
+                        req_ids
                     ]
                     tree.item(sel, values=new_vals)
 
         tree.bind("<Double-1>", on_double)
+
+        def add_failure_mode():
+            dialog = self.SelectBaseEventDialog(win, basic_events)
+            node = dialog.selected
+            if node and node not in node_map.values():
+                add_entry(node)
+
+        btn.config(command=add_failure_mode)
 
     def show_traceability_matrix(self):
         """Display a traceability matrix linking FTA basic events to FMEA components."""
