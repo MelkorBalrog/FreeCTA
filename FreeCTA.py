@@ -210,6 +210,7 @@ import math
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import json
+import csv
 import tkinter.font as tkFont
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 import os
@@ -2044,7 +2045,7 @@ class FaultTreeApp:
         file_menu.add_command(label="New", command=self.new_model, accelerator="Ctrl+N")
         file_menu.add_command(label="Save Model", command=self.save_model, accelerator="Ctrl+S")
         file_menu.add_command(label="Load Model", command=self.load_model, accelerator="Ctrl+O")
-        file_menu.add_command(label="New FMEA", command=lambda: self.show_fmea_table(new=True))
+        file_menu.add_command(label="FMEA Manager", command=self.show_fmea_list)
         file_menu.add_command(label="New Vehicle Level Function", command=self.add_top_level_event)
         file_menu.add_command(label="Project Properties", command=self.edit_project_properties)
         file_menu.add_command(label="Save PDF Report", command=self.generate_pdf_report)
@@ -2147,6 +2148,7 @@ class FaultTreeApp:
         self.root_node.x, self.root_node.y = 300, 200
         self.top_events = [self.root_node]
         self.fmea_entries = []
+        self.fmeas = []  # list of FMEA documents
         self.selected_node = None
         self.dragging_node = None
         self.drag_offset_x = 0
@@ -3864,6 +3866,7 @@ class FaultTreeApp:
         self.top_events.append(new_root)
         self.root_node = new_root
         self.fmea_entries = []
+        self.fmeas = []
 
         self.update_views()
         self.canvas.update()
@@ -4491,10 +4494,50 @@ class FaultTreeApp:
                 row.append("X" if linked else "")
             tree.insert("", "end", values=row)
 
+    def show_fmea_list(self):
+        win = tk.Toplevel(self.root)
+        win.title("FMEA List")
+        listbox = tk.Listbox(win, height=10, width=40)
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        for fmea in self.fmeas:
+            listbox.insert(tk.END, fmea['name'])
+
+        def open_selected(event=None):
+            sel = listbox.curselection()
+            if not sel:
+                return
+            idx = sel[0]
+            win.destroy()
+            self.show_fmea_table(self.fmeas[idx])
+
+        def add_fmea():
+            name = simpledialog.askstring("New FMEA", "Enter FMEA name:")
+            if name:
+                file_name = f"fmea_{name}.csv"
+                self.fmeas.append({'name': name, 'entries': [], 'file': file_name})
+                listbox.insert(tk.END, name)
+
+        def delete_fmea():
+            sel = listbox.curselection()
+            if not sel:
+                return
+            idx = sel[0]
+            del self.fmeas[idx]
+            listbox.delete(idx)
+
+        listbox.bind("<Double-1>", open_selected)
+        btn_frame = ttk.Frame(win)
+        btn_frame.pack(side=tk.RIGHT, fill=tk.Y)
+        ttk.Button(btn_frame, text="Open", command=open_selected).pack(fill=tk.X)
+        ttk.Button(btn_frame, text="Add", command=add_fmea).pack(fill=tk.X)
+        ttk.Button(btn_frame, text="Delete", command=delete_fmea).pack(fill=tk.X)
+
     class FMEARowDialog(simpledialog.Dialog):
-        def __init__(self, parent, node, app):
+        def __init__(self, parent, node, app, fmea_entries):
             self.node = node
             self.app = app
+            self.fmea_entries = fmea_entries
             super().__init__(parent, title="Edit FMEA Entry")
 
         def body(self, master):
@@ -4508,7 +4551,7 @@ class FaultTreeApp:
             comp_names = set()
             basic_events = [n for n in self.app.get_all_nodes(self.app.root_node)
                             if n.node_type.upper() == "BASIC EVENT"]
-            for be in basic_events + self.app.fmea_entries:
+            for be in basic_events + self.fmea_entries:
                 parent = be.parents[0] if be.parents else None
                 if parent and parent.user_name:
                     comp_names.add(parent.user_name)
@@ -4686,13 +4729,15 @@ class FaultTreeApp:
                 else:
                     self.selected = self.events[idx]
 
-    def show_fmea_table(self, new=False):
+
+    def show_fmea_table(self, fmea=None):
         """Display an editable AIAG-compliant FMEA table."""
         basic_events = [n for n in self.get_all_nodes(self.root_node)
                         if n.node_type.upper() == "BASIC EVENT"]
-        all_events = basic_events + self.fmea_entries
+        entries = self.fmea_entries if fmea is None else fmea['entries']
         win = tk.Toplevel(self.root)
-        win.title("FMEA Table")
+        title = f"FMEA Table - {fmea['name']}" if fmea else "FMEA Table"
+        win.title(title)
         columns = ["Component", "Failure Mode", "Failure Effect", "S", "O", "D", "RPN", "Requirements"]
         btn = ttk.Button(win, text="Add Failure Mode")
         btn.pack(side=tk.TOP, pady=2)
@@ -4710,7 +4755,7 @@ class FaultTreeApp:
             tree.delete(*tree.get_children())
             node_map.clear()
             comp_items.clear()
-            events = basic_events + self.fmea_entries if not new else self.fmea_entries
+            events = basic_events + entries
             for be in events:
                 parent = be.parents[0] if be.parents else None
                 if parent:
@@ -4729,14 +4774,13 @@ class FaultTreeApp:
             for iid in comp_items.values():
                 tree.item(iid, open=True)
 
-        if not new:
-            refresh_tree()
+        refresh_tree()
 
         def on_double(event):
             sel = tree.focus()
             node = node_map.get(sel)
             if node:
-                self.FMEARowDialog(win, node, self)
+                self.FMEARowDialog(win, node, self, entries)
                 refresh_tree()
 
         tree.bind("<Double-1>", on_double)
@@ -4746,15 +4790,39 @@ class FaultTreeApp:
             node = dialog.selected
             if node == "NEW":
                 node = FaultTreeNode("", "Basic Event")
-                self.fmea_entries.append(node)
-                self.FMEARowDialog(win, node, self)
+                entries.append(node)
+                self.FMEARowDialog(win, node, self, entries)
             elif node and node not in node_map.values():
-                if node not in self.fmea_entries and node not in basic_events:
-                    self.fmea_entries.append(node)
-                self.FMEARowDialog(win, node, self)
+                if node not in entries and node not in basic_events:
+                    entries.append(node)
+                self.FMEARowDialog(win, node, self, entries)
             refresh_tree()
 
         btn.config(command=add_failure_mode)
+
+        def on_close():
+            if fmea is not None:
+                self.export_fmea_to_csv(fmea, fmea['file'])
+            win.destroy()
+
+        win.protocol("WM_DELETE_WINDOW", on_close)
+
+    def export_fmea_to_csv(self, fmea, path):
+        columns = ["Component", "Failure Mode", "Failure Effect", "S", "O", "D", "RPN", "Requirements"]
+        with open(path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(columns)
+            for be in fmea['entries']:
+                parent = be.parents[0] if be.parents else None
+                if parent:
+                    comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                else:
+                    comp = getattr(be, "fmea_component", "") or "N/A"
+                req_ids = ", ".join([req.get("id") for req in getattr(be, "safety_requirements", [])])
+                rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
+                failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
+                row = [comp, failure_mode, be.fmea_effect, be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
+                writer.writerow(row)
 
     def show_traceability_matrix(self):
         """Display a traceability matrix linking FTA basic events to FMEA components."""
@@ -5056,9 +5124,11 @@ class FaultTreeApp:
     def save_model(self):
         path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
         if path:
+            for fmea in self.fmeas:
+                self.export_fmea_to_csv(fmea, fmea['file'])
             data = {
                 "top_events": [event.to_dict() for event in self.top_events],
-                "fmea_entries": [e.to_dict() for e in self.fmea_entries],
+                "fmeas": [{"name": f['name'], "file": f['file'], "entries": [e.to_dict() for e in f['entries']]} for f in self.fmeas],
                 "project_properties": self.project_properties,
                 "global_requirements": global_requirements  # Save global requirements too!
             }
@@ -5086,9 +5156,13 @@ class FaultTreeApp:
             messagebox.showerror("Error", "Invalid model file format.")
             return
 
-        self.fmea_entries = [FaultTreeNode.from_dict(e) for e in data.get("fmea_entries", [])]
-
-        self.fmea_entries = [FaultTreeNode.from_dict(e) for e in data.get("fmea_entries", [])]
+        self.fmeas = []
+        for fmea_data in data.get("fmeas", []):
+            entries = [FaultTreeNode.from_dict(e) for e in fmea_data.get("entries", [])]
+            self.fmeas.append({"name": fmea_data.get("name", "FMEA"), "file": fmea_data.get("file", f"fmea_{len(self.fmeas)}.csv"), "entries": entries})
+        if not self.fmeas and "fmea_entries" in data:
+            entries = [FaultTreeNode.from_dict(e) for e in data.get("fmea_entries", [])]
+            self.fmeas.append({"name": "Default FMEA", "file": "fmea_default.csv", "entries": entries})
 
         # Fix clone references for each top event.
         for event in self.top_events:
