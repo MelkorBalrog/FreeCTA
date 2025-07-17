@@ -4710,8 +4710,8 @@ class FaultTreeApp:
             comp = self.comp_var.get()
             if self.node.parents:
                 self.node.parents[0].user_name = comp
-            else:
-                self.node.fmea_component = comp
+            # Always store the component name so it can be restored on load
+            self.node.fmea_component = comp
             self.node.description = self.mode_var.get()
             self.node.fmea_effect = self.effect_text.get("1.0", "end-1c")
             self.node.fmea_cause = self.cause_text.get("1.0", "end-1c")
