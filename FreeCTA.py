@@ -253,6 +253,11 @@ import math
 import uuid
 
 global_requirements = {}
+# ASIL level options including decomposition levels
+ASIL_LEVEL_OPTIONS = [
+    "QM", "QM(A)", "QM(B)", "QM(C)", "QM(D)",
+    "A", "A(B)", "B", "B(C)", "C", "C(D)", "D"
+]
 dynamic_recommendations = {
     1: {
         "Testing Requirements": (
@@ -1659,25 +1664,37 @@ class EditNodeDialog(simpledialog.Dialog):
 
                 ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
                 self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
-                self.sg_asil_combo = ttk.Combobox(master, textvariable=self.sg_asil_var,
-                                                  values=["QM", "A", "B", "C", "D"],
-                                                  state="readonly", width=5)
+                self.sg_asil_combo = ttk.Combobox(
+                    master,
+                    textvariable=self.sg_asil_var,
+                    values=ASIL_LEVEL_OPTIONS,
+                    state="readonly",
+                    width=8,
+                )
                 self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
                 ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
                 self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
-                self.sg_asil_combo = ttk.Combobox(master, textvariable=self.sg_asil_var,
-                                                  values=["QM", "A", "B", "C", "D"],
-                                                  state="readonly", width=5)
+                self.sg_asil_combo = ttk.Combobox(
+                    master,
+                    textvariable=self.sg_asil_var,
+                    values=ASIL_LEVEL_OPTIONS,
+                    state="readonly",
+                    width=8,
+                )
                 self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
                 ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
                 self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
-                self.sg_asil_combo = ttk.Combobox(master, textvariable=self.sg_asil_var,
-                                                  values=["QM", "A", "B", "C", "D"],
-                                                  state="readonly", width=5)
+                self.sg_asil_combo = ttk.Combobox(
+                    master,
+                    textvariable=self.sg_asil_var,
+                    values=ASIL_LEVEL_OPTIONS,
+                    state="readonly",
+                    width=8,
+                )
                 self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
@@ -1751,9 +1768,13 @@ class EditNodeDialog(simpledialog.Dialog):
 
             ttk.Label(master, text="ASIL:").grid(row=3, column=0, sticky="e", padx=5, pady=5)
             self.req_asil_var = tk.StringVar()
-            self.req_asil_combo = ttk.Combobox(master, textvariable=self.req_asil_var,
-                                               values=["QM", "A", "B", "C", "D"],
-                                               state="readonly", width=5)
+            self.req_asil_combo = ttk.Combobox(
+                master,
+                textvariable=self.req_asil_var,
+                values=ASIL_LEVEL_OPTIONS,
+                state="readonly",
+                width=8,
+            )
             self.req_asil_combo.grid(row=3, column=1, padx=5, pady=5, sticky="w")
 
             self.type_var.set(self.initial_req.get("req_type", "vehicle"))
@@ -1767,6 +1788,22 @@ class EditNodeDialog(simpledialog.Dialog):
             custom_id = self.custom_id_entry.get().strip()
             asil = self.req_asil_var.get().strip()
             self.result = {"req_type": req_type, "text": req_text, "custom_id": custom_id, "asil": asil}
+
+        def validate(self):
+            custom_id = self.custom_id_entry.get().strip()
+            # If a custom ID is provided, ensure it's unique unless we're editing this requirement
+            if custom_id:
+                existing = global_requirements.get(custom_id)
+                if existing and custom_id not in (
+                    self.initial_req.get("custom_id"),
+                    self.initial_req.get("id"),
+                ):
+                    messagebox.showerror(
+                        "Duplicate ID",
+                        f"Requirement ID '{custom_id}' already exists. Please choose a unique ID.",
+                    )
+                    return False
+            return True
 
     class SelectExistingRequirementsDialog(simpledialog.Dialog):
         """
@@ -4762,9 +4799,18 @@ class FaultTreeApp:
             parent_iid = tree.insert("", "end", text=sg_text,
                                     values=[sg_id, te.safety_goal_asil, sg_text])
             reqs = self.collect_requirements_recursive(te)
+            seen_ids = set()
             for req in reqs:
-                tree.insert(parent_iid, "end", text="",
-                            values=[req.get("id"), req.get("asil", ""), req.get("text", "")])
+                req_id = req.get("id")
+                if req_id in seen_ids:
+                    continue
+                seen_ids.add(req_id)
+                tree.insert(
+                    parent_iid,
+                    "end",
+                    text="",
+                    values=[req_id, req.get("asil", ""), req.get("text", "")],
+                )
 
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
