@@ -1673,6 +1673,14 @@ class EditNodeDialog(simpledialog.Dialog):
                 self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
+                ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
+                self.sg_asil_combo = ttk.Combobox(master, textvariable=self.sg_asil_var,
+                                                  values=["QM", "A", "B", "C", "D"],
+                                                  state="readonly", width=5)
+                self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
+                row_next += 1
+
         if self.node.node_type.upper() not in ["TOP EVENT", "BASIC EVENT"]:
             self.is_page_var = tk.BooleanVar(value=self.node.is_page)
             ttk.Checkbutton(master, text="Is Page Gate?", variable=self.is_page_var)\
@@ -1816,7 +1824,6 @@ class EditNodeDialog(simpledialog.Dialog):
                 req = global_requirements.get(req_id)
                 if req and not any(r["id"] == req_id for r in self.node.safety_requirements):
                     # For clone semantics, we simply add the same dictionary reference.
-
                     self.node.safety_requirements.append(req)
                     self.safety_req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
         else:
@@ -2095,6 +2102,7 @@ class FaultTreeApp:
         self.root_node = FaultTreeNode("", "TOP EVENT")
         self.root_node.x, self.root_node.y = 300, 200
         self.top_events = [self.root_node]
+        self.fmea_entries = []
         self.selected_node = None
         self.dragging_node = None
         self.drag_offset_x = 0
@@ -3811,6 +3819,7 @@ class FaultTreeApp:
         new_root.x, new_root.y = 300, 200
         self.top_events.append(new_root)
         self.root_node = new_root
+        self.fmea_entries = []
 
         self.update_views()
         self.canvas.update()
@@ -4445,31 +4454,50 @@ class FaultTreeApp:
 
         def body(self, master):
             self.resizable(False, False)
-            ttk.Label(master, text="Failure Effect:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+
+            ttk.Label(master, text="Component:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+            if self.node.parents:
+                comp = self.node.parents[0].user_name or f"Node {self.node.parents[0].unique_id}"
+            else:
+                comp = getattr(self.node, "fmea_component", "")
+            self.comp_var = tk.StringVar(value=comp)
+            ttk.Entry(master, textvariable=self.comp_var, width=30).grid(row=0, column=1, padx=5, pady=5)
+
+            ttk.Label(master, text="Failure Mode:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+            self.mode_var = tk.StringVar(value=self.node.description or self.node.user_name)
+            ttk.Entry(master, textvariable=self.mode_var, width=30).grid(row=1, column=1, padx=5, pady=5)
+
+            ttk.Label(master, text="Failure Effect:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
             self.effect_text = tk.Text(master, width=30, height=3)
             self.effect_text.insert("1.0", self.node.fmea_effect)
-            self.effect_text.grid(row=0, column=1, padx=5, pady=5)
+            self.effect_text.grid(row=2, column=1, padx=5, pady=5)
 
-            ttk.Label(master, text="Severity (1-10):").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(master, text="Severity (1-10):").grid(row=3, column=0, sticky="e", padx=5, pady=5)
             self.sev_spin = tk.Spinbox(master, from_=1, to=10, width=5)
             self.sev_spin.delete(0, tk.END)
             self.sev_spin.insert(0, str(self.node.fmea_severity))
-            self.sev_spin.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+            self.sev_spin.grid(row=3, column=1, sticky="w", padx=5, pady=5)
 
-            ttk.Label(master, text="Occurrence (1-10):").grid(row=2, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(master, text="Occurrence (1-10):").grid(row=4, column=0, sticky="e", padx=5, pady=5)
             self.occ_spin = tk.Spinbox(master, from_=1, to=10, width=5)
             self.occ_spin.delete(0, tk.END)
             self.occ_spin.insert(0, str(self.node.fmea_occurrence))
-            self.occ_spin.grid(row=2, column=1, sticky="w", padx=5, pady=5)
+            self.occ_spin.grid(row=4, column=1, sticky="w", padx=5, pady=5)
 
-            ttk.Label(master, text="Detection (1-10):").grid(row=3, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(master, text="Detection (1-10):").grid(row=5, column=0, sticky="e", padx=5, pady=5)
             self.det_spin = tk.Spinbox(master, from_=1, to=10, width=5)
             self.det_spin.delete(0, tk.END)
             self.det_spin.insert(0, str(self.node.fmea_detection))
-            self.det_spin.grid(row=3, column=1, sticky="w", padx=5, pady=5)
+            self.det_spin.grid(row=5, column=1, sticky="w", padx=5, pady=5)
             return self.effect_text
 
         def apply(self):
+            comp = self.comp_var.get()
+            if self.node.parents:
+                self.node.parents[0].user_name = comp
+            else:
+                self.node.fmea_component = comp
+            self.node.description = self.mode_var.get()
             self.node.fmea_effect = self.effect_text.get("1.0", "end-1c")
             try:
                 self.node.fmea_severity = int(self.sev_spin.get())
@@ -4485,8 +4513,9 @@ class FaultTreeApp:
                 self.node.fmea_detection = 1
 
     class SelectBaseEventDialog(simpledialog.Dialog):
-        def __init__(self, parent, events):
+        def __init__(self, parent, events, allow_new=False):
             self.events = events
+            self.allow_new = allow_new
             self.selected = None
             super().__init__(parent, title="Select Base Event")
 
@@ -4495,18 +4524,25 @@ class FaultTreeApp:
             for be in self.events:
                 label = be.description or (be.user_name or f"BE {be.unique_id}")
                 self.listbox.insert(tk.END, label)
+            if self.allow_new:
+                self.listbox.insert(tk.END, "<Create New Failure Mode>")
             self.listbox.grid(row=0, column=0, padx=5, pady=5)
             return self.listbox
 
         def apply(self):
             sel = self.listbox.curselection()
             if sel:
-                self.selected = self.events[sel[0]]
+                idx = sel[0]
+                if self.allow_new and idx == len(self.events):
+                    self.selected = "NEW"
+                else:
+                    self.selected = self.events[idx]
 
     def show_fmea_table(self, new=False):
         """Display an editable AIAG-compliant FMEA table."""
         basic_events = [n for n in self.get_all_nodes(self.root_node)
                         if n.node_type.upper() == "BASIC EVENT"]
+        all_events = basic_events + self.fmea_entries
         win = tk.Toplevel(self.root)
         win.title("FMEA Table")
         columns = ["Component", "Failure Mode", "Failure Effect", "S", "O", "D", "RPN", "Requirements"]
@@ -4523,7 +4559,10 @@ class FaultTreeApp:
 
         def add_entry(be):
             parent = be.parents[0] if be.parents else None
-            comp = parent.user_name if parent and parent.user_name else (f"Node {parent.unique_id}" if parent else "N/A")
+            if parent:
+                comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+            else:
+                comp = getattr(be, "fmea_component", "") or "N/A"
             req_ids = ", ".join([req.get("id") for req in getattr(be, "safety_requirements", [])])
             rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
             failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
@@ -4539,7 +4578,7 @@ class FaultTreeApp:
             node_map[iid] = be
 
         if not new:
-            for be in basic_events:
+            for be in all_events:
                 add_entry(be)
 
         def on_double(event):
@@ -4550,7 +4589,10 @@ class FaultTreeApp:
                     self.FMEARowDialog(win, node)
                     rpn = node.fmea_severity * node.fmea_occurrence * node.fmea_detection
                     parent = node.parents[0] if node.parents else None
-                    comp_name = parent.user_name if parent and parent.user_name else (f"Node {parent.unique_id}" if parent else "N/A")
+                    if parent:
+                        comp_name = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                    else:
+                        comp_name = getattr(node, "fmea_component", "") or "N/A"
                     req_ids = ", ".join([req.get("id") for req in getattr(node, "safety_requirements", [])])
                     failure_mode = node.description or (node.user_name or f"BE {node.unique_id}")
                     new_vals = [
@@ -4568,9 +4610,14 @@ class FaultTreeApp:
         tree.bind("<Double-1>", on_double)
 
         def add_failure_mode():
-            dialog = self.SelectBaseEventDialog(win, basic_events)
+            dialog = self.SelectBaseEventDialog(win, basic_events, allow_new=True)
             node = dialog.selected
-            if node and node not in node_map.values():
+            if node == "NEW":
+                node = FaultTreeNode("", "Basic Event")
+                self.fmea_entries.append(node)
+                self.FMEARowDialog(win, node)
+                add_entry(node)
+            elif node and node not in node_map.values():
                 add_entry(node)
 
         btn.config(command=add_failure_mode)
@@ -4868,6 +4915,7 @@ class FaultTreeApp:
         if path:
             data = {
                 "top_events": [event.to_dict() for event in self.top_events],
+                "fmea_entries": [e.to_dict() for e in self.fmea_entries],
                 "project_properties": self.project_properties,
                 "global_requirements": global_requirements  # Save global requirements too!
             }
@@ -4894,6 +4942,8 @@ class FaultTreeApp:
         else:
             messagebox.showerror("Error", "Invalid model file format.")
             return
+
+        self.fmea_entries = [FaultTreeNode.from_dict(e) for e in data.get("fmea_entries", [])]
 
         # Fix clone references for each top event.
         for event in self.top_events:
@@ -5204,6 +5254,7 @@ class FaultTreeNode:
         self.fmea_severity = 1       # 1-10 scale
         self.fmea_occurrence = 1     # 1-10 scale
         self.fmea_detection = 1      # 1-10 scale
+        self.fmea_component = ""     # Optional component name for FMEA-only nodes
         # Probability values for classical FTA calculations
         self.failure_prob = 0.0
         self.probability = 0.0
@@ -5237,6 +5288,7 @@ class FaultTreeNode:
             "fmea_severity": self.fmea_severity,
             "fmea_occurrence": self.fmea_occurrence,
             "fmea_detection": self.fmea_detection,
+            "fmea_component": self.fmea_component,
             # Save the safety requirements list (which now includes custom_id)
             "safety_requirements": self.safety_requirements,
             "failure_prob": self.failure_prob,
@@ -5272,6 +5324,7 @@ class FaultTreeNode:
         node.fmea_severity = data.get("fmea_severity", 1)
         node.fmea_occurrence = data.get("fmea_occurrence", 1)
         node.fmea_detection = data.get("fmea_detection", 1)
+        node.fmea_component = data.get("fmea_component", "")
         # NEW: Load safety_requirements (or default to empty list)
         node.safety_requirements = data.get("safety_requirements", [])
         node.failure_prob = data.get("failure_prob", 0.0)
