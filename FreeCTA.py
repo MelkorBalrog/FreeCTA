@@ -1112,6 +1112,71 @@ class ADRiskAssessmentHelper:
         node.display_label = f"P={prob:.2e}"
         return prob
 
+    def calculate_probability_recursive(self, node, visited=None):
+        """Recursively propagate failure probabilities using classical FTA rules."""
+        if visited is None:
+            visited = set()
+        if node.unique_id in visited:
+            return node.probability if node.probability is not None else 0.0
+        visited.add(node.unique_id)
+        t = node.node_type.upper()
+        if t == "BASIC EVENT":
+            prob = float(node.failure_prob)
+            node.probability = prob
+            node.display_label = f"P={prob:.2e}"
+            return prob
+
+        if not node.children:
+            prob = float(getattr(node, "failure_prob", 0.0))
+            node.probability = prob
+            node.display_label = f"P={prob:.2e}"
+            return prob
+
+        child_probs = [self.calculate_probability_recursive(c, visited) for c in node.children]
+        gate = (node.gate_type or "AND").upper()
+        if gate == "AND":
+            prob = 1.0
+            for p in child_probs:
+                prob *= p
+        else:
+            prod = 1.0
+            for p in child_probs:
+                prod *= (1 - p)
+            prob = 1 - prod
+        node.probability = prob
+        node.display_label = f"P={prob:.2e}"
+        return prob
+
+    def calculate_probability_recursive(self, node):
+        """Recursively propagate failure probabilities using classical FTA rules."""
+        t = node.node_type.upper()
+        if t == "BASIC EVENT":
+            prob = float(node.failure_prob)
+            node.probability = prob
+            node.display_label = f"P={prob:.2e}"
+            return prob
+
+        if not node.children:
+            prob = float(getattr(node, "failure_prob", 0.0))
+            node.probability = prob
+            node.display_label = f"P={prob:.2e}"
+            return prob
+
+        child_probs = [self.calculate_probability_recursive(c) for c in node.children]
+        gate = (node.gate_type or "AND").upper()
+        if gate == "AND":
+            prob = 1.0
+            for p in child_probs:
+                prob *= p
+        else:
+            prod = 1.0
+            for p in child_probs:
+                prod *= (1 - p)
+            prob = 1 - prod
+        node.probability = prob
+        node.display_label = f"P={prob:.2e}"
+        return prob
+
 class FTADrawingHelper:
     """
     A helper class that provides drawing functions for fault tree diagrams.
@@ -4418,6 +4483,48 @@ class FaultTreeApp:
                 linked = any(r.get("id") == req.get("id") for r in getattr(be, "safety_requirements", []))
                 row.append("X" if linked else "")
             tree.insert("", "end", values=row)
+
+    def calculate_pmfh(self):
+        for te in self.top_events:
+            AD_RiskAssessment_Helper.calculate_probability_recursive(te)
+        self.update_views()
+        results = ""
+        for te in self.top_events:
+            results += f"Top Event {te.name}: PMHF = {te.probability:.2e}\n"
+        messagebox.showinfo("PMHF Calculation", results.strip())
+
+    def show_requirements_matrix(self):
+        """Display a matrix table of requirements vs. basic events."""
+        basic_events = [n for n in self.get_all_nodes(self.root_node)
+                        if n.node_type.upper() == "BASIC EVENT"]
+        reqs = list(global_requirements.values())
+        reqs.sort(key=lambda r: r.get("req_type", ""))
+
+        win = tk.Toplevel(self.root)
+        win.title("Requirements Matrix")
+
+        columns = ["Req ID", "Type", "Text"] + [be.user_name or f"BE {be.unique_id}" for be in basic_events]
+        tree = ttk.Treeview(win, columns=columns, show="headings")
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=120 if col not in ["Text"] else 300, anchor="center")
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        for req in reqs:
+            row = [req.get("id", ""), req.get("req_type", ""), req.get("text", "")]
+            for be in basic_events:
+                linked = any(r.get("id") == req.get("id") for r in getattr(be, "safety_requirements", []))
+                row.append("X" if linked else "")
+            tree.insert("", "end", values=row)
+
+    def calculate_pmfh(self):
+        for te in self.top_events:
+            AD_RiskAssessment_Helper.calculate_probability_recursive(te)
+        self.update_views()
+        results = ""
+        for te in self.top_events:
+            results += f"Top Event {te.name}: PMHF = {te.probability:.2e}\n"
+        messagebox.showinfo("PMHF Calculation", results.strip())
 
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
