@@ -3867,7 +3867,6 @@ class FaultTreeApp:
         self.root_node = new_root
         self.fmea_entries = []
         self.fmeas = []
-
         self.update_views()
         self.canvas.update()
 
@@ -4066,6 +4065,10 @@ class FaultTreeApp:
             nodes = self.get_all_nodes_table(te)  # your existing method for one root
             all_nodes.extend(nodes)
         return all_nodes
+
+    def get_all_basic_events(self):
+        """Return a list of all basic events across all top-level trees."""
+        return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]
 
     def get_all_basic_events(self):
         """Return a list of all basic events across all top-level trees."""
@@ -4580,33 +4583,39 @@ class FaultTreeApp:
             self.effect_text.insert("1.0", self.node.fmea_effect)
             self.effect_text.grid(row=2, column=1, padx=5, pady=5)
 
-            ttk.Label(master, text="Severity (1-10):").grid(row=3, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(master, text="Potential Cause:").grid(row=3, column=0, sticky="e", padx=5, pady=5)
+            self.cause_text = tk.Text(master, width=30, height=3)
+            self.cause_text.insert("1.0", getattr(self.node, 'fmea_cause', ''))
+            self.cause_text.grid(row=3, column=1, padx=5, pady=5)
+
+            ttk.Label(master, text="Severity (1-10):").grid(row=4, column=0, sticky="e", padx=5, pady=5)
             self.sev_spin = tk.Spinbox(master, from_=1, to=10, width=5)
             self.sev_spin.delete(0, tk.END)
             self.sev_spin.insert(0, str(self.node.fmea_severity))
-            self.sev_spin.grid(row=3, column=1, sticky="w", padx=5, pady=5)
+            self.sev_spin.grid(row=4, column=1, sticky="w", padx=5, pady=5)
 
-            ttk.Label(master, text="Occurrence (1-10):").grid(row=4, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(master, text="Occurrence (1-10):").grid(row=5, column=0, sticky="e", padx=5, pady=5)
             self.occ_spin = tk.Spinbox(master, from_=1, to=10, width=5)
             self.occ_spin.delete(0, tk.END)
             self.occ_spin.insert(0, str(self.node.fmea_occurrence))
-            self.occ_spin.grid(row=4, column=1, sticky="w", padx=5, pady=5)
+            self.occ_spin.grid(row=5, column=1, sticky="w", padx=5, pady=5)
 
-            ttk.Label(master, text="Detection (1-10):").grid(row=5, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(master, text="Detection (1-10):").grid(row=6, column=0, sticky="e", padx=5, pady=5)
             self.det_spin = tk.Spinbox(master, from_=1, to=10, width=5)
             self.det_spin.delete(0, tk.END)
             self.det_spin.insert(0, str(self.node.fmea_detection))
-            self.det_spin.grid(row=5, column=1, sticky="w", padx=5, pady=5)
+            self.det_spin.grid(row=6, column=1, sticky="w", padx=5, pady=5)
 
-            ttk.Label(master, text="Requirements:").grid(row=6, column=0, sticky="ne", padx=5, pady=5)
+            ttk.Label(master, text="Requirements:").grid(row=7, column=0, sticky="ne", padx=5, pady=5)
             self.req_frame = ttk.Frame(master)
-            self.req_frame.grid(row=6, column=1, padx=5, pady=5, sticky="w")
+            self.req_frame.grid(row=7, column=1, padx=5, pady=5, sticky="w")
             self.req_listbox = tk.Listbox(self.req_frame, height=4, width=40)
             self.req_listbox.grid(row=0, column=0, columnspan=3, sticky="w")
             if not hasattr(self.node, "safety_requirements"):
                 self.node.safety_requirements = []
             for req in self.node.safety_requirements:
-                self.req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
+                desc = f"[{req['req_type']}] [{req.get('asil','')}] {req['text']}"
+                self.req_listbox.insert(tk.END, desc)
             ttk.Button(self.req_frame, text="Add New", command=self.add_safety_requirement).grid(row=1, column=0, padx=2, pady=2)
             ttk.Button(self.req_frame, text="Edit", command=self.edit_safety_requirement).grid(row=1, column=1, padx=2, pady=2)
             ttk.Button(self.req_frame, text="Delete", command=self.delete_safety_requirement).grid(row=1, column=2, padx=2, pady=2)
@@ -4621,6 +4630,7 @@ class FaultTreeApp:
                 self.node.fmea_component = comp
             self.node.description = self.mode_var.get()
             self.node.fmea_effect = self.effect_text.get("1.0", "end-1c")
+            self.node.fmea_cause = self.cause_text.get("1.0", "end-1c")
             try:
                 self.node.fmea_severity = int(self.sev_spin.get())
             except ValueError:
@@ -4647,7 +4657,8 @@ class FaultTreeApp:
                     req = global_requirements.get(req_id)
                     if req and not any(r["id"] == req_id for r in self.node.safety_requirements):
                         self.node.safety_requirements.append(req)
-                        self.req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
+                        desc = f"[{req['req_type']}] [{req.get('asil','')}] {req['text']}"
+                        self.req_listbox.insert(tk.END, desc)
             else:
                 messagebox.showinfo("No Selection", "No existing requirements were selected.")
 
@@ -4677,7 +4688,8 @@ class FaultTreeApp:
                 self.node.safety_requirements = []
             if not any(r["id"] == custom_id for r in self.node.safety_requirements):
                 self.node.safety_requirements.append(req)
-                self.req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
+                desc = f"[{req['req_type']}] [{req.get('asil','')}] {req['text']}"
+                self.req_listbox.insert(tk.END, desc)
 
         def edit_safety_requirement(self):
             selected = self.req_listbox.curselection()
@@ -4699,7 +4711,8 @@ class FaultTreeApp:
             global_requirements[new_custom_id] = current_req
             self.node.safety_requirements[index] = current_req
             self.req_listbox.delete(index)
-            self.req_listbox.insert(index, f"[{current_req['id']}] [{current_req['req_type']}] [{current_req.get('asil','')}] {current_req['text']}")
+            desc = f"[{current_req['req_type']}] [{current_req.get('asil','')}] {current_req['text']}"
+            self.req_listbox.insert(index, desc)
 
         def delete_safety_requirement(self):
             selected = self.req_listbox.curselection()
@@ -4736,7 +4749,6 @@ class FaultTreeApp:
                 else:
                     self.selected = self.events[idx]
 
-
     def show_fmea_table(self, fmea=None):
         """Display an editable AIAG-compliant FMEA table."""
         basic_events = self.get_all_basic_events()
@@ -4744,13 +4756,13 @@ class FaultTreeApp:
         win = tk.Toplevel(self.root)
         title = f"FMEA Table - {fmea['name']}" if fmea else "FMEA Table"
         win.title(title)
-        columns = ["Component", "Failure Mode", "Failure Effect", "S", "O", "D", "RPN", "Requirements"]
+        columns = ["Component", "Failure Mode", "Failure Effect", "Cause", "S", "O", "D", "RPN", "Requirements"]
         btn = ttk.Button(win, text="Add Failure Mode")
         btn.pack(side=tk.TOP, pady=2)
         tree = ttk.Treeview(win, columns=columns, show="tree headings")
         for col in columns:
             tree.heading(col, text=col)
-            width = 120 if col not in ["Requirements", "Failure Effect"] else 200
+            width = 120 if col not in ["Requirements", "Failure Effect", "Cause"] else 200
             tree.column(col, width=width, anchor="center")
         tree.pack(fill=tk.BOTH, expand=True)
 
@@ -4762,6 +4774,7 @@ class FaultTreeApp:
             node_map.clear()
             comp_items.clear()
             events = basic_events + entries
+
             for be in events:
                 parent = be.parents[0] if be.parents else None
                 if parent:
@@ -4769,12 +4782,12 @@ class FaultTreeApp:
                 else:
                     comp = getattr(be, "fmea_component", "") or "N/A"
                 if comp not in comp_items:
-                    comp_items[comp] = tree.insert("", "end", text=comp, values=[comp, "", "", "", "", "", "", ""])
+                    comp_items[comp] = tree.insert("", "end", text=comp, values=[comp, "", "", "", "", "", "", "", ""])
                 comp_iid = comp_items[comp]
-                req_ids = ", ".join([req.get("id") for req in getattr(be, "safety_requirements", [])])
+                req_ids = "; ".join([f"{req['req_type']}:{req['text']}" for req in getattr(be, 'safety_requirements', [])])
                 rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
                 failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
-                vals = ["", failure_mode, be.fmea_effect, be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
+                vals = ["", failure_mode, be.fmea_effect, be.fmea_cause, be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
                 iid = tree.insert(comp_iid, "end", text="", values=vals)
                 node_map[iid] = be
             for iid in comp_items.values():
@@ -4805,6 +4818,32 @@ class FaultTreeApp:
             refresh_tree()
 
         btn.config(command=add_failure_mode)
+
+        def on_close():
+            if fmea is not None:
+                self.export_fmea_to_csv(fmea, fmea['file'])
+            win.destroy()
+
+        win.protocol("WM_DELETE_WINDOW", on_close)
+
+    def export_fmea_to_csv(self, fmea, path):
+        columns = ["Component", "Failure Mode", "Failure Effect", "Cause", "S", "O", "D", "RPN", "Requirements"]
+        with open(path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(columns)
+            for be in fmea['entries']:
+                parent = be.parents[0] if be.parents else None
+                if parent:
+                    comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                    if parent.description:
+                        comp = f"{comp} - {parent.description}"
+                else:
+                    comp = getattr(be, "fmea_component", "") or "N/A"
+                req_ids = "; ".join([f"{req['req_type']}:{req['text']}" for req in getattr(be, 'safety_requirements', [])])
+                rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
+                failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
+                row = [comp, failure_mode, be.fmea_effect, be.fmea_cause, be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
+                writer.writerow(row)
 
         def on_close():
             if fmea is not None:
@@ -5476,6 +5515,7 @@ class FaultTreeNode:
         self.safety_requirements = []
         # --- FMEA attributes for basic events (AIAG style) ---
         self.fmea_effect = ""       # Description of effect/failure mode
+        self.fmea_cause = ""        # Potential cause of failure
         self.fmea_severity = 1       # 1-10 scale
         self.fmea_occurrence = 1     # 1-10 scale
         self.fmea_detection = 1      # 1-10 scale
@@ -5510,6 +5550,7 @@ class FaultTreeNode:
             "safety_goal_description": self.safety_goal_description,
             "safety_goal_asil": self.safety_goal_asil,
             "fmea_effect": self.fmea_effect,
+            "fmea_cause": self.fmea_cause,
             "fmea_severity": self.fmea_severity,
             "fmea_occurrence": self.fmea_occurrence,
             "fmea_detection": self.fmea_detection,
@@ -5546,6 +5587,7 @@ class FaultTreeNode:
         node.safety_goal_description = data.get("safety_goal_description", "")
         node.safety_goal_asil = data.get("safety_goal_asil", "")
         node.fmea_effect = data.get("fmea_effect", "")
+        node.fmea_cause = data.get("fmea_cause", "")
         node.fmea_severity = data.get("fmea_severity", 1)
         node.fmea_occurrence = data.get("fmea_occurrence", 1)
         node.fmea_detection = data.get("fmea_detection", 1)
