@@ -1105,6 +1105,36 @@ class ADRiskAssessmentHelper:
         node.display_label = f"P={prob:.2e}"
         return prob
 
+    def calculate_probability_recursive(self, node):
+        """Recursively propagate failure probabilities using classical FTA rules."""
+        t = node.node_type.upper()
+        if t == "BASIC EVENT":
+            prob = float(node.failure_prob)
+            node.probability = prob
+            node.display_label = f"P={prob:.2e}"
+            return prob
+
+        if not node.children:
+            prob = float(getattr(node, "failure_prob", 0.0))
+            node.probability = prob
+            node.display_label = f"P={prob:.2e}"
+            return prob
+
+        child_probs = [self.calculate_probability_recursive(c) for c in node.children]
+        gate = (node.gate_type or "AND").upper()
+        if gate == "AND":
+            prob = 1.0
+            for p in child_probs:
+                prob *= p
+        else:
+            prod = 1.0
+            for p in child_probs:
+                prod *= (1 - p)
+            prob = 1 - prod
+        node.probability = prob
+        node.display_label = f"P={prob:.2e}"
+        return prob
+
 class FTADrawingHelper:
     """
     A helper class that provides drawing functions for fault tree diagrams.
@@ -4411,6 +4441,15 @@ class FaultTreeApp:
                 linked = any(r.get("id") == req.get("id") for r in getattr(be, "safety_requirements", []))
                 row.append("X" if linked else "")
             tree.insert("", "end", values=row)
+
+    def calculate_pmfh(self):
+        for te in self.top_events:
+            AD_RiskAssessment_Helper.calculate_probability_recursive(te)
+        self.update_views()
+        results = ""
+        for te in self.top_events:
+            results += f"Top Event {te.name}: PMHF = {te.probability:.2e}\n"
+        messagebox.showinfo("PMHF Calculation", results.strip())
 
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
