@@ -4816,14 +4816,25 @@ class FaultTreeApp:
                 entries.append(node)
                 self.FMEARowDialog(win, node, self, entries)
             elif node:
-                if node not in entries:
-                    entries.append(node)
-                self.FMEARowDialog(win, node, self, entries)
+                # gather all failure modes under the same component/parent
+                if node.parents:
+                    parent = node.parents[0]
+                    related = [be for be in basic_events if be.parents and be.parents[0] == parent]
+                else:
+                    comp = getattr(node, "fmea_component", "")
+                    related = [be for be in basic_events if not be.parents and getattr(be, "fmea_component", "") == comp]
+                if node not in related:
+                    related.append(node)
+                for be in related:
+                    if be not in entries:
+                        entries.append(be)
+                    self.FMEARowDialog(win, be, self, entries)
             refresh_tree()
 
         add_btn.config(command=add_failure_mode)
 
         def delete_failure_mode():
+            nonlocal basic_events
             sel = tree.selection()
             if not sel:
                 messagebox.showwarning("Delete Failure Mode", "Select a row to delete.")
@@ -4831,7 +4842,14 @@ class FaultTreeApp:
             for iid in sel:
                 node = node_map.get(iid)
                 if node in entries:
-                    entries.remove(node)
+                    if messagebox.askyesno(
+                        "Delete Failure Mode",
+                        "This will also remove the base event from the FTA. Continue?",
+                    ):
+                        entries.remove(node)
+                        if node.parents or node in self.top_events:
+                            self.delete_node_and_subtree(node)
+                        basic_events = self.get_all_basic_events()
             refresh_tree()
 
         del_btn.config(command=delete_failure_mode)
