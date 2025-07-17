@@ -4489,10 +4489,12 @@ class FaultTreeApp:
         tree.pack(fill=tk.BOTH, expand=True)
 
         node_map = {}
+
         for be in basic_events:
             parent = be.parents[0] if be.parents else None
             comp = parent.user_name if parent and parent.user_name else (f"Node {parent.unique_id}" if parent else "N/A")
             req_ids = ", ".join([req.get("id") for req in getattr(be, "safety_requirements", [])])
+
             rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
             values = [comp,
                       be.fmea_effect,
