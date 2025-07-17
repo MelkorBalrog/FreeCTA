@@ -1624,6 +1624,7 @@ class EditNodeDialog(simpledialog.Dialog):
                 target_node.failure_prob = prob
             except ValueError:
                 messagebox.showerror("Invalid Input", "Enter a valid probability")
+
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
             ttk.Label(master, text="Gate Type:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
             self.gate_var = tk.StringVar(value=self.node.gate_type if self.node.gate_type else "AND")
@@ -1897,6 +1898,14 @@ class EditNodeDialog(simpledialog.Dialog):
                 target_node.quant_value = val
             except ValueError:
                 messagebox.showerror("Invalid Input", "Select a value between 1 and 5.")
+        elif self.node.node_type.upper() == "BASIC EVENT":
+            try:
+                prob = float(self.prob_entry.get().strip())
+                if prob < 0:
+                    raise ValueError
+                target_node.failure_prob = prob
+            except ValueError:
+                messagebox.showerror("Invalid Input", "Enter a valid probability")
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
             target_node.gate_type = self.gate_var.get().strip().upper()
             if self.node.node_type.upper() == "TOP EVENT":
