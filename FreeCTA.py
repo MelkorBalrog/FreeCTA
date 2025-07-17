@@ -2049,6 +2049,7 @@ class FaultTreeApp:
         file_menu.add_command(label="New Vehicle Level Function", command=self.add_top_level_event)
         file_menu.add_command(label="Project Properties", command=self.edit_project_properties)
         file_menu.add_command(label="Save PDF Report", command=self.generate_pdf_report)
+        file_menu.add_command(label="Export SG Requirements", command=self.export_safety_goal_requirements)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=root.quit)
         menubar.add_cascade(label="File", menu=file_menu)
@@ -3585,6 +3586,54 @@ class FaultTreeApp:
                 Story.append(Paragraph("A page diagram could not be captured.", pdf_styles["Normal"]))
                 Story.append(Spacer(1, 12))
 
+        # --- FMEA Tables ---
+        if self.fmeas:
+            Story.append(PageBreak())
+            Story.append(Paragraph("FMEA Tables", pdf_styles["Heading2"]))
+            Story.append(Spacer(1, 12))
+            for fmea in self.fmeas:
+                Story.append(Paragraph(fmea['name'], pdf_styles["Heading3"]))
+                data = [["Component", "Failure Mode", "Failure Effect", "Cause", "S", "O", "D", "RPN", "Requirements"]]
+                for be in fmea['entries']:
+                    parent = be.parents[0] if be.parents else None
+                    if parent:
+                        comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                    else:
+                        comp = getattr(be, "fmea_component", "") or "N/A"
+                    req_ids = "; ".join([r.get("id") for r in getattr(be, 'safety_requirements', [])])
+                    rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
+                    failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
+                    row = [comp, failure_mode, be.fmea_effect, getattr(be, 'fmea_cause', ''), be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
+                    data.append(row)
+                table = Table(data, repeatRows=1)
+                table.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+                    ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                    ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                    ('FONTSIZE', (0,0), (-1,-1), 8)
+                ]))
+                Story.append(table)
+                Story.append(Spacer(1, 12))
+
+        # --- FTA-FMEA Traceability Matrix ---
+        basic_events = [n for n in self.get_all_nodes(self.root_node) if n.node_type.upper() == "BASIC EVENT"]
+        if basic_events:
+            Story.append(PageBreak())
+            Story.append(Paragraph("FTA-FMEA Traceability", pdf_styles["Heading2"]))
+            data = [["Basic Event", "Component"]]
+            for be in basic_events:
+                parent = be.parents[0] if be.parents else None
+                comp = parent.user_name if parent and parent.user_name else (f"Node {parent.unique_id}" if parent else "N/A")
+                data.append([be.user_name or f"BE {be.unique_id}", comp])
+            table = Table(data, repeatRows=1)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                ('FONTSIZE', (0,0), (-1,-1), 8)
+            ]))
+            Story.append(table)
+            Story.append(Spacer(1, 12))
+
         # --- Final Build ---
         doc.build(Story)
         messagebox.showinfo("Report", "PDF report generated with highest assurance levels for requirements!")
@@ -4989,6 +5038,29 @@ class FaultTreeApp:
                     text="",
                     values=[req_id, req.get("asil", ""), req.get("text", "")],
                 )
+
+    def export_safety_goal_requirements(self):
+        """Export requirements traced to safety goals including their ASIL."""
+        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+        if not path:
+            return
+
+        columns = ["Safety Goal", "SG ASIL", "Requirement ID", "Req ASIL", "Text"]
+        with open(path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(columns)
+            for te in self.top_events:
+                sg_text = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
+                sg_asil = te.safety_goal_asil
+                reqs = self.collect_requirements_recursive(te)
+                seen = set()
+                for req in reqs:
+                    rid = req.get("id")
+                    if rid in seen:
+                        continue
+                    seen.add(rid)
+                    writer.writerow([sg_text, sg_asil, rid, req.get("asil", ""), req.get("text", "")])
+        messagebox.showinfo("Export", "Safety goal requirements exported.")
 
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
