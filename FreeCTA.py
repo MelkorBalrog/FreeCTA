@@ -209,6 +209,8 @@ import re
 import math
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
+from review_toolbox import ReviewToolbox, ReviewData, ReviewParticipant, ReviewComment
+from dataclasses import asdict
 import json
 import csv
 import tkinter.font as tkFont
@@ -2039,6 +2041,9 @@ class FaultTreeApp:
         self.page_history = []
         self.project_properties = {"pdf_report_name": "Autonomous Driving Risk Assessment PDF Report"}
         self.top_events = []
+        self.review_data = None
+        self.review_window = None
+        self.current_user = ""
 
         menubar = tk.Menu(root)
         file_menu = tk.Menu(menubar, tearoff=0)
@@ -2088,6 +2093,12 @@ class FaultTreeApp:
         view_menu.add_command(label="FTA-FMEA Traceability", command=self.show_traceability_matrix)
         view_menu.add_command(label="Safety Goals Matrix", command=self.show_safety_goals_matrix)
         menubar.add_cascade(label="View", menu=view_menu)
+        review_menu = tk.Menu(menubar, tearoff=0)
+        review_menu.add_command(label="Start Peer Review", command=self.start_peer_review)
+        review_menu.add_command(label="Start Joint Review", command=self.start_joint_review)
+        review_menu.add_command(label="Open Review Toolbox", command=self.open_review_toolbox)
+        review_menu.add_command(label="Set Current User", command=self.set_current_user)
+        menubar.add_cascade(label="Review", menu=review_menu)
         root.config(menu=menubar)
         root.bind("<Control-n>", lambda event: self.new_model())
         root.bind("<Control-s>", lambda event: self.save_model())
@@ -4421,6 +4432,13 @@ class FaultTreeApp:
             marker_y = eff_y - 30 * self.zoom
             fta_drawing_helper.draw_shared_marker(self.canvas, marker_x, marker_y, self.zoom)
 
+        if self.review_data:
+            unresolved = any(c.node_id == node.unique_id and not c.resolved for c in self.review_data.comments)
+            if unresolved:
+                self.canvas.create_oval(eff_x + 35 * self.zoom, eff_y + 35 * self.zoom,
+                                        eff_x + 45 * self.zoom, eff_y + 45 * self.zoom,
+                                        fill='yellow', outline='black')
+
     def find_node_by_id(self, node, unique_id, visited=None):
         if visited is None:
             visited = set()
@@ -5349,7 +5367,13 @@ class FaultTreeApp:
                 "top_events": [event.to_dict() for event in self.top_events],
                 "fmeas": [{"name": f['name'], "file": f['file'], "entries": [e.to_dict() for e in f['entries']]} for f in self.fmeas],
                 "project_properties": self.project_properties,
-                "global_requirements": global_requirements  # Save global requirements too!
+                "global_requirements": global_requirements,
+                "review_data": {
+                    "mode": self.review_data.mode if self.review_data else None,
+                    "approved": self.review_data.approved if self.review_data else False,
+                    "participants": [asdict(p) for p in self.review_data.participants] if self.review_data else [],
+                    "comments": [asdict(c) for c in self.review_data.comments] if self.review_data else []
+                }
             }
             with open(path, "w") as f:
                 json.dump(data, f, indent=4)
@@ -5396,6 +5420,13 @@ class FaultTreeApp:
         
         # Load project properties.
         self.project_properties = data.get("project_properties", self.project_properties)
+        rd = data.get("review_data")
+        if rd:
+            participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
+            comments = [ReviewComment(**c) for c in rd.get("comments", [])]
+            self.review_data = ReviewData(mode=rd.get("mode", "peer"), participants=participants, comments=comments, approved=rd.get("approved", False))
+        else:
+            self.review_data = None
         
         self.selected_node = None
         if hasattr(self, "page_diagram") and self.page_diagram is not None:
@@ -5603,6 +5634,11 @@ class FaultTreeApp:
                                         outline_color="dimgray",
                                         line_width=1)
 
+        if self.review_data:
+            unresolved = any(c.node_id == node.unique_id and not c.resolved for c in self.review_data.comments)
+            if unresolved:
+                canvas.create_oval(eff_x + 35, eff_y + 35, eff_x + 45, eff_y + 45, fill='yellow', outline='black')
+
     def on_ctrl_mousewheel_page(self, event):
         if event.delta > 0:
             self.page_diagram.zoom_in()
@@ -5654,6 +5690,84 @@ class FaultTreeApp:
             self.canvas.bind("<ButtonRelease-3>", self.show_context_menu)
             self.update_views()
             self.page_diagram = None
+
+    # --- Review Toolbox Methods ---
+    def start_peer_review(self):
+        names = simpledialog.askstring("Peer Review", "Enter reviewer names as 'Name <email>' separated by commas:")
+        if not names:
+            return
+        parts = []
+        for entry in names.split(','):
+            entry = entry.strip()
+            if not entry:
+                continue
+            if '<' in entry and '>' in entry:
+                name = entry.split('<')[0].strip()
+                email = entry[entry.find('<')+1:entry.find('>')]
+            else:
+                name = entry
+                email = ''
+            parts.append(ReviewParticipant(name, email, 'reviewer'))
+        self.review_data = ReviewData(mode='peer', participants=parts, comments=[])
+        self.current_user = parts[0].name if parts else ''
+        self.open_review_toolbox()
+
+    def start_joint_review(self):
+        reviewers = simpledialog.askstring("Joint Review", "Reviewer names (Name <email>, comma separated):")
+        approvers = simpledialog.askstring("Joint Review", "Approver names (Name <email>, comma separated):")
+        if reviewers is None or approvers is None:
+            return
+        participants = []
+        for entry in (reviewers or '').split(','):
+            entry = entry.strip()
+            if entry:
+                if '<' in entry and '>' in entry:
+                    name = entry.split('<')[0].strip()
+                    email = entry[entry.find('<')+1:entry.find('>')]
+                else:
+                    name = entry
+                    email = ''
+                participants.append(ReviewParticipant(name, email, 'reviewer'))
+        for entry in (approvers or '').split(','):
+            entry = entry.strip()
+            if entry:
+                if '<' in entry and '>' in entry:
+                    name = entry.split('<')[0].strip()
+                    email = entry[entry.find('<')+1:entry.find('>')]
+                else:
+                    name = entry
+                    email = ''
+                participants.append(ReviewParticipant(name, email, 'approver'))
+        self.review_data = ReviewData(mode='joint', participants=participants, comments=[])
+        self.current_user = participants[0].name if participants else ''
+        self.open_review_toolbox()
+
+    def open_review_toolbox(self):
+        if not self.review_data:
+            messagebox.showwarning("Review", "No active review")
+            return
+        if self.review_window is None or not self.review_window.winfo_exists():
+            self.review_window = ReviewToolbox(self.root, self)
+
+    def set_current_user(self):
+        if not self.review_data:
+            messagebox.showwarning("User", "Start a review first")
+            return
+        name = simpledialog.askstring("Current User", "Enter your name:", initialvalue=self.current_user)
+        if not name:
+            return
+        if name not in [p.name for p in self.review_data.participants]:
+            messagebox.showerror("User", "Name not found in participants")
+            return
+        self.current_user = name
+
+    def focus_on_node(self, node):
+        self.selected_node = node
+        self.redraw_canvas()
+        bbox = self.canvas.bbox("all")
+        if bbox:
+            self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
+            self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
 
 ##########################################
 # Node Model 
