@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import simpledialog, messagebox, ttk
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
 
 @dataclass
@@ -23,10 +23,10 @@ class ReviewComment:
 
 @dataclass
 class ReviewData:
-    name: str
-    mode: str  # 'peer' or 'joint'
-    participants: List[ReviewParticipant]
-    comments: List[ReviewComment]
+    name: str = ""
+    mode: str = "peer"  # 'peer' or 'joint'
+    participants: List[ReviewParticipant] = field(default_factory=list)
+    comments: List[ReviewComment] = field(default_factory=list)
     approved: bool = False
 
 class ParticipantDialog(simpledialog.Dialog):
