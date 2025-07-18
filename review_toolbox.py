@@ -258,7 +258,6 @@ class ReviewToolbox(tk.Toplevel):
         else:
             self.approve_btn.pack_forget()
 
-
 class VersionCompareDialog(tk.Toplevel):
     def __init__(self, master, app):
         super().__init__(master)
@@ -301,4 +300,3 @@ class VersionCompareDialog(tk.Toplevel):
         except tk.TclError:
             pass
         self.destroy()
-
