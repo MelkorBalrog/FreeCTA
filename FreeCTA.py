@@ -4457,6 +4457,13 @@ class FaultTreeApp:
                                         eff_x + 45 * self.zoom, eff_y + 45 * self.zoom,
                                         fill='yellow', outline='black')
 
+        if self.review_data:
+            unresolved = any(c.node_id == node.unique_id and not c.resolved for c in self.review_data.comments)
+            if unresolved:
+                self.canvas.create_oval(eff_x + 35 * self.zoom, eff_y + 35 * self.zoom,
+                                        eff_x + 45 * self.zoom, eff_y + 45 * self.zoom,
+                                        fill='yellow', outline='black')
+
     def find_node_by_id(self, node, unique_id, visited=None):
         if visited is None:
             visited = set()
@@ -5674,6 +5681,11 @@ class FaultTreeApp:
             if unresolved:
                 canvas.create_oval(eff_x + 35, eff_y + 35, eff_x + 45, eff_y + 45, fill='yellow', outline='black')
 
+        if self.review_data:
+            unresolved = any(c.node_id == node.unique_id and not c.resolved for c in self.review_data.comments)
+            if unresolved:
+                canvas.create_oval(eff_x + 35, eff_y + 35, eff_x + 45, eff_y + 45, fill='yellow', outline='black')
+
     def on_ctrl_mousewheel_page(self, event):
         if event.delta > 0:
             self.page_diagram.zoom_in()
@@ -5781,6 +5793,58 @@ class FaultTreeApp:
         for t in top_events:
             visit(t)
         return result
+
+    def set_current_user(self):
+        if not self.review_data:
+            messagebox.showwarning("User", "Start a review first")
+            return
+        name = simpledialog.askstring("Current User", "Enter your name:", initialvalue=self.current_user)
+        if not name:
+            return
+        if name not in [p.name for p in self.review_data.participants]:
+            messagebox.showerror("User", "Name not found in participants")
+            return
+        self.current_user = name
+
+    def get_current_user_role(self):
+        if not self.review_data:
+            return None
+        for p in self.review_data.participants:
+            if p.name == self.current_user:
+                return p.role
+        return None
+
+    def focus_on_node(self, node):
+        self.selected_node = node
+        self.redraw_canvas()
+        bbox = self.canvas.bbox("all")
+        if bbox:
+            self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
+            self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+
+    # --- Review Toolbox Methods ---
+    def start_peer_review(self):
+        dialog = ParticipantDialog(self.root, joint=False)
+        if dialog.result:
+            parts = dialog.result
+            self.review_data = ReviewData(mode='peer', participants=parts, comments=[])
+            self.current_user = parts[0].name
+            self.open_review_toolbox()
+
+    def start_joint_review(self):
+        dialog = ParticipantDialog(self.root, joint=True)
+        if dialog.result:
+            participants = dialog.result
+            self.review_data = ReviewData(mode='joint', participants=participants, comments=[])
+            self.current_user = participants[0].name
+            self.open_review_toolbox()
+
+    def open_review_toolbox(self):
+        if not self.review_data:
+            messagebox.showwarning("Review", "No active review")
+            return
+        if self.review_window is None or not self.review_window.winfo_exists():
+            self.review_window = ReviewToolbox(self.root, self)
 
     def set_current_user(self):
         if not self.review_data:

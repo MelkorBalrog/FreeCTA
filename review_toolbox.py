@@ -138,6 +138,7 @@ class ReviewToolbox(tk.Toplevel):
     def add_comment(self):
         target = self.app.comment_target
         if not target and not self.app.selected_node:
+
             messagebox.showwarning("Add Comment", "Select a node first")
             return
         reviewer = self.app.current_user
@@ -207,7 +208,7 @@ class ReviewToolbox(tk.Toplevel):
             text += f"\n\nResolution: {comment.resolution}"
         self.comment_display.insert("1.0", text)
         self.comment_display.config(state="disabled")
-
+        
     def update_buttons(self):
         role = None
         for p in (self.app.review_data.participants if self.app.review_data else []):
@@ -218,7 +219,6 @@ class ReviewToolbox(tk.Toplevel):
             self.approve_btn.pack(side=tk.LEFT)
         else:
             self.approve_btn.pack_forget()
-
 
 class VersionCompareDialog(tk.Toplevel):
     def __init__(self, master, app):
@@ -258,4 +258,3 @@ class VersionCompareDialog(tk.Toplevel):
         self.app.diff_nodes = []
         self.app.redraw_canvas()
         self.destroy()
-
