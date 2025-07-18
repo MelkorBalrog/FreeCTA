@@ -23,6 +23,7 @@ class ReviewComment:
 
 @dataclass
 class ReviewData:
+    name: str
     mode: str  # 'peer' or 'joint'
     participants: List[ReviewParticipant]
     comments: List[ReviewComment]
@@ -74,6 +75,17 @@ class ReviewToolbox(tk.Toplevel):
         self.app = app
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
+        review_frame = tk.Frame(self)
+        review_frame.pack(fill=tk.X)
+        tk.Label(review_frame, text="Review:").pack(side=tk.LEFT)
+        self.review_var = tk.StringVar()
+        self.review_combo = ttk.Combobox(review_frame, textvariable=self.review_var,
+                                         state="readonly")
+        self.review_combo.pack(side=tk.LEFT, padx=5)
+        self.review_combo.bind("<<ComboboxSelected>>", self.on_review_change)
+        self.status_var = tk.StringVar()
+        tk.Label(review_frame, textvariable=self.status_var).pack(side=tk.LEFT, padx=5)
+
         user_frame = tk.Frame(self)
         user_frame.pack(fill=tk.X)
         tk.Label(user_frame, text="Current user:").pack(side=tk.LEFT)
@@ -101,12 +113,38 @@ class ReviewToolbox(tk.Toplevel):
 
         self.update_buttons()
 
+        self.refresh_reviews()
         self.refresh_comments()
         self.update_buttons()
 
     def on_close(self):
         self.app.review_window = None
         self.destroy()
+
+    def refresh_reviews(self):
+        names = [r.name for r in self.app.reviews]
+        self.review_combo['values'] = names
+        if self.app.review_data:
+            self.review_var.set(self.app.review_data.name)
+            self.status_var.set("approved" if self.app.review_data.approved else "open")
+        else:
+            self.review_var.set("")
+            self.status_var.set("")
+
+    def on_review_change(self, event=None):
+        name = self.review_var.get()
+        for r in self.app.reviews:
+            if r.name == name:
+                self.app.review_data = r
+                break
+        self.status_var.set("approved" if self.app.review_data and self.app.review_data.approved else "open")
+        self.refresh_comments()
+        self.update_buttons()
+        try:
+            if hasattr(self.app, "canvas") and self.app.canvas.winfo_exists():
+                self.app.redraw_canvas()
+        except tk.TclError:
+            pass
 
     def refresh_comments(self):
         self.comment_list.delete(0, tk.END)
@@ -138,7 +176,6 @@ class ReviewToolbox(tk.Toplevel):
     def add_comment(self):
         target = self.app.comment_target
         if not target and not self.app.selected_node:
-
             messagebox.showwarning("Add Comment", "Select a node first")
             return
         reviewer = self.app.current_user
@@ -188,6 +225,7 @@ class ReviewToolbox(tk.Toplevel):
         self.app.review_data.approved = True
         messagebox.showinfo("Approve", "Review approved")
         self.app.add_version()
+        self.refresh_reviews()
 
     def open_comment(self, event):
         selection = self.comment_list.curselection()
@@ -208,7 +246,7 @@ class ReviewToolbox(tk.Toplevel):
             text += f"\n\nResolution: {comment.resolution}"
         self.comment_display.insert("1.0", text)
         self.comment_display.config(state="disabled")
-        
+
     def update_buttons(self):
         role = None
         for p in (self.app.review_data.participants if self.app.review_data else []):
@@ -256,5 +294,9 @@ class VersionCompareDialog(tk.Toplevel):
 
     def on_close(self):
         self.app.diff_nodes = []
-        self.app.redraw_canvas()
+        try:
+            if hasattr(self.app, "canvas") and self.app.canvas.winfo_exists():
+                self.app.redraw_canvas()
+        except tk.TclError:
+            pass
         self.destroy()
