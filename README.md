@@ -6,9 +6,11 @@ This repository contains a graphical fault tree analysis tool. The latest update
 
 Launch the review features from the **Review** menu:
 
-* **Start Peer Review** – every participant can add comments to any node.
-* **Start Joint Review** – define reviewers and approvers. Approvers may only approve once all reviewers have marked their work complete and all comments are resolved.
-* **Open Review Toolbox** – opens a window to add and resolve comments. Selecting a comment focuses the related node.
-* **Set Current User** – choose which participant you are when entering comments.
+* **Start Peer Review** – create reviewers and begin commenting.
+* **Start Joint Review** – add participants with reviewer or approver roles. Approvers can approve only after all reviewers are done and comments resolved.
+* **Open Review Toolbox** – manage comments. Double-click a comment to view its text and jump to the node.
+* **Set Current User** – choose who you are when adding comments. The toolbox also provides a drop-down selector.
+
+Nodes with unresolved comments show a small yellow circle to help locate feedback quickly.
 
 Review information (participants, comments, approval state) is saved as part of the model file and restored on load.

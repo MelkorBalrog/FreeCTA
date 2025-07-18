@@ -209,7 +209,13 @@ import re
 import math
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
-from review_toolbox import ReviewToolbox, ReviewData, ReviewParticipant, ReviewComment
+from review_toolbox import (
+    ReviewToolbox,
+    ReviewData,
+    ReviewParticipant,
+    ReviewComment,
+    ParticipantDialog,
+)
 from dataclasses import asdict
 import json
 import csv
@@ -5693,54 +5699,20 @@ class FaultTreeApp:
 
     # --- Review Toolbox Methods ---
     def start_peer_review(self):
-        names = simpledialog.askstring("Peer Review", "Enter reviewer names as 'Name <email>' separated by commas:")
-        if not names:
-            return
-        parts = []
-        for entry in names.split(','):
-            entry = entry.strip()
-            if not entry:
-                continue
-            if '<' in entry and '>' in entry:
-                name = entry.split('<')[0].strip()
-                email = entry[entry.find('<')+1:entry.find('>')]
-            else:
-                name = entry
-                email = ''
-            parts.append(ReviewParticipant(name, email, 'reviewer'))
-        self.review_data = ReviewData(mode='peer', participants=parts, comments=[])
-        self.current_user = parts[0].name if parts else ''
-        self.open_review_toolbox()
+        dialog = ParticipantDialog(self.root, joint=False)
+        if dialog.result:
+            parts = dialog.result
+            self.review_data = ReviewData(mode='peer', participants=parts, comments=[])
+            self.current_user = parts[0].name
+            self.open_review_toolbox()
 
     def start_joint_review(self):
-        reviewers = simpledialog.askstring("Joint Review", "Reviewer names (Name <email>, comma separated):")
-        approvers = simpledialog.askstring("Joint Review", "Approver names (Name <email>, comma separated):")
-        if reviewers is None or approvers is None:
-            return
-        participants = []
-        for entry in (reviewers or '').split(','):
-            entry = entry.strip()
-            if entry:
-                if '<' in entry and '>' in entry:
-                    name = entry.split('<')[0].strip()
-                    email = entry[entry.find('<')+1:entry.find('>')]
-                else:
-                    name = entry
-                    email = ''
-                participants.append(ReviewParticipant(name, email, 'reviewer'))
-        for entry in (approvers or '').split(','):
-            entry = entry.strip()
-            if entry:
-                if '<' in entry and '>' in entry:
-                    name = entry.split('<')[0].strip()
-                    email = entry[entry.find('<')+1:entry.find('>')]
-                else:
-                    name = entry
-                    email = ''
-                participants.append(ReviewParticipant(name, email, 'approver'))
-        self.review_data = ReviewData(mode='joint', participants=participants, comments=[])
-        self.current_user = participants[0].name if participants else ''
-        self.open_review_toolbox()
+        dialog = ParticipantDialog(self.root, joint=True)
+        if dialog.result:
+            participants = dialog.result
+            self.review_data = ReviewData(mode='joint', participants=participants, comments=[])
+            self.current_user = participants[0].name
+            self.open_review_toolbox()
 
     def open_review_toolbox(self):
         if not self.review_data:
@@ -5760,6 +5732,14 @@ class FaultTreeApp:
             messagebox.showerror("User", "Name not found in participants")
             return
         self.current_user = name
+
+    def get_current_user_role(self):
+        if not self.review_data:
+            return None
+        for p in self.review_data.participants:
+            if p.name == self.current_user:
+                return p.role
+        return None
 
     def focus_on_node(self, node):
         self.selected_node = node
