@@ -109,6 +109,7 @@ class ReviewToolbox(tk.Toplevel):
         self.user_combo['values'] = [p.name for p in self.app.review_data.participants]
         if self.app.current_user:
             self.user_var.set(self.app.current_user)
+
         for c in self.app.review_data.comments:
             node = self.app.find_node_by_id_all(c.node_id)
             node_name = node.name if node else f"ID {c.node_id}"
@@ -189,4 +190,3 @@ class ReviewToolbox(tk.Toplevel):
             self.approve_btn.pack(side=tk.LEFT)
         else:
             self.approve_btn.pack_forget()
-
