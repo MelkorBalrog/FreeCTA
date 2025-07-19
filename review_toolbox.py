@@ -32,6 +32,7 @@ class ReviewData:
     name: str = ""
     description: str = ""
     mode: str = "peer"  # 'peer' or 'joint'
+    moderator: str = ""
     participants: List[ReviewParticipant] = field(default_factory=list)
     comments: List[ReviewComment] = field(default_factory=list)
     fta_ids: List[int] = field(default_factory=list)
@@ -130,6 +131,8 @@ class ReviewToolbox(tk.Toplevel):
         tk.Label(review_frame, textvariable=self.status_var).pack(side=tk.LEFT, padx=5)
         self.desc_var = tk.StringVar()
         tk.Label(self, textvariable=self.desc_var, wraplength=400, justify="left").pack(fill=tk.X, padx=5)
+        self.mod_var = tk.StringVar()
+        tk.Label(self, textvariable=self.mod_var).pack(fill=tk.X, padx=5)
 
         user_frame = tk.Frame(self)
         user_frame.pack(fill=tk.X)
@@ -160,7 +163,8 @@ class ReviewToolbox(tk.Toplevel):
         btn_frame = tk.Frame(self)
         btn_frame.pack(fill=tk.X)
         tk.Button(btn_frame, text="Add Comment", command=self.add_comment).pack(side=tk.LEFT)
-        tk.Button(btn_frame, text="Resolve", command=self.resolve_comment).pack(side=tk.LEFT)
+        self.resolve_btn = tk.Button(btn_frame, text="Resolve", command=self.resolve_comment)
+        self.resolve_btn.pack(side=tk.LEFT)
         tk.Button(btn_frame, text="Mark Done", command=self.mark_done).pack(side=tk.LEFT)
         tk.Button(btn_frame, text="Open Document", command=self.open_document).pack(side=tk.LEFT)
         self.approve_btn = tk.Button(btn_frame, text="Approve", command=self.approve)
@@ -184,10 +188,12 @@ class ReviewToolbox(tk.Toplevel):
             self.review_var.set(self.app.review_data.name)
             self.status_var.set("approved" if self.app.review_data.approved else "open")
             self.desc_var.set(self.app.review_data.description)
+            self.mod_var.set(f"Moderator: {self.app.review_data.moderator}")
         else:
             self.review_var.set("")
             self.status_var.set("")
             self.desc_var.set("")
+            self.mod_var.set("")
 
     def on_review_change(self, event=None):
         name = self.review_var.get()
@@ -198,8 +204,10 @@ class ReviewToolbox(tk.Toplevel):
         self.status_var.set("approved" if self.app.review_data and self.app.review_data.approved else "open")
         if self.app.review_data:
             self.desc_var.set(self.app.review_data.description)
+            self.mod_var.set(f"Moderator: {self.app.review_data.moderator}")
         else:
             self.desc_var.set("")
+            self.mod_var.set("")
         self.refresh_comments()
         self.refresh_targets()
         self.update_buttons()
@@ -213,7 +221,10 @@ class ReviewToolbox(tk.Toplevel):
         self.comment_list.delete(0, tk.END)
         if not self.app.review_data:
             return
-        self.user_combo['values'] = [p.name for p in self.app.review_data.participants]
+        names = [p.name for p in self.app.review_data.participants]
+        if self.app.review_data.moderator:
+            names.append(self.app.review_data.moderator)
+        self.user_combo['values'] = names
         if self.app.current_user:
             self.user_var.set(self.app.current_user)
         for c in self.app.review_data.comments:
@@ -250,7 +261,16 @@ class ReviewToolbox(tk.Toplevel):
         if not target and not self.app.selected_node:
             messagebox.showwarning("Add Comment", "Select a node first")
             return
-        reviewer = self.app.current_user
+        allowed = [p.name for p in self.app.review_data.participants]
+        if self.app.review_data.moderator:
+            allowed.append(self.app.review_data.moderator)
+        reviewer = simpledialog.askstring("User", "Enter your name:", initialvalue=self.app.current_user)
+        if not reviewer:
+            return
+        if reviewer not in allowed:
+            messagebox.showerror("User", "Name not found in participants")
+            return
+        self.app.current_user = reviewer
         text = simpledialog.askstring("Comment", "Enter comment:")
         if not text:
             return
@@ -278,6 +298,9 @@ class ReviewToolbox(tk.Toplevel):
     def resolve_comment(self):
         idx = self.comment_list.curselection()
         if not idx:
+            return
+        if self.app.current_user != self.app.review_data.moderator:
+            messagebox.showerror("Resolve", "Only the moderator can resolve comments")
             return
         c = self.app.review_data.comments[idx[0]]
         resolution = simpledialog.askstring("Resolve Comment", "Enter resolution comment:")
@@ -346,6 +369,10 @@ class ReviewToolbox(tk.Toplevel):
             self.approve_btn.pack(side=tk.LEFT)
         else:
             self.approve_btn.pack_forget()
+        if self.app.review_data and self.app.current_user == self.app.review_data.moderator:
+            self.resolve_btn.pack(side=tk.LEFT)
+        else:
+            self.resolve_btn.pack_forget()
 
     def refresh_targets(self):
         items, self.target_map = self.app.get_review_targets()
