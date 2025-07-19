@@ -5995,6 +5995,7 @@ class FaultTreeApp:
             self.review_data = self.reviews[0]
         if self.review_window is None or not self.review_window.winfo_exists():
             self.review_window = ReviewToolbox(self.root, self)
+        self.set_current_user()
 
     def add_version(self):
         name = f"v{len(self.versions)+1}"
@@ -6006,191 +6007,6 @@ class FaultTreeApp:
             messagebox.showinfo("Versions", "No previous versions")
             return
         VersionCompareDialog(self.root, self)
-
-    def merge_review_comments(self):
-        path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
-        if not path:
-            return
-        with open(path, "r") as f:
-            data = json.load(f)
-
-        for rd in data.get("reviews", []):
-            participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
-            comments = [ReviewComment(**c) for c in rd.get("comments", [])]
-            review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
-            if review is None:
-                review = ReviewData(
-                    name=rd.get("name", ""),
-                    description=rd.get("description", ""),
-                    mode=rd.get("mode", "peer"),
-                    moderator=rd.get("moderator", ""),
-                    participants=participants,
-                    comments=comments,
-                    approved=rd.get("approved", False),
-                    fta_ids=rd.get("fta_ids", []),
-                    fmea_names=rd.get("fmea_names", []),
-                )
-                self.reviews.append(review)
-                continue
-            for p in participants:
-                if all(p.name != ep.name for ep in review.participants):
-                    review.participants.append(p)
-            next_id = len(review.comments) + 1
-            for c in comments:
-                review.comments.append(ReviewComment(next_id, c.node_id, c.text, c.reviewer,
-                                                     target_type=c.target_type, req_id=c.req_id,
-                                                     field=c.field, resolved=c.resolved,
-                                                     resolution=c.resolution))
-                next_id += 1
-        messagebox.showinfo("Merge", "Comments merged")
-
-    def merge_review_comments(self):
-        path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
-        if not path:
-            return
-        with open(path, "r") as f:
-            data = json.load(f)
-
-        for rd in data.get("reviews", []):
-            participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
-            comments = [ReviewComment(**c) for c in rd.get("comments", [])]
-            review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
-            if review is None:
-                review = ReviewData(
-                    name=rd.get("name", ""),
-                    description=rd.get("description", ""),
-                    mode=rd.get("mode", "peer"),
-                    moderator=rd.get("moderator", ""),
-                    participants=participants,
-                    comments=comments,
-                    approved=rd.get("approved", False),
-                    fta_ids=rd.get("fta_ids", []),
-                    fmea_names=rd.get("fmea_names", []),
-                )
-                self.reviews.append(review)
-                continue
-            for p in participants:
-                if all(p.name != ep.name for ep in review.participants):
-                    review.participants.append(p)
-            next_id = len(review.comments) + 1
-            for c in comments:
-                review.comments.append(ReviewComment(next_id, c.node_id, c.text, c.reviewer,
-                                                     target_type=c.target_type, req_id=c.req_id,
-                                                     field=c.field, resolved=c.resolved,
-                                                     resolution=c.resolution))
-                next_id += 1
-        messagebox.showinfo("Merge", "Comments merged")
-
-    def merge_review_comments(self):
-        path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
-        if not path:
-            return
-        with open(path, "r") as f:
-            data = json.load(f)
-
-        for rd in data.get("reviews", []):
-            participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
-            comments = [ReviewComment(**c) for c in rd.get("comments", [])]
-            review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
-            if review is None:
-                review = ReviewData(
-                    name=rd.get("name", ""),
-                    description=rd.get("description", ""),
-                    mode=rd.get("mode", "peer"),
-                    moderator=rd.get("moderator", ""),
-                    participants=participants,
-                    comments=comments,
-                    approved=rd.get("approved", False),
-                    fta_ids=rd.get("fta_ids", []),
-                    fmea_names=rd.get("fmea_names", []),
-                )
-                self.reviews.append(review)
-                continue
-            for p in participants:
-                if all(p.name != ep.name for ep in review.participants):
-                    review.participants.append(p)
-            next_id = len(review.comments) + 1
-            for c in comments:
-                review.comments.append(ReviewComment(next_id, c.node_id, c.text, c.reviewer,
-                                                     target_type=c.target_type, req_id=c.req_id,
-                                                     field=c.field, resolved=c.resolved,
-                                                     resolution=c.resolution))
-                next_id += 1
-        messagebox.showinfo("Merge", "Comments merged")
-
-    def merge_review_comments(self):
-        path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
-        if not path:
-            return
-        with open(path, "r") as f:
-            data = json.load(f)
-
-        for rd in data.get("reviews", []):
-            participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
-            comments = [ReviewComment(**c) for c in rd.get("comments", [])]
-            review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
-            if review is None:
-                review = ReviewData(
-                    name=rd.get("name", ""),
-                    description=rd.get("description", ""),
-                    mode=rd.get("mode", "peer"),
-                    moderator=rd.get("moderator", ""),
-                    participants=participants,
-                    comments=comments,
-                    approved=rd.get("approved", False),
-                    fta_ids=rd.get("fta_ids", []),
-                    fmea_names=rd.get("fmea_names", []),
-                )
-                self.reviews.append(review)
-                continue
-            for p in participants:
-                if all(p.name != ep.name for ep in review.participants):
-                    review.participants.append(p)
-            next_id = len(review.comments) + 1
-            for c in comments:
-                review.comments.append(ReviewComment(next_id, c.node_id, c.text, c.reviewer,
-                                                     target_type=c.target_type, req_id=c.req_id,
-                                                     field=c.field, resolved=c.resolved,
-                                                     resolution=c.resolution))
-                next_id += 1
-        messagebox.showinfo("Merge", "Comments merged")
-
-    def merge_review_comments(self):
-        path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
-        if not path:
-            return
-        with open(path, "r") as f:
-            data = json.load(f)
-
-        for rd in data.get("reviews", []):
-            participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
-            comments = [ReviewComment(**c) for c in rd.get("comments", [])]
-            review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
-            if review is None:
-                review = ReviewData(
-                    name=rd.get("name", ""),
-                    description=rd.get("description", ""),
-                    mode=rd.get("mode", "peer"),
-                    moderator=rd.get("moderator", ""),
-                    participants=participants,
-                    comments=comments,
-                    approved=rd.get("approved", False),
-                    fta_ids=rd.get("fta_ids", []),
-                    fmea_names=rd.get("fmea_names", []),
-                )
-                self.reviews.append(review)
-                continue
-            for p in participants:
-                if all(p.name != ep.name for ep in review.participants):
-                    review.participants.append(p)
-            next_id = len(review.comments) + 1
-            for c in comments:
-                review.comments.append(ReviewComment(next_id, c.node_id, c.text, c.reviewer,
-                                                     target_type=c.target_type, req_id=c.req_id,
-                                                     field=c.field, resolved=c.resolved,
-                                                     resolution=c.resolution))
-                next_id += 1
-        messagebox.showinfo("Merge", "Comments merged")
 
     def merge_review_comments(self):
         path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
@@ -6263,10 +6079,13 @@ class FaultTreeApp:
         if not self.review_data:
             messagebox.showwarning("User", "Start a review first")
             return
+        allowed = [p.name for p in self.review_data.participants]
+        if self.review_data.moderator:
+            allowed.append(self.review_data.moderator)
         name = simpledialog.askstring("Current User", "Enter your name:", initialvalue=self.current_user)
         if not name:
             return
-        if name not in [p.name for p in self.review_data.participants]:
+        if name not in allowed:
             messagebox.showerror("User", "Name not found in participants")
             return
         self.current_user = name
@@ -6274,6 +6093,8 @@ class FaultTreeApp:
     def get_current_user_role(self):
         if not self.review_data:
             return None
+        if self.current_user == self.review_data.moderator:
+            return "moderator"
         for p in self.review_data.participants:
             if p.name == self.current_user:
                 return p.role
