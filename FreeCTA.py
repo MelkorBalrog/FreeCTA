@@ -2042,6 +2042,10 @@ class FaultTreeApp:
         self.zoom = 1.0
         self.diagram_font = tkFont.Font(family="Arial", size=int(8 * self.zoom))
         self.style = ttk.Style()
+        try:
+            self.style.theme_use("clam")
+        except tk.TclError:
+            pass
         self.style.configure("Treeview", font=("Arial", 10))
         self.clipboard_node = None
         self.cut_mode = False
@@ -4930,7 +4934,36 @@ class FaultTreeApp:
         win = tk.Toplevel(self.root)
         title = f"FMEA Table - {fmea['name']}" if fmea else "FMEA Table"
         win.title(title)
-        columns = ["Component", "Parent", "Failure Mode", "Failure Effect", "Cause", "S", "O", "D", "RPN", "Requirements"]
+
+        # give the table a nicer look similar to professional FMEA tools
+        style = ttk.Style(win)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure(
+            "FMEA.Treeview",
+            font=("Segoe UI", 10),
+            rowheight=22,
+        )
+        style.configure(
+            "FMEA.Treeview.Heading",
+            font=("Segoe UI", 10, "bold"),
+            background="#d0d0d0",
+        )
+
+        columns = [
+            "Component",
+            "Parent",
+            "Failure Mode",
+            "Failure Effect",
+            "Cause",
+            "S",
+            "O",
+            "D",
+            "RPN",
+            "Requirements",
+        ]
         btn_frame = ttk.Frame(win)
         btn_frame.pack(side=tk.TOP, pady=2)
         add_btn = ttk.Button(btn_frame, text="Add Failure Mode")
@@ -4939,7 +4972,18 @@ class FaultTreeApp:
         remove_btn.pack(side=tk.LEFT, padx=2)
         del_btn = ttk.Button(btn_frame, text="Delete Selected")
         del_btn.pack(side=tk.LEFT, padx=2)
-        tree = ttk.Treeview(win, columns=columns, show="tree headings")
+
+        tree_frame = ttk.Frame(win)
+        tree_frame.pack(fill=tk.BOTH, expand=True)
+        tree = ttk.Treeview(
+            tree_frame,
+            columns=columns,
+            show="tree headings",
+            style="FMEA.Treeview",
+        )
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         for col in columns:
             tree.heading(col, text=col)
             width = 120
@@ -4948,7 +4992,17 @@ class FaultTreeApp:
             elif col == "Parent":
                 width = 150
             tree.column(col, width=width, anchor="center")
-        tree.pack(fill=tk.BOTH, expand=True)
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+        tree_frame.grid_columnconfigure(0, weight=1)
+        tree_frame.grid_rowconfigure(0, weight=1)
+
+        # alternating row colours and high RPN highlight
+        tree.tag_configure("component", background="#e2e2e2", font=("Segoe UI", 10, "bold"))
+        tree.tag_configure("evenrow", background="#ffffff")
+        tree.tag_configure("oddrow", background="#f5f5f5")
+        tree.tag_configure("highrpn", background="#ffe6e6")
 
         node_map = {}
         comp_items = {}
@@ -4964,7 +5018,7 @@ class FaultTreeApp:
             entries[:] = list(unique.values())
             events = entries
 
-            for be in events:
+            for idx, be in enumerate(events):
                 parent = be.parents[0] if be.parents else None
                 if parent:
                     comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
@@ -4973,13 +5027,35 @@ class FaultTreeApp:
                     comp = getattr(be, "fmea_component", "") or "N/A"
                     parent_name = ""
                 if comp not in comp_items:
-                    comp_items[comp] = tree.insert("", "end", text=comp, values=[comp, "", "", "", "", "", "", "", "", ""])
+                    comp_items[comp] = tree.insert(
+                        "",
+                        "end",
+                        text=comp,
+                        values=[comp, "", "", "", "", "", "", "", "", ""],
+                        tags=("component",),
+                    )
                 comp_iid = comp_items[comp]
-                req_ids = "; ".join([f"{req['req_type']}:{req['text']}" for req in getattr(be, 'safety_requirements', [])])
+                req_ids = "; ".join(
+                    [f"{req['req_type']}:{req['text']}" for req in getattr(be, "safety_requirements", [])]
+                )
                 rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
                 failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
-                vals = ["", parent_name, failure_mode, be.fmea_effect, be.fmea_cause, be.fmea_severity, be.fmea_occurrence, be.fmea_detection, rpn, req_ids]
-                iid = tree.insert(comp_iid, "end", text="", values=vals)
+                vals = [
+                    "",
+                    parent_name,
+                    failure_mode,
+                    be.fmea_effect,
+                    be.fmea_cause,
+                    be.fmea_severity,
+                    be.fmea_occurrence,
+                    be.fmea_detection,
+                    rpn,
+                    req_ids,
+                ]
+                tags = ["evenrow" if idx % 2 == 0 else "oddrow"]
+                if rpn >= 100:
+                    tags.append("highrpn")
+                iid = tree.insert(comp_iid, "end", text="", values=vals, tags=tags)
                 node_map[iid] = be
             for iid in comp_items.values():
                 tree.item(iid, open=True)
