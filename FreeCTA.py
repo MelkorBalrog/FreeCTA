@@ -6087,7 +6087,6 @@ class FaultTreeApp:
 
         return targets, target_map
 
-
 ##########################################
 # Node Model 
 ##########################################
