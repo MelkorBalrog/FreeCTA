@@ -6,10 +6,11 @@ This repository contains a graphical fault tree analysis tool. The latest update
 
 Launch the review features from the **Review** menu:
 
-* **Start Peer Review** – create reviewers, give the review a unique name and optional description, then begin commenting.
-* **Start Joint Review** – add participants with reviewer or approver roles along with a unique review name and description. Approvers can approve only after all reviewers are done and comments resolved.
-* **Open Review Toolbox** – manage comments. Selecting a comment focuses the related element and shows the text below the list. A drop-down at the top lists every saved review with its approval status.
-* **Compare Versions** – view earlier approved versions and highlight differences on the diagram.
+* **Start Peer Review** – create reviewers, then tick the checkboxes for the FTAs and FMEAs you want to include. A document window opens showing those elements. FTAs are drawn on canvases you can drag and scroll, while FMEAs appear as full tables listing every field so failures can be reviewed line by line.
+* **Start Joint Review** – add participants with reviewer or approver roles, select the desired FTAs and FMEAs via checkboxes and enter a unique review name and description. Approvers can approve only after all reviewers are done and comments resolved. The document window behaves the same as for peer reviews with draggable FTAs and tabulated FMEAs.
+* **Open Review Toolbox** – manage comments. Selecting a comment focuses the related element and shows the text below the list. Use the **Open Document** button to reopen the visualization for the currently selected review. A drop-down at the top lists every saved review with its approval status.
+* **Merge Review Comments** – combine feedback from another saved model into the current one so parallel reviews can be consolidated.
+* **Compare Versions** – view earlier approved versions. Differences are listed with a short description and small before/after images of changed FTA nodes.
 * **Set Current User** – choose who you are when adding comments. The toolbox also provides a drop-down selector.
 
 Nodes with unresolved comments show a small yellow circle to help locate feedback quickly. Differences between versions are outlined in blue when comparing.
