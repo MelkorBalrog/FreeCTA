@@ -4825,7 +4825,8 @@ class FaultTreeApp:
                 return
             req = self.node.safety_requirements[sel[0]]
             self.app.selected_node = self.node
-            self.app.comment_target = ("requirement", req.get("id"))
+            # include the node id as well so the toolbox has full context
+            self.app.comment_target = ("requirement", self.node.unique_id, req.get("id"))
             self.app.open_review_toolbox()
 
         def comment_fmea(self):
@@ -4840,7 +4841,7 @@ class FaultTreeApp:
                 return
             req = self.node.safety_requirements[sel[0]]
             self.app.selected_node = self.node
-            self.app.comment_target = ("requirement", req.get("id"))
+            self.app.comment_target = ("requirement", self.node.unique_id, req.get("id"))
             self.app.open_review_toolbox()
 
         def comment_requirement(self):
@@ -4850,7 +4851,7 @@ class FaultTreeApp:
                 return
             req = self.node.safety_requirements[sel[0]]
             self.app.selected_node = self.node
-            self.app.comment_target = ("requirement", req.get("id"))
+            self.app.comment_target = ("requirement", self.node.unique_id, req.get("id"))
             self.app.open_review_toolbox()
 
         def add_safety_requirement(self):

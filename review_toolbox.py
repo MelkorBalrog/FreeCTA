@@ -3,6 +3,7 @@ from tkinter import simpledialog, messagebox, ttk
 from dataclasses import dataclass, field
 from typing import List
 import sys
+import json
 
 # Access the drawing helper defined in the main application if available.
 fta_drawing_helper = getattr(sys.modules.get('__main__'), 'fta_drawing_helper', None)
@@ -363,7 +364,9 @@ class ReviewToolbox(tk.Toplevel):
             self.app.selected_node = node
             self.app.focus_on_node(node)
         if target[0] == 'requirement':
-            self.app.comment_target = ('requirement', target[2])
+            # store both node id and requirement id so add_comment can
+            # create the ReviewComment correctly
+            self.app.comment_target = ('requirement', target[1], target[2])
         elif target[0] == 'fmea':
             self.app.comment_target = ('fmea', target[1])
 
