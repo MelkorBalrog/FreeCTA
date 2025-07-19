@@ -5549,6 +5549,7 @@ class FaultTreeApp:
                 "name": r.name,
                 "description": r.description,
                 "mode": r.mode,
+                "moderator": r.moderator,
                 "approved": r.approved,
                 "participants": [asdict(p) for p in r.participants],
                 "comments": [asdict(c) for c in r.comments],
@@ -5621,7 +5622,17 @@ class FaultTreeApp:
             for rd in reviews_data:
                 participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
                 comments = [ReviewComment(**c) for c in rd.get("comments", [])]
-                self.reviews.append(ReviewData(name=rd.get("name", ""), description=rd.get("description", ""), mode=rd.get("mode", "peer"), participants=participants, comments=comments, approved=rd.get("approved", False)))
+                self.reviews.append(
+                    ReviewData(
+                        name=rd.get("name", ""),
+                        description=rd.get("description", ""),
+                        mode=rd.get("mode", "peer"),
+                        moderator=rd.get("moderator", ""),
+                        participants=participants,
+                        comments=comments,
+                        approved=rd.get("approved", False),
+                    )
+                )
             current = data.get("current_review")
             self.review_data = None
             for r in self.reviews:
@@ -5633,7 +5644,15 @@ class FaultTreeApp:
             if rd:
                 participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
                 comments = [ReviewComment(**c) for c in rd.get("comments", [])]
-                review = ReviewData(name=rd.get("name", "Review 1"), description=rd.get("description", ""), mode=rd.get("mode", "peer"), participants=participants, comments=comments, approved=rd.get("approved", False))
+                review = ReviewData(
+                    name=rd.get("name", "Review 1"),
+                    description=rd.get("description", ""),
+                    mode=rd.get("mode", "peer"),
+                    moderator=rd.get("moderator", ""),
+                    participants=participants,
+                    comments=comments,
+                    approved=rd.get("approved", False),
+                )
                 self.reviews = [review]
                 self.review_data = review
             else:
@@ -5927,12 +5946,16 @@ class FaultTreeApp:
             name = simpledialog.askstring("Review Name", "Enter unique review name:")
             if not name:
                 return
+            moderator = simpledialog.askstring("Moderator", "Enter moderator name:")
+            if not moderator:
+                return
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")
                 return
             scope = ReviewScopeDialog(self.root, self)
             fta_ids, fmea_names = scope.result if scope.result else ([], [])
-            review = ReviewData(name=name, mode='peer', participants=parts, comments=[],
+            review = ReviewData(name=name, mode='peer', moderator=moderator,
+                               participants=parts, comments=[],
                                fta_ids=fta_ids, fmea_names=fmea_names)
             self.reviews.append(review)
             self.review_data = review
@@ -5947,12 +5970,16 @@ class FaultTreeApp:
             name = simpledialog.askstring("Review Name", "Enter unique review name:")
             if not name:
                 return
+            moderator = simpledialog.askstring("Moderator", "Enter moderator name:")
+            if not moderator:
+                return
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")
                 return
             scope = ReviewScopeDialog(self.root, self)
             fta_ids, fmea_names = scope.result if scope.result else ([], [])
-            review = ReviewData(name=name, mode='joint', participants=participants, comments=[],
+            review = ReviewData(name=name, mode='joint', moderator=moderator,
+                               participants=participants, comments=[],
                                fta_ids=fta_ids, fmea_names=fmea_names)
             self.reviews.append(review)
             self.review_data = review
@@ -5992,10 +6019,17 @@ class FaultTreeApp:
             comments = [ReviewComment(**c) for c in rd.get("comments", [])]
             review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
             if review is None:
-                review = ReviewData(name=rd.get("name", ""), description=rd.get("description", ""),
-                                    mode=rd.get("mode", "peer"), participants=participants,
-                                    comments=comments, approved=rd.get("approved", False),
-                                    fta_ids=rd.get("fta_ids", []), fmea_names=rd.get("fmea_names", []))
+                review = ReviewData(
+                    name=rd.get("name", ""),
+                    description=rd.get("description", ""),
+                    mode=rd.get("mode", "peer"),
+                    moderator=rd.get("moderator", ""),
+                    participants=participants,
+                    comments=comments,
+                    approved=rd.get("approved", False),
+                    fta_ids=rd.get("fta_ids", []),
+                    fmea_names=rd.get("fmea_names", []),
+                )
                 self.reviews.append(review)
                 continue
             for p in participants:
@@ -6022,10 +6056,17 @@ class FaultTreeApp:
             comments = [ReviewComment(**c) for c in rd.get("comments", [])]
             review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
             if review is None:
-                review = ReviewData(name=rd.get("name", ""), description=rd.get("description", ""),
-                                    mode=rd.get("mode", "peer"), participants=participants,
-                                    comments=comments, approved=rd.get("approved", False),
-                                    fta_ids=rd.get("fta_ids", []), fmea_names=rd.get("fmea_names", []))
+                review = ReviewData(
+                    name=rd.get("name", ""),
+                    description=rd.get("description", ""),
+                    mode=rd.get("mode", "peer"),
+                    moderator=rd.get("moderator", ""),
+                    participants=participants,
+                    comments=comments,
+                    approved=rd.get("approved", False),
+                    fta_ids=rd.get("fta_ids", []),
+                    fmea_names=rd.get("fmea_names", []),
+                )
                 self.reviews.append(review)
                 continue
             for p in participants:
@@ -6052,10 +6093,17 @@ class FaultTreeApp:
             comments = [ReviewComment(**c) for c in rd.get("comments", [])]
             review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
             if review is None:
-                review = ReviewData(name=rd.get("name", ""), description=rd.get("description", ""),
-                                    mode=rd.get("mode", "peer"), participants=participants,
-                                    comments=comments, approved=rd.get("approved", False),
-                                    fta_ids=rd.get("fta_ids", []), fmea_names=rd.get("fmea_names", []))
+                review = ReviewData(
+                    name=rd.get("name", ""),
+                    description=rd.get("description", ""),
+                    mode=rd.get("mode", "peer"),
+                    moderator=rd.get("moderator", ""),
+                    participants=participants,
+                    comments=comments,
+                    approved=rd.get("approved", False),
+                    fta_ids=rd.get("fta_ids", []),
+                    fmea_names=rd.get("fmea_names", []),
+                )
                 self.reviews.append(review)
                 continue
             for p in participants:
@@ -6082,10 +6130,17 @@ class FaultTreeApp:
             comments = [ReviewComment(**c) for c in rd.get("comments", [])]
             review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
             if review is None:
-                review = ReviewData(name=rd.get("name", ""), description=rd.get("description", ""),
-                                    mode=rd.get("mode", "peer"), participants=participants,
-                                    comments=comments, approved=rd.get("approved", False),
-                                    fta_ids=rd.get("fta_ids", []), fmea_names=rd.get("fmea_names", []))
+                review = ReviewData(
+                    name=rd.get("name", ""),
+                    description=rd.get("description", ""),
+                    mode=rd.get("mode", "peer"),
+                    moderator=rd.get("moderator", ""),
+                    participants=participants,
+                    comments=comments,
+                    approved=rd.get("approved", False),
+                    fta_ids=rd.get("fta_ids", []),
+                    fmea_names=rd.get("fmea_names", []),
+                )
                 self.reviews.append(review)
                 continue
             for p in participants:
@@ -6112,10 +6167,17 @@ class FaultTreeApp:
             comments = [ReviewComment(**c) for c in rd.get("comments", [])]
             review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
             if review is None:
-                review = ReviewData(name=rd.get("name", ""), description=rd.get("description", ""),
-                                    mode=rd.get("mode", "peer"), participants=participants,
-                                    comments=comments, approved=rd.get("approved", False),
-                                    fta_ids=rd.get("fta_ids", []), fmea_names=rd.get("fmea_names", []))
+                review = ReviewData(
+                    name=rd.get("name", ""),
+                    description=rd.get("description", ""),
+                    mode=rd.get("mode", "peer"),
+                    moderator=rd.get("moderator", ""),
+                    participants=participants,
+                    comments=comments,
+                    approved=rd.get("approved", False),
+                    fta_ids=rd.get("fta_ids", []),
+                    fmea_names=rd.get("fmea_names", []),
+                )
                 self.reviews.append(review)
                 continue
             for p in participants:
@@ -6142,10 +6204,17 @@ class FaultTreeApp:
             comments = [ReviewComment(**c) for c in rd.get("comments", [])]
             review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
             if review is None:
-                review = ReviewData(name=rd.get("name", ""), description=rd.get("description", ""),
-                                    mode=rd.get("mode", "peer"), participants=participants,
-                                    comments=comments, approved=rd.get("approved", False),
-                                    fta_ids=rd.get("fta_ids", []), fmea_names=rd.get("fmea_names", []))
+                review = ReviewData(
+                    name=rd.get("name", ""),
+                    description=rd.get("description", ""),
+                    mode=rd.get("mode", "peer"),
+                    moderator=rd.get("moderator", ""),
+                    participants=participants,
+                    comments=comments,
+                    approved=rd.get("approved", False),
+                    fta_ids=rd.get("fta_ids", []),
+                    fmea_names=rd.get("fmea_names", []),
+                )
                 self.reviews.append(review)
                 continue
             for p in participants:
