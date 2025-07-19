@@ -32,6 +32,7 @@ class ReviewData:
     name: str = ""
     description: str = ""
     mode: str = "peer"  # 'peer' or 'joint'
+    moderator: str = ""
     participants: List[ReviewParticipant] = field(default_factory=list)
     comments: List[ReviewComment] = field(default_factory=list)
     fta_ids: List[int] = field(default_factory=list)
@@ -130,6 +131,8 @@ class ReviewToolbox(tk.Toplevel):
         tk.Label(review_frame, textvariable=self.status_var).pack(side=tk.LEFT, padx=5)
         self.desc_var = tk.StringVar()
         tk.Label(self, textvariable=self.desc_var, wraplength=400, justify="left").pack(fill=tk.X, padx=5)
+        self.mod_var = tk.StringVar()
+        tk.Label(self, textvariable=self.mod_var).pack(fill=tk.X, padx=5)
 
         user_frame = tk.Frame(self)
         user_frame.pack(fill=tk.X)
@@ -184,10 +187,12 @@ class ReviewToolbox(tk.Toplevel):
             self.review_var.set(self.app.review_data.name)
             self.status_var.set("approved" if self.app.review_data.approved else "open")
             self.desc_var.set(self.app.review_data.description)
+            self.mod_var.set(f"Moderator: {self.app.review_data.moderator}")
         else:
             self.review_var.set("")
             self.status_var.set("")
             self.desc_var.set("")
+            self.mod_var.set("")
 
     def on_review_change(self, event=None):
         name = self.review_var.get()
@@ -198,8 +203,10 @@ class ReviewToolbox(tk.Toplevel):
         self.status_var.set("approved" if self.app.review_data and self.app.review_data.approved else "open")
         if self.app.review_data:
             self.desc_var.set(self.app.review_data.description)
+            self.mod_var.set(f"Moderator: {self.app.review_data.moderator}")
         else:
             self.desc_var.set("")
+            self.mod_var.set("")
         self.refresh_comments()
         self.refresh_targets()
         self.update_buttons()
