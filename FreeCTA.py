@@ -5992,11 +5992,12 @@ class FaultTreeApp:
 
         if dialog.result:
             parts = dialog.result
+            moderator = dialog.moderator
             name = simpledialog.askstring("Review Name", "Enter unique review name:")
             if not name:
                 return
-            moderator = simpledialog.askstring("Moderator", "Enter moderator name:")
             if not moderator:
+                messagebox.showerror("Review", "Please specify a moderator")
                 return
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")
@@ -6016,11 +6017,12 @@ class FaultTreeApp:
         dialog = ParticipantDialog(self.root, joint=True)
         if dialog.result:
             participants = dialog.result
+            moderator = dialog.moderator
             name = simpledialog.askstring("Review Name", "Enter unique review name:")
             if not name:
                 return
-            moderator = simpledialog.askstring("Moderator", "Enter moderator name:")
             if not moderator:
+                messagebox.showerror("Review", "Please specify a moderator")
                 return
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")

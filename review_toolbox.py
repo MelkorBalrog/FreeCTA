@@ -43,9 +43,15 @@ class ParticipantDialog(simpledialog.Dialog):
     def __init__(self, parent, joint: bool):
         self.joint = joint
         self.participants: List[ReviewParticipant] = []
+        self.moderator = ""
         super().__init__(parent, title="Review Participants")
 
     def body(self, master):
+        tk.Label(master, text="Moderator:").pack(anchor="w")
+        self.mod_entry = tk.Entry(master)
+        self.mod_entry.pack(fill=tk.X, padx=5, pady=(0, 5))
+
+        tk.Label(master, text="Participants:").pack(anchor="w")
         self.row_frame = tk.Frame(master)
         self.row_frame.pack(fill=tk.BOTH, expand=True)
         btn = tk.Button(master, text="Add Participant", command=self.add_row)
@@ -76,6 +82,7 @@ class ParticipantDialog(simpledialog.Dialog):
             email = email_entry.get().strip()
             role = role_cb.get() if role_cb else "reviewer"
             result.append(ReviewParticipant(name, email, role))
+        self.moderator = self.mod_entry.get().strip()
         self.result = result
 
 
