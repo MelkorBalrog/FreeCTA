@@ -5511,6 +5511,7 @@ class FaultTreeApp:
         for r in self.reviews:
             reviews.append({
                 "name": r.name,
+                "description": r.description,
                 "mode": r.mode,
                 "approved": r.approved,
                 "participants": [asdict(p) for p in r.participants],
@@ -5584,7 +5585,7 @@ class FaultTreeApp:
             for rd in reviews_data:
                 participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
                 comments = [ReviewComment(**c) for c in rd.get("comments", [])]
-                self.reviews.append(ReviewData(name=rd.get("name", ""), mode=rd.get("mode", "peer"), participants=participants, comments=comments, approved=rd.get("approved", False)))
+                self.reviews.append(ReviewData(name=rd.get("name", ""), description=rd.get("description", ""), mode=rd.get("mode", "peer"), participants=participants, comments=comments, approved=rd.get("approved", False)))
             current = data.get("current_review")
             self.review_data = None
             for r in self.reviews:
@@ -5596,7 +5597,7 @@ class FaultTreeApp:
             if rd:
                 participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
                 comments = [ReviewComment(**c) for c in rd.get("comments", [])]
-                review = ReviewData(name=rd.get("name", "Review 1"), mode=rd.get("mode", "peer"), participants=participants, comments=comments, approved=rd.get("approved", False))
+                review = ReviewData(name=rd.get("name", "Review 1"), description=rd.get("description", ""), mode=rd.get("mode", "peer"), participants=participants, comments=comments, approved=rd.get("approved", False))
                 self.reviews = [review]
                 self.review_data = review
             else:
@@ -5892,7 +5893,8 @@ class FaultTreeApp:
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")
                 return
-            review = ReviewData(name=name, mode='peer', participants=parts, comments=[])
+            desc = simpledialog.askstring("Description", "Enter review description:")
+            review = ReviewData(name=name, description=desc or "", mode='peer', participants=parts, comments=[])
             self.reviews.append(review)
             self.review_data = review
             self.current_user = parts[0].name
@@ -5908,7 +5910,8 @@ class FaultTreeApp:
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")
                 return
-            review = ReviewData(name=name, mode='joint', participants=participants, comments=[])
+            desc = simpledialog.askstring("Description", "Enter review description:")
+            review = ReviewData(name=name, description=desc or "", mode='joint', participants=participants, comments=[])
             self.reviews.append(review)
             self.review_data = review
             self.current_user = participants[0].name
@@ -5994,7 +5997,8 @@ class FaultTreeApp:
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")
                 return
-            review = ReviewData(name=name, mode='peer', participants=parts, comments=[])
+            desc = simpledialog.askstring("Description", "Enter review description:")
+            review = ReviewData(name=name, description=desc or "", mode='peer', participants=parts, comments=[])
             self.reviews.append(review)
             self.review_data = review
             self.current_user = parts[0].name
@@ -6010,7 +6014,8 @@ class FaultTreeApp:
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")
                 return
-            review = ReviewData(name=name, mode='joint', participants=participants, comments=[])
+            desc = simpledialog.askstring("Description", "Enter review description:")
+            review = ReviewData(name=name, description=desc or "", mode='joint', participants=participants, comments=[])
             self.reviews.append(review)
             self.review_data = review
             self.current_user = participants[0].name
@@ -6090,7 +6095,15 @@ class FaultTreeApp:
         dialog = ParticipantDialog(self.root, joint=False)
         if dialog.result:
             parts = dialog.result
-            self.review_data = ReviewData(mode='peer', participants=parts, comments=[])
+            name = simpledialog.askstring("Review Name", "Enter unique review name:")
+            if not name:
+                return
+            if any(r.name == name for r in self.reviews):
+                messagebox.showerror("Review", "Name already exists")
+                return
+            desc = simpledialog.askstring("Description", "Enter review description:")
+            self.review_data = ReviewData(name=name, description=desc or "", mode='peer', participants=parts, comments=[])
+            self.reviews.append(self.review_data)
             self.current_user = parts[0].name
             self.open_review_toolbox()
 
@@ -6098,7 +6111,15 @@ class FaultTreeApp:
         dialog = ParticipantDialog(self.root, joint=True)
         if dialog.result:
             participants = dialog.result
-            self.review_data = ReviewData(mode='joint', participants=participants, comments=[])
+            name = simpledialog.askstring("Review Name", "Enter unique review name:")
+            if not name:
+                return
+            if any(r.name == name for r in self.reviews):
+                messagebox.showerror("Review", "Name already exists")
+                return
+            desc = simpledialog.askstring("Description", "Enter review description:")
+            self.review_data = ReviewData(name=name, description=desc or "", mode='joint', participants=participants, comments=[])
+            self.reviews.append(self.review_data)
             self.current_user = participants[0].name
             self.open_review_toolbox()
 
@@ -6174,7 +6195,15 @@ class FaultTreeApp:
         dialog = ParticipantDialog(self.root, joint=False)
         if dialog.result:
             parts = dialog.result
-            self.review_data = ReviewData(mode='peer', participants=parts, comments=[])
+            name = simpledialog.askstring("Review Name", "Enter unique review name:")
+            if not name:
+                return
+            if any(r.name == name for r in self.reviews):
+                messagebox.showerror("Review", "Name already exists")
+                return
+            desc = simpledialog.askstring("Description", "Enter review description:")
+            self.review_data = ReviewData(name=name, description=desc or "", mode='peer', participants=parts, comments=[])
+            self.reviews.append(self.review_data)
             self.current_user = parts[0].name
             self.open_review_toolbox()
 
@@ -6182,7 +6211,15 @@ class FaultTreeApp:
         dialog = ParticipantDialog(self.root, joint=True)
         if dialog.result:
             participants = dialog.result
-            self.review_data = ReviewData(mode='joint', participants=participants, comments=[])
+            name = simpledialog.askstring("Review Name", "Enter unique review name:")
+            if not name:
+                return
+            if any(r.name == name for r in self.reviews):
+                messagebox.showerror("Review", "Name already exists")
+                return
+            desc = simpledialog.askstring("Description", "Enter review description:")
+            self.review_data = ReviewData(name=name, description=desc or "", mode='joint', participants=participants, comments=[])
+            self.reviews.append(self.review_data)
             self.current_user = participants[0].name
             self.open_review_toolbox()
 
