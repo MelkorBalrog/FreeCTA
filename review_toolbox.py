@@ -16,7 +16,7 @@ class ReviewComment:
     node_id: int
     text: str
     reviewer: str
-    target_type: str = "node"  # 'node' or 'requirement'
+    target_type: str = "node"  # 'node', 'requirement', or 'fmea'
     req_id: str = ""
     resolved: bool = False
     resolution: str = ""
@@ -95,6 +95,15 @@ class ReviewToolbox(tk.Toplevel):
         self.user_combo.pack(side=tk.LEFT, padx=5)
         self.user_combo.bind("<<ComboboxSelected>>", self.on_user_change)
 
+        target_frame = tk.Frame(self)
+        target_frame.pack(fill=tk.X)
+        tk.Label(target_frame, text="Target:").pack(side=tk.LEFT)
+        self.target_var = tk.StringVar()
+        self.target_combo = ttk.Combobox(target_frame, textvariable=self.target_var,
+                                         state="readonly")
+        self.target_combo.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        self.target_combo.bind("<<ComboboxSelected>>", self.on_target_change)
+
         self.comment_list = tk.Listbox(self, width=50)
         self.comment_list.pack(fill=tk.BOTH, expand=True)
         self.comment_list.bind("<<ListboxSelect>>", self.on_select)
@@ -114,6 +123,7 @@ class ReviewToolbox(tk.Toplevel):
         self.update_buttons()
 
         self.refresh_reviews()
+        self.refresh_targets()
         self.refresh_comments()
         self.update_buttons()
 
@@ -139,6 +149,7 @@ class ReviewToolbox(tk.Toplevel):
                 break
         self.status_var.set("approved" if self.app.review_data and self.app.review_data.approved else "open")
         self.refresh_comments()
+        self.refresh_targets()
         self.update_buttons()
         try:
             if hasattr(self.app, "canvas") and self.app.canvas.winfo_exists():
@@ -158,6 +169,8 @@ class ReviewToolbox(tk.Toplevel):
             node_name = node.name if node else f"ID {c.node_id}"
             if c.target_type == "requirement" and c.req_id:
                 node_name += f" [Req {c.req_id}]"
+            elif c.target_type == "fmea":
+                node_name += " [FMEA]"
             status = "(resolved)" if c.resolved else ""
             self.comment_list.insert(tk.END, f"{c.comment_id}: {node_name} - {c.reviewer} {status}")
         self.update_buttons()
@@ -175,6 +188,10 @@ class ReviewToolbox(tk.Toplevel):
 
     def add_comment(self):
         target = self.app.comment_target
+        if not target:
+            label = self.target_var.get()
+            if label:
+                target = self.target_map.get(label)
         if not target and not self.app.selected_node:
             messagebox.showwarning("Add Comment", "Select a node first")
             return
@@ -184,8 +201,14 @@ class ReviewToolbox(tk.Toplevel):
             return
         comment_id = len(self.app.review_data.comments) + 1
         if target and target[0] == "requirement":
-            node_id = self.app.selected_node.unique_id if self.app.selected_node else 0
-            c = ReviewComment(comment_id, node_id, text, reviewer, target_type="requirement", req_id=target[1])
+            node_id = target[1]
+            c = ReviewComment(comment_id, node_id, text, reviewer, target_type="requirement", req_id=target[2])
+        elif target and target[0] == "fmea":
+            node_id = target[1]
+            c = ReviewComment(comment_id, node_id, text, reviewer, target_type="fmea")
+        elif target and target[0] == "node":
+            node_id = target[1]
+            c = ReviewComment(comment_id, node_id, text, reviewer)
         else:
             c = ReviewComment(comment_id, self.app.selected_node.unique_id, text, reviewer)
         self.app.review_data.comments.append(c)
@@ -257,6 +280,27 @@ class ReviewToolbox(tk.Toplevel):
             self.approve_btn.pack(side=tk.LEFT)
         else:
             self.approve_btn.pack_forget()
+
+    def refresh_targets(self):
+        items, self.target_map = self.app.get_review_targets()
+        self.target_combo['values'] = items
+        if items:
+            self.target_var.set(items[0])
+
+    def on_target_change(self, event=None):
+        label = self.target_var.get()
+        target = self.target_map.get(label)
+        self.app.comment_target = None
+        if not target:
+            return
+        node = self.app.find_node_by_id_all(target[1]) if len(target) > 1 else None
+        if node:
+            self.app.selected_node = node
+            self.app.focus_on_node(node)
+        if target[0] == 'requirement':
+            self.app.comment_target = ('requirement', target[2])
+        elif target[0] == 'fmea':
+            self.app.comment_target = ('fmea', target[1])
 
 class VersionCompareDialog(tk.Toplevel):
     def __init__(self, master, app):

@@ -4768,6 +4768,7 @@ class FaultTreeApp:
             ttk.Button(self.req_frame, text="Delete", command=self.delete_safety_requirement).grid(row=1, column=2, padx=2, pady=2)
             ttk.Button(self.req_frame, text="Add Existing", command=self.add_existing_requirement).grid(row=1, column=3, padx=2, pady=2)
             ttk.Button(self.req_frame, text="Comment", command=self.comment_requirement).grid(row=1, column=4, padx=2, pady=2)
+            ttk.Button(self.req_frame, text="Comment FMEA", command=self.comment_fmea).grid(row=1, column=5, padx=2, pady=2)
             return self.effect_text
 
         def apply(self):
@@ -4818,6 +4819,11 @@ class FaultTreeApp:
             req = self.node.safety_requirements[sel[0]]
             self.app.selected_node = self.node
             self.app.comment_target = ("requirement", req.get("id"))
+            self.app.open_review_toolbox()
+
+        def comment_fmea(self):
+            self.app.selected_node = self.node
+            self.app.comment_target = ("fmea", self.node.unique_id)
             self.app.open_review_toolbox()
 
         def comment_requirement(self):
@@ -4972,6 +4978,8 @@ class FaultTreeApp:
         remove_btn.pack(side=tk.LEFT, padx=2)
         del_btn = ttk.Button(btn_frame, text="Delete Selected")
         del_btn.pack(side=tk.LEFT, padx=2)
+        comment_btn = ttk.Button(btn_frame, text="Comment")
+        comment_btn.pack(side=tk.LEFT, padx=2)
 
         tree_frame = ttk.Frame(win)
         tree_frame.pack(fill=tk.BOTH, expand=True)
@@ -5133,6 +5141,20 @@ class FaultTreeApp:
             refresh_tree()
 
         del_btn.config(command=delete_failure_mode)
+
+        def comment_fmea_entry():
+            sel = tree.selection()
+            if not sel:
+                messagebox.showwarning("Comment", "Select a row to comment.")
+                return
+            node = node_map.get(sel[0])
+            if not node:
+                return
+            self.selected_node = node
+            self.comment_target = ("fmea", node.unique_id)
+            self.open_review_toolbox()
+
+        comment_btn.config(command=comment_fmea_entry)
 
         def on_close():
             if fmea is not None:
@@ -5982,6 +6004,24 @@ class FaultTreeApp:
         if bbox:
             self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
             self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+
+    def get_review_targets(self):
+        targets = []
+        target_map = {}
+        for node in self.get_all_nodes_in_model():
+            label = node.user_name or node.description or f"Node {node.unique_id}"
+            targets.append(label)
+            target_map[label] = ("node", node.unique_id)
+            if hasattr(node, "safety_requirements"):
+                for req in node.safety_requirements:
+                    rlabel = f"{label} [Req {req.get('id')}]"
+                    targets.append(rlabel)
+                    target_map[rlabel] = ("requirement", node.unique_id, req.get("id"))
+            if node.node_type.upper() == "BASIC EVENT":
+                flabel = f"{label} [FMEA]"
+                targets.append(flabel)
+                target_map[flabel] = ("fmea", node.unique_id)
+        return targets, target_map
 
     # --- Review Toolbox Methods ---
     def start_peer_review(self):
