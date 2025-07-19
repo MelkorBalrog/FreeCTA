@@ -84,14 +84,16 @@ class ReviewScopeDialog(simpledialog.Dialog):
 
     def body(self, master):
         tk.Label(master, text="FTAs:").grid(row=0, column=0, padx=5, pady=5)
-        self.fta_list = tk.Listbox(master, selectmode=tk.MULTIPLE, height=6)
+        self.fta_list = tk.Listbox(master, selectmode=tk.MULTIPLE, height=6,
+                                   exportselection=False)
         self.fta_list.grid(row=1, column=0, padx=5, pady=5)
         for te in self.app.top_events:
             label = te.user_name or te.description or f"Node {te.unique_id}"
             self.fta_list.insert(tk.END, label)
 
         tk.Label(master, text="FMEAs:").grid(row=0, column=1, padx=5, pady=5)
-        self.fmea_list = tk.Listbox(master, selectmode=tk.MULTIPLE, height=6)
+        self.fmea_list = tk.Listbox(master, selectmode=tk.MULTIPLE, height=6,
+                                    exportselection=False)
         self.fmea_list.grid(row=1, column=1, padx=5, pady=5)
         for f in self.app.fmeas:
             self.fmea_list.insert(tk.END, f['name'])
@@ -484,9 +486,23 @@ class ReviewDocumentDialog(tk.Toplevel):
                 row=row, column=0, sticky="w", padx=5, pady=5
             )
             row += 1
-            c = tk.Canvas(self.inner, width=600, height=400, bg="white")
-            c.grid(row=row, column=0, padx=5, pady=5)
+            frame = tk.Frame(self.inner)
+            frame.grid(row=row, column=0, padx=5, pady=5, sticky="nsew")
+            c = tk.Canvas(frame, width=600, height=400, bg="white")
+            hbar = tk.Scrollbar(frame, orient=tk.HORIZONTAL, command=c.xview)
+            vbar = tk.Scrollbar(frame, orient=tk.VERTICAL, command=c.yview)
+            c.configure(xscrollcommand=hbar.set, yscrollcommand=vbar.set)
+            c.grid(row=0, column=0, sticky="nsew")
+            vbar.grid(row=0, column=1, sticky="ns")
+            hbar.grid(row=1, column=0, sticky="ew")
+            frame.rowconfigure(0, weight=1)
+            frame.columnconfigure(0, weight=1)
+            c.bind("<ButtonPress-1>", lambda e, cv=c: cv.scan_mark(e.x, e.y))
+            c.bind("<B1-Motion>", lambda e, cv=c: cv.scan_dragto(e.x, e.y, gain=1))
             self.draw_tree(c, node)
+            bbox = c.bbox("all")
+            if bbox:
+                c.config(scrollregion=bbox)
             row += 1
         for name in self.review.fmea_names:
             fmea = next((f for f in self.app.fmeas if f["name"] == name), None)
