@@ -3,6 +3,7 @@ from tkinter import simpledialog, messagebox, ttk
 from dataclasses import dataclass, field
 from typing import List
 import sys
+import json
 
 # Access the drawing helper defined in the main application if available.
 fta_drawing_helper = getattr(sys.modules.get('__main__'), 'fta_drawing_helper', None)
@@ -518,13 +519,63 @@ class ReviewDocumentDialog(tk.Toplevel):
                 row=row, column=0, sticky="w", padx=5, pady=5
             )
             row += 1
-            text = tk.Text(self.inner, height=10, wrap="word")
-            text.grid(row=row, column=0, sticky="nsew", padx=5, pady=5)
+            frame = tk.Frame(self.inner)
+            frame.grid(row=row, column=0, sticky="nsew", padx=5, pady=5)
+            columns = [
+                "Component",
+                "Parent",
+                "Failure Mode",
+                "Failure Effect",
+                "Cause",
+                "S",
+                "O",
+                "D",
+                "RPN",
+                "Requirements",
+            ]
+            tree = ttk.Treeview(frame, columns=columns, show="headings", height=8)
+            vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+            hsb = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
+            tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+            for col in columns:
+                tree.heading(col, text=col)
+                width = 100
+                if col in ["Failure Effect", "Cause", "Requirements"]:
+                    width = 180
+                tree.column(col, width=width, anchor="center")
+            tree.grid(row=0, column=0, sticky="nsew")
+            vsb.grid(row=0, column=1, sticky="ns")
+            hsb.grid(row=1, column=0, sticky="ew")
+            frame.grid_columnconfigure(0, weight=1)
+            frame.grid_rowconfigure(0, weight=1)
+
             for entry in fmea["entries"]:
-                label = entry.description or entry.user_name or f"BE {entry.unique_id}"
+                parent = entry.parents[0] if entry.parents else None
+                if parent:
+                    comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                    parent_name = comp
+                else:
+                    comp = getattr(entry, "fmea_component", "") or "N/A"
+                    parent_name = ""
+                req_ids = "; ".join(
+                    [f"{req['req_type']}:{req['text']}" for req in getattr(entry, 'safety_requirements', [])]
+                )
                 rpn = entry.fmea_severity * entry.fmea_occurrence * entry.fmea_detection
-                text.insert(tk.END, f"Failure Mode: {label}\nRPN: {rpn}\n\n")
-            text.config(state="disabled")
+                failure_mode = entry.description or entry.user_name or f"BE {entry.unique_id}"
+                vals = [
+                    comp,
+                    parent_name,
+                    failure_mode,
+                    entry.fmea_effect,
+                    getattr(entry, "fmea_cause", ""),
+                    entry.fmea_severity,
+                    entry.fmea_occurrence,
+                    entry.fmea_detection,
+                    rpn,
+                    req_ids,
+                ]
+                tree.insert("", "end", values=vals)
+
             row += 1
 
 class VersionCompareDialog(tk.Toplevel):
