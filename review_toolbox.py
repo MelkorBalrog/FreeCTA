@@ -2,6 +2,10 @@ import tkinter as tk
 from tkinter import simpledialog, messagebox, ttk
 from dataclasses import dataclass, field
 from typing import List
+import sys
+
+# Access the drawing helper defined in the main application if available.
+fta_drawing_helper = getattr(sys.modules.get('__main__'), 'fta_drawing_helper', None)
 
 @dataclass
 class ReviewParticipant:
@@ -149,6 +153,7 @@ class ReviewToolbox(tk.Toplevel):
         tk.Button(btn_frame, text="Add Comment", command=self.add_comment).pack(side=tk.LEFT)
         tk.Button(btn_frame, text="Resolve", command=self.resolve_comment).pack(side=tk.LEFT)
         tk.Button(btn_frame, text="Mark Done", command=self.mark_done).pack(side=tk.LEFT)
+        tk.Button(btn_frame, text="Open Document", command=self.open_document).pack(side=tk.LEFT)
         self.approve_btn = tk.Button(btn_frame, text="Approve", command=self.approve)
         self.approve_btn.pack(side=tk.LEFT)
 
@@ -296,6 +301,12 @@ class ReviewToolbox(tk.Toplevel):
         self.app.add_version()
         self.refresh_reviews()
 
+    def open_document(self):
+        if not self.app.review_data:
+            messagebox.showwarning("Document", "No review selected")
+            return
+        ReviewDocumentDialog(self, self.app, self.app.review_data)
+
     def open_comment(self, event):
         selection = self.comment_list.curselection()
         if not selection:
@@ -353,6 +364,9 @@ class ReviewDocumentDialog(tk.Toplevel):
         super().__init__(master)
         self.app = app
         self.review = review
+        # Use the drawing helper provided by the app or fall back to the global
+        # helper retrieved from the running program.
+        self.dh = getattr(app, 'fta_drawing_helper', None) or fta_drawing_helper
         self.title(f"Review Document - {review.name}")
 
         self.outer = tk.Canvas(self)
@@ -378,9 +392,11 @@ class ReviewDocumentDialog(tk.Toplevel):
                     parent_bottom[1],
                 )
                 child_top = (ch.x, ch.y - 45)
-                fta_drawing_helper.draw_90_connection(
-                    canvas, parent_conn, child_top, outline_color="dimgray", line_width=1
-                )
+                if self.dh:
+                    self.dh.draw_90_connection(
+                        canvas, parent_conn, child_top,
+                        outline_color="dimgray", line_width=1
+                    )
                 draw_connections(ch)
 
         def draw_node_simple(n):
@@ -394,54 +410,58 @@ class ReviewDocumentDialog(tk.Toplevel):
             bottom_text = n.name
             typ = n.node_type.upper()
             if n.is_page:
-                fta_drawing_helper.draw_triangle_shape(
-                    canvas,
-                    eff_x,
-                    eff_y,
-                    scale=40,
-                    top_text=top_text,
-                    bottom_text=bottom_text,
-                    fill=fill,
-                    outline_color="dimgray",
-                    line_width=1,
-                )
+                if self.dh:
+                    self.dh.draw_triangle_shape(
+                        canvas,
+                        eff_x,
+                        eff_y,
+                        scale=40,
+                        top_text=top_text,
+                        bottom_text=bottom_text,
+                        fill=fill,
+                        outline_color="dimgray",
+                        line_width=1,
+                    )
             elif typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
                 if n.gate_type and n.gate_type.upper() == "OR":
-                    fta_drawing_helper.draw_rotated_or_gate_shape(
-                        canvas,
-                        eff_x,
-                        eff_y,
-                        scale=40,
-                        top_text=top_text,
-                        bottom_text=bottom_text,
-                        fill=fill,
-                        outline_color="dimgray",
-                        line_width=1,
-                    )
+                    if self.dh:
+                        self.dh.draw_rotated_or_gate_shape(
+                            canvas,
+                            eff_x,
+                            eff_y,
+                            scale=40,
+                            top_text=top_text,
+                            bottom_text=bottom_text,
+                            fill=fill,
+                            outline_color="dimgray",
+                            line_width=1,
+                        )
                 else:
-                    fta_drawing_helper.draw_rotated_and_gate_shape(
+                    if self.dh:
+                        self.dh.draw_rotated_and_gate_shape(
+                            canvas,
+                            eff_x,
+                            eff_y,
+                            scale=40,
+                            top_text=top_text,
+                            bottom_text=bottom_text,
+                            fill=fill,
+                            outline_color="dimgray",
+                            line_width=1,
+                        )
+            else:
+                if self.dh:
+                    self.dh.draw_circle_event_shape(
                         canvas,
                         eff_x,
                         eff_y,
-                        scale=40,
+                        45,
                         top_text=top_text,
                         bottom_text=bottom_text,
                         fill=fill,
                         outline_color="dimgray",
                         line_width=1,
                     )
-            else:
-                fta_drawing_helper.draw_circle_event_shape(
-                    canvas,
-                    eff_x,
-                    eff_y,
-                    45,
-                    top_text=top_text,
-                    bottom_text=bottom_text,
-                    fill=fill,
-                    outline_color="dimgray",
-                    line_width=1,
-                )
 
         def draw_all(n):
             draw_node_simple(n)
