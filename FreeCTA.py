@@ -215,6 +215,8 @@ from review_toolbox import (
     ReviewParticipant,
     ReviewComment,
     ParticipantDialog,
+    ReviewScopeDialog,
+    ReviewDocumentDialog,
     VersionCompareDialog,
 )
 from dataclasses import asdict
@@ -4240,6 +4242,8 @@ class FaultTreeApp:
                 self.insert_node_in_tree(parent_item, child)
 
     def redraw_canvas(self):
+        if not hasattr(self, "canvas") or not self.canvas.winfo_exists():
+            return
         self.canvas.delete("all")
         self.draw_grid()
         drawn_ids = set()
@@ -4768,6 +4772,7 @@ class FaultTreeApp:
             ttk.Button(self.req_frame, text="Delete", command=self.delete_safety_requirement).grid(row=1, column=2, padx=2, pady=2)
             ttk.Button(self.req_frame, text="Add Existing", command=self.add_existing_requirement).grid(row=1, column=3, padx=2, pady=2)
             ttk.Button(self.req_frame, text="Comment", command=self.comment_requirement).grid(row=1, column=4, padx=2, pady=2)
+            ttk.Button(self.req_frame, text="Comment FMEA", command=self.comment_fmea).grid(row=1, column=5, padx=2, pady=2)
             return self.effect_text
 
         def apply(self):
@@ -4818,6 +4823,11 @@ class FaultTreeApp:
             req = self.node.safety_requirements[sel[0]]
             self.app.selected_node = self.node
             self.app.comment_target = ("requirement", req.get("id"))
+            self.app.open_review_toolbox()
+
+        def comment_fmea(self):
+            self.app.selected_node = self.node
+            self.app.comment_target = ("fmea", self.node.unique_id)
             self.app.open_review_toolbox()
 
         def comment_requirement(self):
@@ -4972,6 +4982,8 @@ class FaultTreeApp:
         remove_btn.pack(side=tk.LEFT, padx=2)
         del_btn = ttk.Button(btn_frame, text="Delete Selected")
         del_btn.pack(side=tk.LEFT, padx=2)
+        comment_btn = ttk.Button(btn_frame, text="Comment")
+        comment_btn.pack(side=tk.LEFT, padx=2)
 
         tree_frame = ttk.Frame(win)
         tree_frame.pack(fill=tk.BOTH, expand=True)
@@ -5133,6 +5145,20 @@ class FaultTreeApp:
             refresh_tree()
 
         del_btn.config(command=delete_failure_mode)
+
+        def comment_fmea_entry():
+            sel = tree.selection()
+            if not sel:
+                messagebox.showwarning("Comment", "Select a row to comment.")
+                return
+            node = node_map.get(sel[0])
+            if not node:
+                return
+            self.selected_node = node
+            self.comment_target = ("fmea", node.unique_id)
+            self.open_review_toolbox()
+
+        comment_btn.config(command=comment_fmea_entry)
 
         def on_close():
             if fmea is not None:
@@ -5892,6 +5918,152 @@ class FaultTreeApp:
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")
                 return
+            scope = ReviewScopeDialog(self.root, self)
+            fta_ids, fmea_names = scope.result if scope.result else ([], [])
+            review = ReviewData(name=name, mode='peer', participants=parts, comments=[],
+                               fta_ids=fta_ids, fmea_names=fmea_names)
+            self.reviews.append(review)
+            self.review_data = review
+            self.current_user = parts[0].name
+            ReviewDocumentDialog(self.root, self, review)
+            self.open_review_toolbox()
+
+    def start_joint_review(self):
+        dialog = ParticipantDialog(self.root, joint=True)
+        if dialog.result:
+            participants = dialog.result
+            name = simpledialog.askstring("Review Name", "Enter unique review name:")
+            if not name:
+                return
+            if any(r.name == name for r in self.reviews):
+                messagebox.showerror("Review", "Name already exists")
+                return
+            scope = ReviewScopeDialog(self.root, self)
+            fta_ids, fmea_names = scope.result if scope.result else ([], [])
+            review = ReviewData(name=name, mode='joint', participants=participants, comments=[],
+                               fta_ids=fta_ids, fmea_names=fmea_names)
+            self.reviews.append(review)
+            self.review_data = review
+            self.current_user = participants[0].name
+            ReviewDocumentDialog(self.root, self, review)
+            self.open_review_toolbox()
+
+    def open_review_toolbox(self):
+        if not self.reviews:
+            messagebox.showwarning("Review", "No reviews defined")
+            return
+        if not self.review_data and self.reviews:
+            self.review_data = self.reviews[0]
+        if self.review_window is None or not self.review_window.winfo_exists():
+            self.review_window = ReviewToolbox(self.root, self)
+
+    def add_version(self):
+        name = f"v{len(self.versions)+1}"
+        data = self.export_model_data()
+        self.versions.append({"name": name, "data": data})
+
+    def compare_versions(self):
+        if not self.versions:
+            messagebox.showinfo("Versions", "No previous versions")
+            return
+        VersionCompareDialog(self.root, self)
+
+    def calculate_diff_nodes(self, old_data):
+        old_map = self.node_map_from_data(old_data["top_events"])
+        new_map = self.node_map_from_data([e.to_dict() for e in self.top_events])
+        changed = []
+        for nid, nd in new_map.items():
+            if nid not in old_map:
+                changed.append(nid)
+            elif json.dumps(old_map[nid], sort_keys=True) != json.dumps(nd, sort_keys=True):
+                changed.append(nid)
+        return changed
+
+    def calculate_diff_between(self, data1, data2):
+        map1 = self.node_map_from_data(data1["top_events"])
+        map2 = self.node_map_from_data(data2["top_events"])
+        changed = []
+        for nid, nd in map2.items():
+            if nid not in map1 or json.dumps(map1.get(nid, {}), sort_keys=True) != json.dumps(nd, sort_keys=True):
+                changed.append(nid)
+        return changed
+
+    def node_map_from_data(self, top_events):
+        result = {}
+        def visit(d):
+            result[d["unique_id"]] = d
+            for ch in d.get("children", []):
+                visit(ch)
+        for t in top_events:
+            visit(t)
+        return result
+
+    def set_current_user(self):
+        if not self.review_data:
+            messagebox.showwarning("User", "Start a review first")
+            return
+        name = simpledialog.askstring("Current User", "Enter your name:", initialvalue=self.current_user)
+        if not name:
+            return
+        if name not in [p.name for p in self.review_data.participants]:
+            messagebox.showerror("User", "Name not found in participants")
+            return
+        self.current_user = name
+
+    def get_current_user_role(self):
+        if not self.review_data:
+            return None
+        for p in self.review_data.participants:
+            if p.name == self.current_user:
+                return p.role
+        return None
+
+    def focus_on_node(self, node):
+        self.selected_node = node
+        try:
+            if hasattr(self, "canvas") and self.canvas.winfo_exists():
+                self.redraw_canvas()
+                bbox = self.canvas.bbox("all")
+                if bbox:
+                    self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
+                    self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        except tk.TclError:
+            pass
+
+    def get_review_targets(self):
+        targets = []
+        target_map = {}
+        for node in self.get_all_nodes_in_model():
+            label = node.user_name or node.description or f"Node {node.unique_id}"
+            targets.append(label)
+            target_map[label] = ("node", node.unique_id)
+            if hasattr(node, "safety_requirements"):
+                for req in node.safety_requirements:
+                    rlabel = f"{label} [Req {req.get('id')}]"
+                    targets.append(rlabel)
+                    target_map[rlabel] = ("requirement", node.unique_id, req.get("id"))
+            if node.node_type.upper() == "BASIC EVENT":
+                flabel = f"{label} [FMEA]"
+                targets.append(flabel)
+                target_map[flabel] = ("fmea", node.unique_id)
+                for field in ["Failure Mode", "Effect", "Cause", "Severity", "Occurrence", "Detection", "RPN"]:
+                    slabel = f"{label} [FMEA {field}]"
+                    key = field.lower().replace(' ', '_')
+                    target_map[slabel] = ("fmea_field", node.unique_id, key)
+                    targets.append(slabel)
+        return targets, target_map
+
+    # --- Review Toolbox Methods ---
+    def start_peer_review(self):
+        dialog = ParticipantDialog(self.root, joint=False)
+        if dialog.result:
+            parts = dialog.result
+            name = simpledialog.askstring("Review Name", "Enter unique review name:")
+            if not name:
+                return
+            if any(r.name == name for r in self.reviews):
+                messagebox.showerror("Review", "Name already exists")
+                return
             review = ReviewData(name=name, mode='peer', participants=parts, comments=[])
             self.reviews.append(review)
             self.review_data = review
@@ -5977,113 +6149,15 @@ class FaultTreeApp:
 
     def focus_on_node(self, node):
         self.selected_node = node
-        self.redraw_canvas()
-        bbox = self.canvas.bbox("all")
-        if bbox:
-            self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
-            self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
-
-    # --- Review Toolbox Methods ---
-    def start_peer_review(self):
-        dialog = ParticipantDialog(self.root, joint=False)
-        if dialog.result:
-            parts = dialog.result
-            name = simpledialog.askstring("Review Name", "Enter unique review name:")
-            if not name:
-                return
-            if any(r.name == name for r in self.reviews):
-                messagebox.showerror("Review", "Name already exists")
-                return
-            review = ReviewData(name=name, mode='peer', participants=parts, comments=[])
-            self.reviews.append(review)
-            self.review_data = review
-            self.current_user = parts[0].name
-            self.open_review_toolbox()
-
-    def start_joint_review(self):
-        dialog = ParticipantDialog(self.root, joint=True)
-        if dialog.result:
-            participants = dialog.result
-            name = simpledialog.askstring("Review Name", "Enter unique review name:")
-            if not name:
-                return
-            if any(r.name == name for r in self.reviews):
-                messagebox.showerror("Review", "Name already exists")
-                return
-            review = ReviewData(name=name, mode='joint', participants=participants, comments=[])
-            self.reviews.append(review)
-            self.review_data = review
-            self.current_user = participants[0].name
-            self.open_review_toolbox()
-
-    def open_review_toolbox(self):
-        if not self.reviews:
-            messagebox.showwarning("Review", "No reviews defined")
-            return
-        if not self.review_data and self.reviews:
-            self.review_data = self.reviews[0]
-        if self.review_window is None or not self.review_window.winfo_exists():
-            self.review_window = ReviewToolbox(self.root, self)
-
-    def add_version(self):
-        name = f"v{len(self.versions)+1}"
-        data = self.export_model_data()
-        self.versions.append({"name": name, "data": data})
-
-    def compare_versions(self):
-        if not self.versions:
-            messagebox.showinfo("Versions", "No previous versions")
-            return
-        VersionCompareDialog(self.root, self)
-
-    def calculate_diff_nodes(self, old_data):
-        old_map = self.node_map_from_data(old_data["top_events"])
-        new_map = self.node_map_from_data([e.to_dict() for e in self.top_events])
-        changed = []
-        for nid, nd in new_map.items():
-            if nid not in old_map:
-                changed.append(nid)
-            elif json.dumps(old_map[nid], sort_keys=True) != json.dumps(nd, sort_keys=True):
-                changed.append(nid)
-        return changed
-
-    def node_map_from_data(self, top_events):
-        result = {}
-        def visit(d):
-            result[d["unique_id"]] = d
-            for ch in d.get("children", []):
-                visit(ch)
-        for t in top_events:
-            visit(t)
-        return result
-
-    def set_current_user(self):
-        if not self.review_data:
-            messagebox.showwarning("User", "Start a review first")
-            return
-        name = simpledialog.askstring("Current User", "Enter your name:", initialvalue=self.current_user)
-        if not name:
-            return
-        if name not in [p.name for p in self.review_data.participants]:
-            messagebox.showerror("User", "Name not found in participants")
-            return
-        self.current_user = name
-
-    def get_current_user_role(self):
-        if not self.review_data:
-            return None
-        for p in self.review_data.participants:
-            if p.name == self.current_user:
-                return p.role
-        return None
-
-    def focus_on_node(self, node):
-        self.selected_node = node
-        self.redraw_canvas()
-        bbox = self.canvas.bbox("all")
-        if bbox:
-            self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
-            self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        try:
+            if hasattr(self, "canvas") and self.canvas.winfo_exists():
+                self.redraw_canvas()
+                bbox = self.canvas.bbox("all")
+                if bbox:
+                    self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
+                    self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        except tk.TclError:
+            pass
 
     # --- Review Toolbox Methods ---
     def start_peer_review(self):
@@ -6163,11 +6237,15 @@ class FaultTreeApp:
 
     def focus_on_node(self, node):
         self.selected_node = node
-        self.redraw_canvas()
-        bbox = self.canvas.bbox("all")
-        if bbox:
-            self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
-            self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        try:
+            if hasattr(self, "canvas") and self.canvas.winfo_exists():
+                self.redraw_canvas()
+                bbox = self.canvas.bbox("all")
+                if bbox:
+                    self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
+                    self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        except tk.TclError:
+            pass
 
     # --- Review Toolbox Methods ---
     def start_peer_review(self):
@@ -6215,11 +6293,15 @@ class FaultTreeApp:
 
     def focus_on_node(self, node):
         self.selected_node = node
-        self.redraw_canvas()
-        bbox = self.canvas.bbox("all")
-        if bbox:
-            self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
-            self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        try:
+            if hasattr(self, "canvas") and self.canvas.winfo_exists():
+                self.redraw_canvas()
+                bbox = self.canvas.bbox("all")
+                if bbox:
+                    self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
+                    self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        except tk.TclError:
+            pass
 
 ##########################################
 # Node Model 
@@ -6609,6 +6691,8 @@ class PageDiagram:
 
     def redraw_canvas(self):
         # Clear the canvas and draw the grid first.
+        if not hasattr(self, "canvas") or not self.canvas.winfo_exists():
+            return
         self.canvas.delete("all")
         self.draw_grid()
         
