@@ -6093,6 +6093,36 @@ class FaultTreeApp:
                 next_id += 1
         messagebox.showinfo("Merge", "Comments merged")
 
+    def merge_review_comments(self):
+        path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
+        if not path:
+            return
+        with open(path, "r") as f:
+            data = json.load(f)
+
+        for rd in data.get("reviews", []):
+            participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
+            comments = [ReviewComment(**c) for c in rd.get("comments", [])]
+            review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
+            if review is None:
+                review = ReviewData(name=rd.get("name", ""), description=rd.get("description", ""),
+                                    mode=rd.get("mode", "peer"), participants=participants,
+                                    comments=comments, approved=rd.get("approved", False),
+                                    fta_ids=rd.get("fta_ids", []), fmea_names=rd.get("fmea_names", []))
+                self.reviews.append(review)
+                continue
+            for p in participants:
+                if all(p.name != ep.name for ep in review.participants):
+                    review.participants.append(p)
+            next_id = len(review.comments) + 1
+            for c in comments:
+                review.comments.append(ReviewComment(next_id, c.node_id, c.text, c.reviewer,
+                                                     target_type=c.target_type, req_id=c.req_id,
+                                                     field=c.field, resolved=c.resolved,
+                                                     resolution=c.resolution))
+                next_id += 1
+        messagebox.showinfo("Merge", "Comments merged")
+
     def calculate_diff_nodes(self, old_data):
         old_map = self.node_map_from_data(old_data["top_events"])
         new_map = self.node_map_from_data([e.to_dict() for e in self.top_events])

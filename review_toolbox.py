@@ -83,25 +83,31 @@ class ReviewScopeDialog(simpledialog.Dialog):
         super().__init__(parent, title="Select Review Scope")
 
     def body(self, master):
-        tk.Label(master, text="FTAs:").grid(row=0, column=0, padx=5, pady=5)
-        self.fta_list = tk.Listbox(master, selectmode=tk.MULTIPLE, height=6,
-                                   exportselection=False)
-        self.fta_list.grid(row=1, column=0, padx=5, pady=5)
+        tk.Label(master, text="FTAs:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.fta_vars = []
+        fta_frame = tk.Frame(master)
+        fta_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
         for te in self.app.top_events:
             label = te.user_name or te.description or f"Node {te.unique_id}"
-            self.fta_list.insert(tk.END, label)
+            var = tk.BooleanVar()
+            cb = tk.Checkbutton(fta_frame, text=label, variable=var, anchor="w")
+            cb.pack(fill=tk.X, anchor="w")
+            self.fta_vars.append((var, te.unique_id))
 
-        tk.Label(master, text="FMEAs:").grid(row=0, column=1, padx=5, pady=5)
-        self.fmea_list = tk.Listbox(master, selectmode=tk.MULTIPLE, height=6,
-                                    exportselection=False)
-        self.fmea_list.grid(row=1, column=1, padx=5, pady=5)
+        tk.Label(master, text="FMEAs:").grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        self.fmea_vars = []
+        fmea_frame = tk.Frame(master)
+        fmea_frame.grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
         for f in self.app.fmeas:
-            self.fmea_list.insert(tk.END, f['name'])
-        tk.Label(master, text="Hold Ctrl to select multiple").grid(row=2, column=0, columnspan=2, pady=(2,5))
+            var = tk.BooleanVar()
+            cb = tk.Checkbutton(fmea_frame, text=f['name'], variable=var, anchor="w")
+            cb.pack(fill=tk.X, anchor="w")
+            self.fmea_vars.append((var, f['name']))
+        tk.Label(master, text="Check items to include in the review").grid(row=2, column=0, columnspan=2, pady=(2,5))
 
     def apply(self):
-        fta_ids = [self.app.top_events[i].unique_id for i in self.fta_list.curselection()]
-        fmea_names = [self.app.fmeas[i]['name'] for i in self.fmea_list.curselection()]
+        fta_ids = [uid for var, uid in self.fta_vars if var.get()]
+        fmea_names = [name for var, name in self.fmea_vars if var.get()]
         self.result = (fta_ids, fmea_names)
 
 class ReviewToolbox(tk.Toplevel):
@@ -540,9 +546,65 @@ class VersionCompareDialog(tk.Toplevel):
         self.other_combo.pack(fill=tk.X, padx=5)
         self.other_combo.bind("<<ComboboxSelected>>", self.compare)
 
-        self.diff_text = tk.Text(self, width=60, height=20)
-        self.diff_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self.diff_text.tag_config('change', foreground='red')
+        self.diff_canvas = tk.Canvas(self, width=600, height=300)
+        vbar = tk.Scrollbar(self, orient=tk.VERTICAL, command=self.diff_canvas.yview)
+        self.diff_canvas.configure(yscrollcommand=vbar.set)
+        vbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.diff_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.diff_frame = tk.Frame(self.diff_canvas)
+        self.diff_canvas.create_window((0, 0), window=self.diff_frame, anchor="nw")
+        self.diff_frame.bind(
+            "<Configure>",
+            lambda e: self.diff_canvas.configure(scrollregion=self.diff_canvas.bbox("all")),
+        )
+
+    def draw_small_tree(self, canvas, node):
+        def draw_connections(n):
+            region_width = 60
+            parent_bottom = (n.x, n.y + 20)
+            for i, ch in enumerate(n.children):
+                parent_conn = (
+                    n.x - region_width / 2 + (i + 0.5) * (region_width / len(n.children)),
+                    parent_bottom[1],
+                )
+                child_top = (ch.x, ch.y - 25)
+                if self.app.fta_drawing_helper:
+                    self.app.fta_drawing_helper.draw_90_connection(
+                        canvas, parent_conn, child_top, outline_color="dimgray", line_width=1
+                    )
+                draw_connections(ch)
+
+        def draw_node_simple(n):
+            fill = self.app.get_node_fill_color(n)
+            eff_x, eff_y = n.x, n.y
+            top_text = n.node_type
+            bottom_text = n.name
+            typ = n.node_type.upper()
+            if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
+                if n.gate_type and n.gate_type.upper() == "OR":
+                    self.app.fta_drawing_helper.draw_rotated_or_gate_shape(canvas, eff_x, eff_y, scale=20,
+                                                                          top_text=top_text, bottom_text=bottom_text,
+                                                                          fill=fill, outline_color="dimgray",
+                                                                          line_width=1)
+                else:
+                    self.app.fta_drawing_helper.draw_rotated_and_gate_shape(canvas, eff_x, eff_y, scale=20,
+                                                                           top_text=top_text, bottom_text=bottom_text,
+                                                                           fill=fill, outline_color="dimgray",
+                                                                           line_width=1)
+            else:
+                self.app.fta_drawing_helper.draw_circle_event_shape(canvas, eff_x, eff_y, 22,
+                                                                    top_text=top_text, bottom_text=bottom_text,
+                                                                    fill=fill, outline_color="dimgray", line_width=1)
+
+        def draw_all(n):
+            draw_node_simple(n)
+            for ch in n.children:
+                draw_all(ch)
+
+        canvas.delete("all")
+        draw_connections(node)
+        draw_all(node)
+        canvas.config(scrollregion=canvas.bbox("all"))
 
     def compare(self, event=None):
         base = self.base_var.get()
@@ -557,13 +619,39 @@ class VersionCompareDialog(tk.Toplevel):
                 data2 = v["data"]
         if data1 is None or data2 is None:
             return
-        changed = self.app.calculate_diff_between(data1, data2)
-        self.diff_text.delete("1.0", tk.END)
-        for nid in changed:
-            node = self.app.find_node_by_id_all(nid)
-            label = node.name if node else f"Node {nid}"
-            self.diff_text.insert(tk.END, label + "\n", "change")
-        self.app.diff_nodes = changed
+        map1 = self.app.node_map_from_data(data1["top_events"])
+        map2 = self.app.node_map_from_data(data2["top_events"])
+        self.app.diff_nodes = []
+        for w in self.diff_frame.winfo_children():
+            w.destroy()
+        row = 0
+        changed_nodes = []
+        for nid, new_nd in map2.items():
+            old_nd = map1.get(nid)
+            if old_nd is None:
+                changed_nodes.append(("added", nid, None, new_nd))
+            elif json.dumps(old_nd, sort_keys=True) != json.dumps(new_nd, sort_keys=True):
+                changed_nodes.append(("modified", nid, old_nd, new_nd))
+        for nid, old_nd in map1.items():
+            if nid not in map2:
+                changed_nodes.append(("removed", nid, old_nd, None))
+        FaultTreeNodeCls = getattr(sys.modules.get('FreeCTA'), 'FaultTreeNode', None)
+        for change, nid, old_nd, new_nd in changed_nodes:
+            label = f"Node {nid} {change}"
+            tk.Label(self.diff_frame, text=label, anchor="w").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+            row += 1
+            frame = tk.Frame(self.diff_frame)
+            frame.grid(row=row, column=0, padx=5, pady=2, sticky="w")
+            if old_nd and FaultTreeNodeCls:
+                c1 = tk.Canvas(frame, width=120, height=80, bg="white")
+                c1.pack(side=tk.LEFT)
+                self.draw_small_tree(c1, FaultTreeNodeCls.from_dict(old_nd))
+            if new_nd and FaultTreeNodeCls:
+                c2 = tk.Canvas(frame, width=120, height=80, bg="white")
+                c2.pack(side=tk.LEFT, padx=5)
+                self.draw_small_tree(c2, FaultTreeNodeCls.from_dict(new_nd))
+            row += 1
+            self.app.diff_nodes.append(nid)
         try:
             if hasattr(self.app, "canvas") and self.app.canvas.winfo_exists():
                 self.app.redraw_canvas()
