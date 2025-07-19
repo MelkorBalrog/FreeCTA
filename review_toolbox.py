@@ -730,7 +730,10 @@ class VersionCompareDialog(tk.Toplevel):
                 else:
                     status[nid] = "existing"
 
-        FaultTreeNodeCls = getattr(sys.modules.get('FreeCTA'), 'FaultTreeNode', None)
+        module = sys.modules.get(self.app.__class__.__module__)
+        FaultTreeNodeCls = getattr(module, 'FaultTreeNode', None)
+        if not FaultTreeNodeCls and self.app.top_events:
+            FaultTreeNodeCls = type(self.app.top_events[0])
         if not FaultTreeNodeCls:
             return
 
