@@ -215,6 +215,8 @@ from review_toolbox import (
     ReviewParticipant,
     ReviewComment,
     ParticipantDialog,
+    ReviewScopeDialog,
+    ReviewDocumentDialog,
     VersionCompareDialog,
 )
 from dataclasses import asdict
@@ -4240,6 +4242,8 @@ class FaultTreeApp:
                 self.insert_node_in_tree(parent_item, child)
 
     def redraw_canvas(self):
+        if not hasattr(self, "canvas") or not self.canvas.winfo_exists():
+            return
         self.canvas.delete("all")
         self.draw_grid()
         drawn_ids = set()
@@ -5907,6 +5911,7 @@ class FaultTreeApp:
     # --- Review Toolbox Methods ---
     def start_peer_review(self):
         dialog = ParticipantDialog(self.root, joint=False)
+
         if dialog.result:
             parts = dialog.result
             name = simpledialog.askstring("Review Name", "Enter unique review name:")
@@ -5915,11 +5920,14 @@ class FaultTreeApp:
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")
                 return
-            desc = simpledialog.askstring("Description", "Enter review description:")
-            review = ReviewData(name=name, description=desc or "", mode='peer', participants=parts, comments=[])
+            scope = ReviewScopeDialog(self.root, self)
+            fta_ids, fmea_names = scope.result if scope.result else ([], [])
+            review = ReviewData(name=name, mode='peer', participants=parts, comments=[],
+                               fta_ids=fta_ids, fmea_names=fmea_names)
             self.reviews.append(review)
             self.review_data = review
             self.current_user = parts[0].name
+            ReviewDocumentDialog(self.root, self, review)
             self.open_review_toolbox()
 
     def start_joint_review(self):
@@ -5932,11 +5940,14 @@ class FaultTreeApp:
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")
                 return
-            desc = simpledialog.askstring("Description", "Enter review description:")
-            review = ReviewData(name=name, description=desc or "", mode='joint', participants=participants, comments=[])
+            scope = ReviewScopeDialog(self.root, self)
+            fta_ids, fmea_names = scope.result if scope.result else ([], [])
+            review = ReviewData(name=name, mode='joint', participants=participants, comments=[],
+                               fta_ids=fta_ids, fmea_names=fmea_names)
             self.reviews.append(review)
             self.review_data = review
             self.current_user = participants[0].name
+            ReviewDocumentDialog(self.root, self, review)
             self.open_review_toolbox()
 
     def open_review_toolbox(self):
@@ -5967,6 +5978,15 @@ class FaultTreeApp:
             if nid not in old_map:
                 changed.append(nid)
             elif json.dumps(old_map[nid], sort_keys=True) != json.dumps(nd, sort_keys=True):
+                changed.append(nid)
+        return changed
+
+    def calculate_diff_between(self, data1, data2):
+        map1 = self.node_map_from_data(data1["top_events"])
+        map2 = self.node_map_from_data(data2["top_events"])
+        changed = []
+        for nid, nd in map2.items():
+            if nid not in map1 or json.dumps(map1.get(nid, {}), sort_keys=True) != json.dumps(nd, sort_keys=True):
                 changed.append(nid)
         return changed
 
@@ -6002,11 +6022,15 @@ class FaultTreeApp:
 
     def focus_on_node(self, node):
         self.selected_node = node
-        self.redraw_canvas()
-        bbox = self.canvas.bbox("all")
-        if bbox:
-            self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
-            self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        try:
+            if hasattr(self, "canvas") and self.canvas.winfo_exists():
+                self.redraw_canvas()
+                bbox = self.canvas.bbox("all")
+                if bbox:
+                    self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
+                    self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        except tk.TclError:
+            pass
 
     def get_review_targets(self):
         targets = []
@@ -6024,6 +6048,12 @@ class FaultTreeApp:
                 flabel = f"{label} [FMEA]"
                 targets.append(flabel)
                 target_map[flabel] = ("fmea", node.unique_id)
+                for field in ["Failure Mode", "Effect", "Cause", "Severity", "Occurrence", "Detection", "RPN"]:
+                    slabel = f"{label} [FMEA {field}]"
+                    key = field.lower().replace(' ', '_')
+                    target_map[slabel] = ("fmea_field", node.unique_id, key)
+                    targets.append(slabel)
+
         return targets, target_map
 
     # --- Review Toolbox Methods ---
@@ -6124,11 +6154,15 @@ class FaultTreeApp:
 
     def focus_on_node(self, node):
         self.selected_node = node
-        self.redraw_canvas()
-        bbox = self.canvas.bbox("all")
-        if bbox:
-            self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
-            self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        try:
+            if hasattr(self, "canvas") and self.canvas.winfo_exists():
+                self.redraw_canvas()
+                bbox = self.canvas.bbox("all")
+                if bbox:
+                    self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
+                    self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        except tk.TclError:
+            pass
 
     # --- Review Toolbox Methods ---
     def start_peer_review(self):
@@ -6224,11 +6258,15 @@ class FaultTreeApp:
 
     def focus_on_node(self, node):
         self.selected_node = node
-        self.redraw_canvas()
-        bbox = self.canvas.bbox("all")
-        if bbox:
-            self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
-            self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        try:
+            if hasattr(self, "canvas") and self.canvas.winfo_exists():
+                self.redraw_canvas()
+                bbox = self.canvas.bbox("all")
+                if bbox:
+                    self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
+                    self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        except tk.TclError:
+            pass
 
     # --- Review Toolbox Methods ---
     def start_peer_review(self):
@@ -6292,11 +6330,15 @@ class FaultTreeApp:
 
     def focus_on_node(self, node):
         self.selected_node = node
-        self.redraw_canvas()
-        bbox = self.canvas.bbox("all")
-        if bbox:
-            self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
-            self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        try:
+            if hasattr(self, "canvas") and self.canvas.winfo_exists():
+                self.redraw_canvas()
+                bbox = self.canvas.bbox("all")
+                if bbox:
+                    self.canvas.xview_moveto(max(0, (node.x * self.zoom - self.canvas.winfo_width()/2) / bbox[2]))
+                    self.canvas.yview_moveto(max(0, (node.y * self.zoom - self.canvas.winfo_height()/2) / bbox[3]))
+        except tk.TclError:
+            pass
 
 ##########################################
 # Node Model 
@@ -6686,6 +6728,8 @@ class PageDiagram:
 
     def redraw_canvas(self):
         # Clear the canvas and draw the grid first.
+        if not hasattr(self, "canvas") or not self.canvas.winfo_exists():
+            return
         self.canvas.delete("all")
         self.draw_grid()
         

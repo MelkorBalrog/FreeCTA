@@ -16,8 +16,9 @@ class ReviewComment:
     node_id: int
     text: str
     reviewer: str
-    target_type: str = "node"  # 'node', 'requirement', or 'fmea'
+    target_type: str = "node"  # 'node', 'requirement', 'fmea', or 'fmea_field'
     req_id: str = ""
+    field: str = ""
     resolved: bool = False
     resolution: str = ""
 
@@ -28,6 +29,8 @@ class ReviewData:
     mode: str = "peer"  # 'peer' or 'joint'
     participants: List[ReviewParticipant] = field(default_factory=list)
     comments: List[ReviewComment] = field(default_factory=list)
+    fta_ids: List[int] = field(default_factory=list)
+    fmea_names: List[str] = field(default_factory=list)
     approved: bool = False
 
 class ParticipantDialog(simpledialog.Dialog):
@@ -68,6 +71,31 @@ class ParticipantDialog(simpledialog.Dialog):
             role = role_cb.get() if role_cb else "reviewer"
             result.append(ReviewParticipant(name, email, role))
         self.result = result
+
+
+class ReviewScopeDialog(simpledialog.Dialog):
+    def __init__(self, parent, app):
+        self.app = app
+        super().__init__(parent, title="Select Review Scope")
+
+    def body(self, master):
+        tk.Label(master, text="FTAs:").grid(row=0, column=0, padx=5, pady=5)
+        self.fta_list = tk.Listbox(master, selectmode=tk.MULTIPLE, height=6)
+        self.fta_list.grid(row=1, column=0, padx=5, pady=5)
+        for te in self.app.top_events:
+            label = te.user_name or te.description or f"Node {te.unique_id}"
+            self.fta_list.insert(tk.END, label)
+
+        tk.Label(master, text="FMEAs:").grid(row=0, column=1, padx=5, pady=5)
+        self.fmea_list = tk.Listbox(master, selectmode=tk.MULTIPLE, height=6)
+        self.fmea_list.grid(row=1, column=1, padx=5, pady=5)
+        for f in self.app.fmeas:
+            self.fmea_list.insert(tk.END, f['name'])
+
+    def apply(self):
+        fta_ids = [self.app.top_events[i].unique_id for i in self.fta_list.curselection()]
+        fmea_names = [self.app.fmeas[i]['name'] for i in self.fmea_list.curselection()]
+        self.result = (fta_ids, fmea_names)
 
 class ReviewToolbox(tk.Toplevel):
     def __init__(self, master, app):
@@ -180,6 +208,9 @@ class ReviewToolbox(tk.Toplevel):
                 node_name += f" [Req {c.req_id}]"
             elif c.target_type == "fmea":
                 node_name += " [FMEA]"
+            elif c.target_type == "fmea_field" and c.field:
+                node_name += f" [FMEA {c.field}]"
+
             status = "(resolved)" if c.resolved else ""
             self.comment_list.insert(tk.END, f"{c.comment_id}: {node_name} - {c.reviewer} {status}")
         self.update_buttons()
@@ -215,6 +246,11 @@ class ReviewToolbox(tk.Toplevel):
         elif target and target[0] == "fmea":
             node_id = target[1]
             c = ReviewComment(comment_id, node_id, text, reviewer, target_type="fmea")
+        elif target and target[0] == "fmea_field":
+            node_id = target[1]
+            c = ReviewComment(comment_id, node_id, text, reviewer,
+                             target_type="fmea_field", field=target[2])
+
         elif target and target[0] == "node":
             node_id = target[1]
             c = ReviewComment(comment_id, node_id, text, reviewer)
@@ -311,6 +347,34 @@ class ReviewToolbox(tk.Toplevel):
         elif target[0] == 'fmea':
             self.app.comment_target = ('fmea', target[1])
 
+class ReviewDocumentDialog(tk.Toplevel):
+    def __init__(self, master, app, review):
+        super().__init__(master)
+        self.app = app
+        self.review = review
+        self.title(f"Review Document - {review.name}")
+        self.text = tk.Text(self, wrap="word")
+        self.text.pack(fill=tk.BOTH, expand=True)
+        self.text.tag_config('heading', font=('TkDefaultFont', 10, 'bold'))
+        self.populate()
+
+    def populate(self):
+        self.text.delete("1.0", tk.END)
+        for nid in self.review.fta_ids:
+            node = self.app.find_node_by_id_all(nid)
+            if node:
+                self.text.insert(tk.END, f"FTA: {node.name}\n", "heading")
+                if node.description:
+                    self.text.insert(tk.END, node.description + "\n\n")
+        for name in self.review.fmea_names:
+            fmea = next((f for f in self.app.fmeas if f['name'] == name), None)
+            if fmea:
+                self.text.insert(tk.END, f"FMEA: {name}\n", "heading")
+                for entry in fmea['entries']:
+                    label = entry.description or entry.user_name or f"BE {entry.unique_id}"
+                    rpn = entry.fmea_severity * entry.fmea_occurrence * entry.fmea_detection
+                    self.text.insert(tk.END, f"Failure Mode: {label}\nRPN: {rpn}\n\n")
+
 class VersionCompareDialog(tk.Toplevel):
     def __init__(self, master, app):
         super().__init__(master)
@@ -318,32 +382,47 @@ class VersionCompareDialog(tk.Toplevel):
         self.title("Compare Versions")
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
-        tk.Label(self, text="Select version to compare with current:").pack(padx=5, pady=5)
-        self.version_var = tk.StringVar()
         names = [v["name"] for v in self.app.versions]
-        self.combo = ttk.Combobox(self, values=names, textvariable=self.version_var, state="readonly")
-        self.combo.pack(fill=tk.X, padx=5)
-        self.combo.bind("<<ComboboxSelected>>", self.compare)
+        tk.Label(self, text="Base version:").pack(padx=5, pady=2)
+        self.base_var = tk.StringVar()
+        self.base_combo = ttk.Combobox(self, values=names, textvariable=self.base_var, state="readonly")
+        self.base_combo.pack(fill=tk.X, padx=5)
 
-        self.diff_list = tk.Listbox(self, width=40)
-        self.diff_list.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        tk.Label(self, text="Compare with:").pack(padx=5, pady=2)
+        self.other_var = tk.StringVar()
+        self.other_combo = ttk.Combobox(self, values=names, textvariable=self.other_var, state="readonly")
+        self.other_combo.pack(fill=tk.X, padx=5)
+        self.other_combo.bind("<<ComboboxSelected>>", self.compare)
+
+        self.diff_text = tk.Text(self, width=60, height=20)
+        self.diff_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.diff_text.tag_config('change', foreground='red')
 
     def compare(self, event=None):
-        name = self.version_var.get()
-        for v in self.app.versions:
-            if v["name"] == name:
-                data = v["data"]
-                break
-        else:
+        base = self.base_var.get()
+        other = self.other_var.get()
+        if not base or not other:
             return
-        changed = self.app.calculate_diff_nodes(data)
-        self.diff_list.delete(0, tk.END)
+        data1 = data2 = None
+        for v in self.app.versions:
+            if v["name"] == base:
+                data1 = v["data"]
+            if v["name"] == other:
+                data2 = v["data"]
+        if data1 is None or data2 is None:
+            return
+        changed = self.app.calculate_diff_between(data1, data2)
+        self.diff_text.delete("1.0", tk.END)
         for nid in changed:
             node = self.app.find_node_by_id_all(nid)
             label = node.name if node else f"Node {nid}"
-            self.diff_list.insert(tk.END, label)
+            self.diff_text.insert(tk.END, label + "\n", "change")
         self.app.diff_nodes = changed
-        self.app.redraw_canvas()
+        try:
+            if hasattr(self.app, "canvas") and self.app.canvas.winfo_exists():
+                self.app.redraw_canvas()
+        except tk.TclError:
+            pass
 
     def on_close(self):
         self.app.diff_nodes = []
