@@ -25,6 +25,7 @@ class ReviewComment:
 @dataclass
 class ReviewData:
     name: str = ""
+    description: str = ""
     mode: str = "peer"  # 'peer' or 'joint'
     participants: List[ReviewParticipant] = field(default_factory=list)
     comments: List[ReviewComment] = field(default_factory=list)
@@ -113,6 +114,8 @@ class ReviewToolbox(tk.Toplevel):
         self.review_combo.bind("<<ComboboxSelected>>", self.on_review_change)
         self.status_var = tk.StringVar()
         tk.Label(review_frame, textvariable=self.status_var).pack(side=tk.LEFT, padx=5)
+        self.desc_var = tk.StringVar()
+        tk.Label(self, textvariable=self.desc_var, wraplength=400, justify="left").pack(fill=tk.X, padx=5)
 
         user_frame = tk.Frame(self)
         user_frame.pack(fill=tk.X)
@@ -165,9 +168,11 @@ class ReviewToolbox(tk.Toplevel):
         if self.app.review_data:
             self.review_var.set(self.app.review_data.name)
             self.status_var.set("approved" if self.app.review_data.approved else "open")
+            self.desc_var.set(self.app.review_data.description)
         else:
             self.review_var.set("")
             self.status_var.set("")
+            self.desc_var.set("")
 
     def on_review_change(self, event=None):
         name = self.review_var.get()
@@ -176,6 +181,10 @@ class ReviewToolbox(tk.Toplevel):
                 self.app.review_data = r
                 break
         self.status_var.set("approved" if self.app.review_data and self.app.review_data.approved else "open")
+        if self.app.review_data:
+            self.desc_var.set(self.app.review_data.description)
+        else:
+            self.desc_var.set("")
         self.refresh_comments()
         self.refresh_targets()
         self.update_buttons()
@@ -201,6 +210,7 @@ class ReviewToolbox(tk.Toplevel):
                 node_name += " [FMEA]"
             elif c.target_type == "fmea_field" and c.field:
                 node_name += f" [FMEA {c.field}]"
+
             status = "(resolved)" if c.resolved else ""
             self.comment_list.insert(tk.END, f"{c.comment_id}: {node_name} - {c.reviewer} {status}")
         self.update_buttons()
@@ -240,6 +250,7 @@ class ReviewToolbox(tk.Toplevel):
             node_id = target[1]
             c = ReviewComment(comment_id, node_id, text, reviewer,
                              target_type="fmea_field", field=target[2])
+
         elif target and target[0] == "node":
             node_id = target[1]
             c = ReviewComment(comment_id, node_id, text, reviewer)
@@ -363,7 +374,6 @@ class ReviewDocumentDialog(tk.Toplevel):
                     label = entry.description or entry.user_name or f"BE {entry.unique_id}"
                     rpn = entry.fmea_severity * entry.fmea_occurrence * entry.fmea_detection
                     self.text.insert(tk.END, f"Failure Mode: {label}\nRPN: {rpn}\n\n")
-
 
 class VersionCompareDialog(tk.Toplevel):
     def __init__(self, master, app):
