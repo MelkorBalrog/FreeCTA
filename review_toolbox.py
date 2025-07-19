@@ -364,7 +364,9 @@ class ReviewToolbox(tk.Toplevel):
             self.app.selected_node = node
             self.app.focus_on_node(node)
         if target[0] == 'requirement':
-            self.app.comment_target = ('requirement', target[2])
+            # store both node id and requirement id so add_comment can
+            # create the ReviewComment correctly
+            self.app.comment_target = ('requirement', target[1], target[2])
         elif target[0] == 'fmea':
             self.app.comment_target = ('fmea', target[1])
 
