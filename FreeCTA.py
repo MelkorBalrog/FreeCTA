@@ -1065,7 +1065,13 @@ class ADRiskAssessmentHelper:
                 s = 3
             s = max(1, min(5, s))
             
-            final = round((combined + s) / 2)
+            try:
+                c = int(node.controllability)
+            except (TypeError, ValueError):
+                c = 3
+            c = max(1, min(5, c))
+
+            final = round((combined + s + c) / 3)
             final = max(1, min(5, final))
             node.quant_value = final
             node.display_label = f"Prototype Assurance Level (PAL) [{level_map[final]}]"
@@ -1074,7 +1080,8 @@ class ADRiskAssessmentHelper:
                 f"Composite Assurance from gates = {composite_assurance if composite_assurance is not None else 'N/A'}\n"
                 f"Combined (average) = {combined}\n"
                 f"Node Severity (TOP EVENT) = {s}\n"
-                f"Final Assurance = (({combined} + {s}) /2) = {final}"
+                f"Node Controllability = {c}\n"
+                f"Final Assurance = (({combined} + {s} + {c}) /3) = {final}"
             )
             return final
         else:
@@ -1667,6 +1674,14 @@ class EditNodeDialog(simpledialog.Dialog):
                 self.sev_combo.grid(row=row_next, column=1, padx=5, pady=5)
                 row_next += 1
 
+                ttk.Label(master, text="Controllability (1-5):").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.cont_combo = ttk.Combobox(master, values=["1", "2", "3", "4", "5"],
+                                              state="readonly", width=5, font=dialog_font)
+                current_cont = self.node.controllability if self.node.controllability is not None else 3
+                self.cont_combo.set(str(int(current_cont)))
+                self.cont_combo.grid(row=row_next, column=1, padx=5, pady=5)
+                row_next += 1
+
                 ttk.Label(master, text="Safety Goal Description:").grid(row=row_next, column=0, padx=5, pady=5, sticky="ne")
                 self.safety_goal_text = tk.Text(master, width=40, height=3, font=dialog_font, wrap="word")
                 self.safety_goal_text.insert("1.0", self.node.safety_goal_description)
@@ -2018,6 +2033,13 @@ class EditNodeDialog(simpledialog.Dialog):
                     target_node.severity = sev
                 except ValueError:
                     messagebox.showerror("Invalid Input", "Select a severity between 1 and 5.")
+                try:
+                    cont = float(self.cont_combo.get().strip())
+                    if not (1 <= cont <= 5):
+                        raise ValueError
+                    target_node.controllability = cont
+                except ValueError:
+                    messagebox.showerror("Invalid Input", "Select a controllability between 1 and 5.")
                 target_node.is_page = False
                 target_node.safety_goal_description = self.safety_goal_text.get("1.0", "end-1c")
                 target_node.safety_goal_asil = self.sg_asil_var.get().strip()
@@ -2101,6 +2123,7 @@ class FaultTreeApp:
         edit_menu.add_command(label="Edit Value", command=self.edit_value)
         edit_menu.add_command(label="Edit Gate Type", command=self.edit_gate_type, accelerator="Ctrl+G")
         edit_menu.add_command(label="Edit Severity", command=self.edit_severity, accelerator="Ctrl+E")
+        edit_menu.add_command(label="Edit Controllability", command=self.edit_controllability)
         edit_menu.add_command(label="Edit Page Flag", command=self.edit_page_flag)
         menubar.add_cascade(label="Edit", menu=edit_menu)
         process_menu = tk.Menu(menubar, tearoff=0)
@@ -2660,10 +2683,11 @@ class FaultTreeApp:
             disc = AD_RiskAssessment_Helper.discretize_level(node.quant_value)
             assurance_descr = self.assurance_level_text(disc)
             severity_str = f"{node.severity}" if node.severity is not None else "N/A"
+            controllability_str = f"{node.controllability}" if node.controllability is not None else "N/A"
             header += (
                 f"Prototype Assurance Level (PAL) Explanation:<br/>"
                 f"Based on the aggregated scores of its child nodes, this top event has been assigned an Prototype Assurance Level (PAL) of <b>{assurance_descr}</b> "
-                f"with a severity rating of <b>{severity_str}</b>.<br/><br/>"
+                f"with a severity rating of <b>{severity_str}</b> and controllability <b>{controllability_str}</b>.<br/><br/>"
             )
             # Append the dynamically generated recommendations.
             header += self.generate_recommendations_for_top_event(node) + "<br/>"
@@ -2710,9 +2734,10 @@ class FaultTreeApp:
         if node.node_type.upper() == "TOP EVENT" and not suppress_top_event_recommendations:
             assurance_descr = self.assurance_level_text(level)
             severity_str = f"{node.severity}" if node.severity is not None else "N/A"
+            controllability_str = f"{node.controllability}" if node.controllability is not None else "N/A"
             header = (
                 f"Prototype Assurance Level (PAL) Explanation:\n"
-                f"This top event is assigned an Prototype Assurance Level (PAL) of '{assurance_descr}' with a severity rating of {severity_str}.\n\n"
+                f"This top event is assigned an Prototype Assurance Level (PAL) of '{assurance_descr}' with a severity rating of {severity_str} and controllability {controllability_str}.\n\n"
             )
             # Instead of showing all dynamic recommendations, select only those triggered by the description.
             rec_from_desc = self.get_recommendation_from_description(node.description, level)
@@ -2754,6 +2779,7 @@ class FaultTreeApp:
         level = AD_RiskAssessment_Helper.discretize_level(quant)
         assurance_level = self.assurance_level_text(level)
         severity = event.severity if event.severity is not None else "N/A"
+        controllability = event.controllability if event.controllability is not None else "N/A"
         
         # Get dynamic recommendations from the dictionary.
         rec = dynamic_recommendations.get(level, {})
@@ -2770,7 +2796,7 @@ class FaultTreeApp:
             f"Description:<br/>{top_description}<br/><br/>"
             f"Prototype Assurance Level (PAL) Explanation:<br/>"
             f"This top event is assigned an Prototype Assurance Level (PAL) of <b>{assurance_level}</b> "
-            f"with a severity rating of <b>{severity}</b>.<br/>"
+            f"with a severity rating of <b>{severity}</b> and controllability <b>{controllability}</b>.<br/>"
             f"Rationale for Severity: {top_rationale}<br/><br/>"
             #"Dynamic Recommendations:<br/>"
             #f"<b>Testing Requirements:</b> {test_req}<br/>"
@@ -3103,7 +3129,7 @@ class FaultTreeApp:
         """
         (Optional) If you still want to have a compact table of per-event recommendations,
         this function builds a multiline LongTable with columns:
-        [Event Name, Prototype Assurance Level (PAL), Severity, Description, Rationale, Dynamic Recommendations].
+        [Event Name, Prototype Assurance Level (PAL), Severity, Controllability, Description, Rationale, Dynamic Recommendations].
         (Not used in the final report if you prefer only the consolidated argumentation.)
         """
         style_sheet = getSampleStyleSheet()
@@ -3127,6 +3153,7 @@ class FaultTreeApp:
             Paragraph("<b>Event Name</b>", header_style),
             Paragraph("<b>Prototype Assurance Level (PAL)</b>", header_style),
             Paragraph("<b>Severity</b>", header_style),
+            Paragraph("<b>Controllability</b>", header_style),
             Paragraph("<b>Description</b>", header_style),
             Paragraph("<b>Rationale</b>", header_style),
             Paragraph("<b>Recommendations</b>", header_style),
@@ -3140,6 +3167,7 @@ class FaultTreeApp:
             else:
                 assurance_str = "N/A"
             severity_str = str(event.severity) if event.severity is not None else "N/A"
+            controllability_str = str(event.controllability) if event.controllability is not None else "N/A"
             desc_text = (event.description or "N/A").strip().replace("\n", "<br/>")
             rat_text = (event.rationale or "N/A").strip().replace("\n", "<br/>")
             rec_text = app.generate_argumentation_report(event)
@@ -3150,12 +3178,13 @@ class FaultTreeApp:
                 Paragraph(event_name, body_style),
                 Paragraph(assurance_str, body_style),
                 Paragraph(severity_str, body_style),
+                Paragraph(controllability_str, body_style),
                 Paragraph(desc_text, body_style),
                 Paragraph(rat_text, body_style),
                 Paragraph(rec_text, body_style),
             ])
         
-        col_widths = [100, 60, 40, 150, 150, 200]
+        col_widths = [100, 60, 40, 40, 150, 150, 200]
         table = LongTable(data, colWidths=col_widths, repeatRows=1, splitByRow=1)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.orange),
@@ -3280,18 +3309,23 @@ class FaultTreeApp:
         else:
             assurance_descr = "Very Low"
         
-        # Use the top event's severity (or default to 5.0)
+        # Use the top event's severity and controllability (defaults if missing)
         try:
             overall_severity = float(top_event.severity) if top_event.severity is not None else 5.0
         except Exception:
             overall_severity = 5.0
+        try:
+            overall_cont = float(top_event.controllability) if top_event.controllability is not None else 3.0
+        except Exception:
+            overall_cont = 3.0
         
         # Build the structured summary sentence
         summary_sentence = (
             f"Top-Level Event: {top_event.name}\n\n"
             f"Assurance Requirement:\n"
             f"  - Required Prototype Assurance Level (PAL): {assurance_descr} (Score: {overall_assurance:.2f})\n"
-            f"  - Severity Rating: {overall_severity:.2f}\n\n"
+            f"  - Severity Rating: {overall_severity:.2f}\n"
+            f"  - Controllability: {overall_cont:.2f}\n\n"
             f"Rationale:\n"
             f"  Based on analysis of its base nodes, the following factors contributed to this level:\n"
             f"{base_summary}"
@@ -4063,6 +4097,7 @@ class FaultTreeApp:
         menu.add_command(label="Edit Value", command=lambda: self.edit_value())
         menu.add_command(label="Edit Gate Type", command=lambda: self.edit_gate_type())
         menu.add_command(label="Edit Severity", command=lambda: self.edit_severity())
+        menu.add_command(label="Edit Controllability", command=lambda: self.edit_controllability())
         menu.add_command(label="Edit Page Flag", command=lambda: self.edit_page_flag())
         menu.add_separator()
         menu.add_command(label="Add Confidence", command=lambda: self.add_node_of_type("Confidence Level"))
@@ -5523,6 +5558,20 @@ class FaultTreeApp:
         else:
             messagebox.showwarning("Edit Severity", "Select a Top Event node.")
 
+    def edit_controllability(self):
+        if self.selected_node and self.selected_node.node_type.upper() == "TOP EVENT":
+            try:
+                new_c = simpledialog.askfloat("Edit Controllability", "Enter new controllability (1-5):", initialvalue=self.selected_node.controllability)
+                if new_c is not None and 1 <= new_c <= 5:
+                    self.selected_node.controllability = new_c
+                    self.update_views()
+                else:
+                    messagebox.showerror("Error", "Controllability must be between 1 and 5.")
+            except Exception:
+                messagebox.showerror("Error", "Invalid input.")
+        else:
+            messagebox.showwarning("Edit Controllability", "Select a Top Event node.")
+
     def edit_page_flag(self):
         if not self.selected_node:
             messagebox.showwarning("Edit Page Flag", "Select a node first.")
@@ -6155,6 +6204,7 @@ class FaultTreeNode:
         self.x = 50
         self.y = 50
         self.severity = 5 if node_type.upper() == "TOP EVENT" else None
+        self.controllability = 3 if node_type.upper() == "TOP EVENT" else None
         self.input_subtype = None
         self.display_label = ""
         self.equation = ""
@@ -6199,6 +6249,7 @@ class FaultTreeNode:
             "x": self.x,
             "y": self.y,
             "severity": self.severity,
+            "controllability": self.controllability,
             "input_subtype": self.input_subtype,
             "is_page": self.is_page,
             "is_primary_instance": self.is_primary_instance,
@@ -6236,6 +6287,7 @@ class FaultTreeNode:
         node.x = data.get("x", 50)
         node.y = data.get("y", 50)
         node.severity = data.get("severity", 5) if node.node_type.upper() == "TOP EVENT" else None
+        node.controllability = data.get("controllability", 3) if node.node_type.upper() == "TOP EVENT" else None
         node.input_subtype = data.get("input_subtype", None)
         node.is_page = boolify(data.get("is_page", False), False)
         node.is_primary_instance = boolify(data.get("is_primary_instance", True), True)
