@@ -626,17 +626,25 @@ class VersionCompareDialog(tk.Toplevel):
         self.other_combo.pack(fill=tk.X, padx=5)
         self.other_combo.bind("<<ComboboxSelected>>", self.compare)
 
-        self.diff_canvas = tk.Canvas(self, width=600, height=300)
-        vbar = tk.Scrollbar(self, orient=tk.VERTICAL, command=self.diff_canvas.yview)
-        self.diff_canvas.configure(yscrollcommand=vbar.set)
+        # canvas to display FTA differences
+        canvas_frame = tk.Frame(self)
+        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.tree_canvas = tk.Canvas(canvas_frame, width=600, height=300, bg="white")
+        vbar = tk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self.tree_canvas.yview)
+        self.tree_canvas.configure(yscrollcommand=vbar.set)
         vbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.diff_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self.diff_frame = tk.Frame(self.diff_canvas)
-        self.diff_canvas.create_window((0, 0), window=self.diff_frame, anchor="nw")
-        self.diff_frame.bind(
-            "<Configure>",
-            lambda e: self.diff_canvas.configure(scrollregion=self.diff_canvas.bbox("all")),
-        )
+        self.tree_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # table for FMEA differences
+        columns = ["FMEA", "Failure Mode", "Status"]
+        self.fmea_tree = ttk.Treeview(self, columns=columns, show="headings")
+        for col in columns:
+            self.fmea_tree.heading(col, text=col)
+            self.fmea_tree.column(col, width=150, anchor="center")
+        self.fmea_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.fmea_tree.tag_configure("added", background="#cce5ff")
+        self.fmea_tree.tag_configure("removed", background="#f8d7da")
+        self.fmea_tree.tag_configure("existing", background="#e2e3e5")
 
     def draw_small_tree(self, canvas, node):
         def draw_connections(n):
@@ -699,44 +707,113 @@ class VersionCompareDialog(tk.Toplevel):
                 data2 = v["data"]
         if data1 is None or data2 is None:
             return
+
         map1 = self.app.node_map_from_data(data1["top_events"])
         map2 = self.app.node_map_from_data(data2["top_events"])
-        self.app.diff_nodes = []
-        for w in self.diff_frame.winfo_children():
-            w.destroy()
-        row = 0
-        changed_nodes = []
-        for nid, new_nd in map2.items():
-            old_nd = map1.get(nid)
-            if old_nd is None:
-                changed_nodes.append(("added", nid, None, new_nd))
-            elif json.dumps(old_nd, sort_keys=True) != json.dumps(new_nd, sort_keys=True):
-                changed_nodes.append(("modified", nid, old_nd, new_nd))
-        for nid, old_nd in map1.items():
-            if nid not in map2:
-                changed_nodes.append(("removed", nid, old_nd, None))
+
+        status = {}
+        for nid in set(map1) | set(map2):
+            if nid in map1 and nid not in map2:
+                status[nid] = "removed"
+            elif nid in map2 and nid not in map1:
+                status[nid] = "added"
+            else:
+                if json.dumps(map1[nid], sort_keys=True) != json.dumps(map2[nid], sort_keys=True):
+                    status[nid] = "added"
+                else:
+                    status[nid] = "existing"
+
         FaultTreeNodeCls = getattr(sys.modules.get('FreeCTA'), 'FaultTreeNode', None)
-        for change, nid, old_nd, new_nd in changed_nodes:
-            label = f"Node {nid} {change}"
-            tk.Label(self.diff_frame, text=label, anchor="w").grid(row=row, column=0, sticky="w", padx=5, pady=2)
-            row += 1
-            frame = tk.Frame(self.diff_frame)
-            frame.grid(row=row, column=0, padx=5, pady=2, sticky="w")
-            if old_nd and FaultTreeNodeCls:
-                c1 = tk.Canvas(frame, width=120, height=80, bg="white")
-                c1.pack(side=tk.LEFT)
-                self.draw_small_tree(c1, FaultTreeNodeCls.from_dict(old_nd))
-            if new_nd and FaultTreeNodeCls:
-                c2 = tk.Canvas(frame, width=120, height=80, bg="white")
-                c2.pack(side=tk.LEFT, padx=5)
-                self.draw_small_tree(c2, FaultTreeNodeCls.from_dict(new_nd))
-            row += 1
-            self.app.diff_nodes.append(nid)
-        try:
-            if hasattr(self.app, "canvas") and self.app.canvas.winfo_exists():
-                self.app.redraw_canvas()
-        except tk.TclError:
-            pass
+        if not FaultTreeNodeCls:
+            return
+
+        new_roots = [FaultTreeNodeCls.from_dict(t) for t in data2["top_events"]]
+        removed_ids = [nid for nid, st in status.items() if st == "removed"]
+        for rid in removed_ids:
+            nd = map1[rid]
+            new_roots.append(FaultTreeNodeCls.from_dict(nd))
+
+        self.tree_canvas.delete("all")
+
+        def draw_connections(n):
+            region_width = 60
+            parent_bottom = (n.x, n.y + 20)
+            for i, ch in enumerate(n.children):
+                parent_conn = (
+                    n.x - region_width / 2 + (i + 0.5) * (region_width / len(n.children)),
+                    parent_bottom[1],
+                )
+                child_top = (ch.x, ch.y - 25)
+                if self.app.fta_drawing_helper:
+                    self.app.fta_drawing_helper.draw_90_connection(
+                        self.tree_canvas, parent_conn, child_top, outline_color="gray", line_width=1
+                    )
+                draw_connections(ch)
+
+        def draw_node(n):
+            st = status.get(n.unique_id, "existing")
+            color = "dimgray"
+            if st == "added":
+                color = "blue"
+            elif st == "removed":
+                color = "red"
+            fill = self.app.get_node_fill_color(n)
+            eff_x, eff_y = n.x, n.y
+            top_text = n.node_type
+            bottom_text = n.name
+            typ = n.node_type.upper()
+            if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
+                if n.gate_type and n.gate_type.upper() == "OR":
+                    self.app.fta_drawing_helper.draw_rotated_or_gate_shape(
+                        self.tree_canvas, eff_x, eff_y, scale=20,
+                        top_text=top_text, bottom_text=bottom_text,
+                        fill=fill, outline_color=color, line_width=2
+                    )
+                else:
+                    self.app.fta_drawing_helper.draw_rotated_and_gate_shape(
+                        self.tree_canvas, eff_x, eff_y, scale=20,
+                        top_text=top_text, bottom_text=bottom_text,
+                        fill=fill, outline_color=color, line_width=2
+                    )
+            else:
+                self.app.fta_drawing_helper.draw_circle_event_shape(
+                    self.tree_canvas, eff_x, eff_y, 22,
+                    top_text=top_text, bottom_text=bottom_text,
+                    fill=fill, outline_color=color, line_width=2
+                )
+            for ch in n.children:
+                draw_node(ch)
+
+        for r in new_roots:
+            draw_connections(r)
+            draw_node(r)
+
+        self.tree_canvas.config(scrollregion=self.tree_canvas.bbox("all"))
+
+        # ----- FMEA diff -----
+        self.fmea_tree.delete(*self.fmea_tree.get_children())
+        fmea1 = {f["name"]: f for f in data1.get("fmeas", [])}
+        fmea2 = {f["name"]: f for f in data2.get("fmeas", [])}
+        all_names = set(fmea1) | set(fmea2)
+        for name in sorted(all_names):
+            entries1 = {e["unique_id"]: e for e in fmea1.get(name, {}).get("entries", [])}
+            entries2 = {e["unique_id"]: e for e in fmea2.get(name, {}).get("entries", [])}
+            for uid in set(entries1) | set(entries2):
+                if uid in entries1 and uid not in entries2:
+                    st = "removed"
+                    entry = entries1[uid]
+                elif uid in entries2 and uid not in entries1:
+                    st = "added"
+                    entry = entries2[uid]
+                else:
+                    if json.dumps(entries1[uid], sort_keys=True) != json.dumps(entries2[uid], sort_keys=True):
+                        st = "added"
+                        entry = entries2[uid]
+                    else:
+                        st = "existing"
+                        entry = entries2[uid]
+                failure = entry.get("description", entry.get("user_name", f"BE {uid}"))
+                self.fmea_tree.insert("", "end", values=[name, failure, st], tags=(st,))
 
     def on_close(self):
         self.app.diff_nodes = []

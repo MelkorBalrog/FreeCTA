@@ -7,7 +7,7 @@ Risk & Assurance Gate Calculator for Autonomous Systems
 Overview of the Provided Risk Assessment Approach
 -------------------------------
 This tool is a semi-quantitative method designed to assess the safety assurance 
-of an autonomous system’s subsystems. It produces an Autonomous Evaluated Risk Level (AERL) (on a scale 
+of an autonomous system’s subsystems. It produces an Prototype Assurance Level (PAL) (on a scale 
 from 1 to 5) using qualitative labels that describe the required level of safety 
 measures. For example, the scale is defined as:
 
@@ -35,9 +35,9 @@ For basic (leaf) nodes the provided ratings are used directly.
 Computation Logic and Manual Calculation
 -------------------------------
 
-### 1. Deriving an Autonomous Evaluated Risk Level (AERL) from Base Inputs
+### 1. Deriving an Prototype Assurance Level (PAL) from Base Inputs
 When only Confidence and Robustness values are provided, the tool “inverts” these 
-inputs to yield a base Autonomous Evaluated Risk Level (AERL). In this method, low confidence and low robustness 
+inputs to yield a base Prototype Assurance Level (PAL). In this method, low confidence and low robustness 
 result in a high assurance requirement (i.e. “High+”), while high confidence and high robustness 
 yield a low assurance requirement (i.e. “Extra Low”).
 
@@ -54,13 +54,13 @@ yield a low assurance requirement (i.e. “Extra Low”).
 *Interpretation:*  
 – Very poor testing and design (i.e. both “Extra Low”) lead to a “High+” assurance requirement.  
 – Excellent testing and design (i.e. both “High+”) result in an “Extra Low” requirement.  
-– Mixed values yield intermediate Autonomous Evaluated Risk Levels (AERL).
+– Mixed values yield intermediate Prototype Assurance Levels (PAL).
 
 ---
 
-### 2. Aggregating Autonomous Evaluated Risk Levels (AERL) from Child Nodes
+### 2. Aggregating Prototype Assurance Levels (PAL) from Child Nodes
 
-When a parent node aggregates Autonomous Evaluated Risk Levels (AERL) from its children, the aggregation method 
+When a parent node aggregates Prototype Assurance Levels (PAL) from its children, the aggregation method 
 depends on the logical gate connecting them:
 
 #### For an **AND Gate**:
@@ -88,9 +88,9 @@ to an ordered scale) is used. A strong alternative (e.g. “High+”) can partia
 
 ---
 
-### 3. Decomposing a Parent Autonomous Evaluated Risk Level (AERL) into Child Targets
+### 3. Decomposing a Parent Prototype Assurance Level (PAL) into Child Targets
 
-A parent node’s overall assurance requirement can be decomposed into target Autonomous Evaluated Risk Levels (AERL) 
+A parent node’s overall assurance requirement can be decomposed into target Prototype Assurance Levels (PAL) 
 for its children. The following guidelines serve as a reference for common decompositions:
 
 **Decomposition Guidelines**
@@ -111,7 +111,7 @@ for its children. The following guidelines serve as a reference for common decom
 - **Parent Assurance: Extra Low**  
   – Both children should be “Extra Low.”
 
-These rules ensure that when children’s Autonomous Evaluated Risk Levels (AERL) are aggregated (using the AND or OR rules), 
+These rules ensure that when children’s Prototype Assurance Levels (PAL) are aggregated (using the AND or OR rules), 
 they “reconstruct” the parent’s overall requirement.
 
 ---
@@ -119,16 +119,16 @@ they “reconstruct” the parent’s overall requirement.
 ### 4. Adjusting Assurance Based on Severity
 
 Severity reflects the potential impact of a subsystem’s failure. It is used to adjust the computed 
-Autonomous Evaluated Risk Level (AERL) as follows:
+Prototype Assurance Level (PAL) as follows:
 
 - **General Rule (for most nodes):**  
-  **Final Autonomous Evaluated Risk Level (AERL) = (Aggregated Child Assurance + Highest Parent Severity) ÷ 2**  
+  **Final Prototype Assurance Level (PAL) = (Aggregated Child Assurance + Highest Parent Severity) ÷ 2**  
   A higher severity (indicating more catastrophic consequences) increases the overall assurance requirement.
 
 - **For Vehicle Level Functions:**  
   The node’s own severity is used instead of the parent’s. An example adjustment formula is:  
   **Adjusted Assurance = (2 × Computed Assurance) – (Node’s Own Severity)**  
-  This modification increases the Autonomous Evaluated Risk Level (AERL) when the potential impact is high.
+  This modification increases the Prototype Assurance Level (PAL) when the potential impact is high.
 
 ---
 
@@ -192,10 +192,10 @@ The following tables map raw numeric inputs to discrete levels that are then tra
   - **AND Gate:** Inputs are combined using a “complement product” approach.
 
 - **Adjustment with Severity:**  
-  The final Autonomous Evaluated Risk Level (AERL) is adjusted by incorporating the severity (using the highest parent severity unless the node is a Vehicle Level Function, in which case its own severity is used).
+  The final Prototype Assurance Level (PAL) is adjusted by incorporating the severity (using the highest parent severity unless the node is a Vehicle Level Function, in which case its own severity is used).
 
 - **Decomposition and Aggregation:**  
-  The parent node’s assurance requirement can be decomposed into target Autonomous Evaluated Risk Levels (AERL) for its children (see Decomposition Guidelines above), and child Autonomous Evaluated Risk Levels (AERL) are aggregated (using the AND/OR rules) to reconstruct the parent’s overall requirement.
+  The parent node’s assurance requirement can be decomposed into target Prototype Assurance Levels (PAL) for its children (see Decomposition Guidelines above), and child Prototype Assurance Levels (PAL) are aggregated (using the AND/OR rules) to reconstruct the parent’s overall requirement.
 
 -------------------------------
 References
@@ -254,7 +254,7 @@ VALID_SUBTYPES = {
     "Robustness": ["Function", "Human Task"],
     "Maturity": ["Functionality"],
     "Rigor": ["Capability", "Safety Mechanism"],
-    "Autonomous Evaluated Risk Level (AERL)": ["Vehicle Level Function"]
+    "Prototype Assurance Level (PAL)": ["Vehicle Level Function"]
 }
 
 ##########################################
@@ -880,7 +880,7 @@ class ADRiskAssessmentHelper:
 
     def aggregate_assurance_and(self,child_levels):
         """
-        Combine a list of children’s Autonomous Evaluated Risk Levels (AERL) for an AND gate,
+        Combine a list of children’s Prototype Assurance Levels (PAL) for an AND gate,
         using pairwise lookups in ASSURANCE_AGGREGATION_AND.
         """
         if not child_levels:
@@ -901,7 +901,7 @@ class ADRiskAssessmentHelper:
     def derive_assurance_from_base(self,conf_values, rob_values):
         """
         Given lists of confidence and robustness integers (each 1..5),
-        compute a single 'inverted' Autonomous Evaluated Risk Level (AERL) from 1..5,
+        compute a single 'inverted' Prototype Assurance Level (PAL) from 1..5,
         where low confidence/robustness inputs produce a high assurance value.
         """
         if not conf_values or not rob_values:
@@ -1068,7 +1068,7 @@ class ADRiskAssessmentHelper:
             final = round((combined + s) / 2)
             final = max(1, min(5, final))
             node.quant_value = final
-            node.display_label = f"Autonomous Evaluated Risk Level (AERL) [{level_map[final]}]"
+            node.display_label = f"Prototype Assurance Level (PAL) [{level_map[final]}]"
             node.detailed_equation = (
                 f"Base Assurance from children = {base_assurance if base_assurance is not None else 'N/A'}\n"
                 f"Composite Assurance from gates = {composite_assurance if composite_assurance is not None else 'N/A'}\n"
@@ -1079,7 +1079,7 @@ class ADRiskAssessmentHelper:
             return final
         else:
             node.quant_value = combined
-            node.display_label = f"Autonomous Evaluated Risk Level (AERL) [{level_map[combined]}]"
+            node.display_label = f"Prototype Assurance Level (PAL) [{level_map[combined]}]"
             node.detailed_equation = (
                 f"Base Assurance from children = {base_assurance if base_assurance is not None else 'N/A'}\n"
                 f"Composite Assurance from gates = {composite_assurance if composite_assurance is not None else 'N/A'}\n"
@@ -1729,7 +1729,7 @@ class EditNodeDialog(simpledialog.Dialog):
         elif "ROBUSTNESS" in self.node.node_type.upper():
             base_name = "Robustness"
         elif "TOP EVENT" in self.node.node_type.upper():
-            base_name = "Autonomous Evaluated Risk Level (AERL)"
+            base_name = "Prototype Assurance Level (PAL)"
         elif "GATE" in self.node.node_type.upper() or "RIGOR" in self.node.node_type.upper():
             base_name = "Rigor"
         else:
@@ -2104,7 +2104,7 @@ class FaultTreeApp:
         edit_menu.add_command(label="Edit Page Flag", command=self.edit_page_flag)
         menubar.add_cascade(label="Edit", menu=edit_menu)
         process_menu = tk.Menu(menubar, tearoff=0)
-        process_menu.add_command(label="Calc Autonomous Evaluated Risk Level (AERL)", command=self.calculate_overall, accelerator="Ctrl+R")
+        process_menu.add_command(label="Calc Prototype Assurance Level (PAL)", command=self.calculate_overall, accelerator="Ctrl+R")
         process_menu.add_command(label="Calc PMHF", command=self.calculate_pmfh, accelerator="Ctrl+M")
         menubar.add_cascade(label="Process", menu=process_menu)
         view_menu = tk.Menu(menubar, tearoff=0)
@@ -2194,10 +2194,10 @@ class FaultTreeApp:
         self.update_views()
 
     def generate_recommendations_for_top_event(self, node):
-        # Determine the Autonomous Evaluated Risk Level (AERL) based on the node’s quantitative score.
+        # Determine the Prototype Assurance Level (PAL) based on the node’s quantitative score.
         level = AD_RiskAssessment_Helper.discretize_level(node.quant_value) if node.quant_value is not None else 1
         rec = dynamic_recommendations.get(level, {})
-        rec_text = f"<b>Recommendations for Autonomous Evaluated Risk Level (AERL) {level}:</b><br/>"
+        rec_text = f"<b>Recommendations for Prototype Assurance Level (PAL) {level}:</b><br/>"
         for category in ["Testing Requirements", "IFTD Responsibilities", "Preventive Maintenance Actions", "Relevant AVSC Guidelines"]:
             if category in rec:
                 rec_text += f"<b>{category}:</b><br/><ul><li>{rec[category]}</li></ul><br/>"
@@ -2661,8 +2661,8 @@ class FaultTreeApp:
             assurance_descr = self.assurance_level_text(disc)
             severity_str = f"{node.severity}" if node.severity is not None else "N/A"
             header += (
-                f"Autonomous Evaluated Risk Level (AERL) Explanation:<br/>"
-                f"Based on the aggregated scores of its child nodes, this top event has been assigned an Autonomous Evaluated Risk Level (AERL) of <b>{assurance_descr}</b> "
+                f"Prototype Assurance Level (PAL) Explanation:<br/>"
+                f"Based on the aggregated scores of its child nodes, this top event has been assigned an Prototype Assurance Level (PAL) of <b>{assurance_descr}</b> "
                 f"with a severity rating of <b>{severity_str}</b>.<br/><br/>"
             )
             # Append the dynamically generated recommendations.
@@ -2689,7 +2689,7 @@ class FaultTreeApp:
                 continue
             subtype = n.input_subtype if n.input_subtype is not None else (
                 VALID_SUBTYPES["Confidence"][0] if n.node_type.upper() == "CONFIDENCE LEVEL"
-                else VALID_SUBTYPES.get("Autonomous Evaluated Risk Level (AERL)", ["Default"])[0]
+                else VALID_SUBTYPES.get("Prototype Assurance Level (PAL)", ["Default"])[0]
             )
             desc = n.description.strip() if n.description else "No description provided."
             node_definitions += f"Node {uid}: {n.name}<br/>"
@@ -2711,8 +2711,8 @@ class FaultTreeApp:
             assurance_descr = self.assurance_level_text(level)
             severity_str = f"{node.severity}" if node.severity is not None else "N/A"
             header = (
-                f"Autonomous Evaluated Risk Level (AERL) Explanation:\n"
-                f"This top event is assigned an Autonomous Evaluated Risk Level (AERL) of '{assurance_descr}' with a severity rating of {severity_str}.\n\n"
+                f"Prototype Assurance Level (PAL) Explanation:\n"
+                f"This top event is assigned an Prototype Assurance Level (PAL) of '{assurance_descr}' with a severity rating of {severity_str}.\n\n"
             )
             # Instead of showing all dynamic recommendations, select only those triggered by the description.
             rec_from_desc = self.get_recommendation_from_description(node.description, level)
@@ -2746,7 +2746,7 @@ class FaultTreeApp:
         """
         Generate dynamic assurance-level argumentation for a top-level event.
         In this version, the event’s description is added at the very beginning,
-        followed by the Autonomous Evaluated Risk Level (AERL) explanation (including the rationale behind its severity)
+        followed by the Prototype Assurance Level (PAL) explanation (including the rationale behind its severity)
         and the dynamic recommendations.
         """
         # Ensure a quant_value exists; default to 1.
@@ -2768,8 +2768,8 @@ class FaultTreeApp:
         
         text = (
             f"Description:<br/>{top_description}<br/><br/>"
-            f"Autonomous Evaluated Risk Level (AERL) Explanation:<br/>"
-            f"This top event is assigned an Autonomous Evaluated Risk Level (AERL) of <b>{assurance_level}</b> "
+            f"Prototype Assurance Level (PAL) Explanation:<br/>"
+            f"This top event is assigned an Prototype Assurance Level (PAL) of <b>{assurance_level}</b> "
             f"with a severity rating of <b>{severity}</b>.<br/>"
             f"Rationale for Severity: {top_rationale}<br/><br/>"
             #"Dynamic Recommendations:<br/>"
@@ -2782,7 +2782,7 @@ class FaultTreeApp:
 
     def get_extra_recommendations_list(self, description, level):
         """
-        Given a node's description and its Autonomous Evaluated Risk Level (AERL), return a list of extra recommendations.
+        Given a node's description and its Prototype Assurance Level (PAL), return a list of extra recommendations.
         This function iterates over all keys in the level's "Extra Recommendations" dictionary and
         collects the recommendation text for every keyword found in the description.
         """
@@ -2798,7 +2798,7 @@ class FaultTreeApp:
 
     def get_extra_recommendations_from_level(self,description, level):
         """
-        Given a node's description and its Autonomous Evaluated Risk Level (AERL) (1-5), look up keywords from the level's 
+        Given a node's description and its Prototype Assurance Level (PAL) (1-5), look up keywords from the level's 
         "Extra Recommendations" in the dynamic_recommendations dictionary. If any keyword is found in the description
         (within a proximity of malfunction words), return the extra recommendations.
         """
@@ -2822,7 +2822,7 @@ class FaultTreeApp:
 
     def get_recommendation_from_description(self, description, level):
         """
-        Given a node's description and its Autonomous Evaluated Risk Level (AERL), this function iterates over all keys 
+        Given a node's description and its Prototype Assurance Level (PAL), this function iterates over all keys 
         in the corresponding level's "Extra Recommendations" dictionary. It checks if each keyword 
         appears in the description (in a case-insensitive manner) and concatenates all matching recommendations.
         """
@@ -3103,7 +3103,7 @@ class FaultTreeApp:
         """
         (Optional) If you still want to have a compact table of per-event recommendations,
         this function builds a multiline LongTable with columns:
-        [Event Name, Autonomous Evaluated Risk Level (AERL), Severity, Description, Rationale, Dynamic Recommendations].
+        [Event Name, Prototype Assurance Level (PAL), Severity, Description, Rationale, Dynamic Recommendations].
         (Not used in the final report if you prefer only the consolidated argumentation.)
         """
         style_sheet = getSampleStyleSheet()
@@ -3125,7 +3125,7 @@ class FaultTreeApp:
         
         data = [[
             Paragraph("<b>Event Name</b>", header_style),
-            Paragraph("<b>Autonomous Evaluated Risk Level (AERL)</b>", header_style),
+            Paragraph("<b>Prototype Assurance Level (PAL)</b>", header_style),
             Paragraph("<b>Severity</b>", header_style),
             Paragraph("<b>Description</b>", header_style),
             Paragraph("<b>Rationale</b>", header_style),
@@ -3247,7 +3247,7 @@ class FaultTreeApp:
         from the event’s entire subtree (using originals for clones) and then constructs a multi-line summary
         that includes:
           - The top-level event name.
-          - The required Autonomous Evaluated Risk Level (AERL) (with numeric score) and the severity rating.
+          - The required Prototype Assurance Level (PAL) (with numeric score) and the severity rating.
           - A bullet-point list of base nodes with their scores and rationales.
         """
         # Retrieve all nodes from the entire subtree (including originals for clones)
@@ -3290,7 +3290,7 @@ class FaultTreeApp:
         summary_sentence = (
             f"Top-Level Event: {top_event.name}\n\n"
             f"Assurance Requirement:\n"
-            f"  - Required Autonomous Evaluated Risk Level (AERL): {assurance_descr} (Score: {overall_assurance:.2f})\n"
+            f"  - Required Prototype Assurance Level (PAL): {assurance_descr} (Score: {overall_assurance:.2f})\n"
             f"  - Severity Rating: {overall_severity:.2f}\n\n"
             f"Rationale:\n"
             f"  Based on analysis of its base nodes, the following factors contributed to this level:\n"
@@ -3361,9 +3361,9 @@ class FaultTreeApp:
 
         if include_assurance:
             exec_summary_text = (
-            "<b>Executive Summary: Manual Calculation of Autonomous Evaluated Risk Level (AERL)</b><br/><br/>"
-                "This document provides a step-by-step procedure to manually calculate the Autonomous Evaluated Risk Level (AERL) for a subsystem in an "
-                "autonomous system. The Autonomous Evaluated Risk Level (AERL) is a single metric ranging from 1 to 5 (mapped to qualitative labels: "
+            "<b>Executive Summary: Manual Calculation of Prototype Assurance Level (PAL)</b><br/><br/>"
+                "This document provides a step-by-step procedure to manually calculate the Prototype Assurance Level (PAL) for a subsystem in an "
+                "autonomous system. The Prototype Assurance Level (PAL) is a single metric ranging from 1 to 5 (mapped to qualitative labels: "
                 "Extra Low, Low, Moderate, High, High+). Follow these instructions using the provided tables.<br/><br/>"
                 
                 "<b>Calculation Instructions:</b><br/>"
@@ -3385,11 +3385,11 @@ class FaultTreeApp:
                 " Ensure the final score remains within the 1 to 5 range.<br/><br/>"
                 "4. <u>Final Discretization</u>:<br/>"
                 " a. Round the adjusted assurance value to the nearest 0.5.<br/>"
-                " b. Refer to Table 2 (Output Discretization Mapping) to map the rounded value to one of the five discrete Autonomous Evaluated Risk Levels (AERL), "
+                " b. Refer to Table 2 (Output Discretization Mapping) to map the rounded value to one of the five discrete Prototype Assurance Levels (PAL), "
                 "which correspond to the qualitative labels (Extra Low, Low, Moderate, High, High+).<br/><br/>"
                 "By following these steps—deriving a base assurance from individual Confidence and Robustness ratings, combining multiple values "
                 "through averaging or using complement-product methods (depending on the configuration), adjusting for hazard severity, and finally "
-                "discretizing the result—you can manually calculate the Autonomous Evaluated Risk Level (AERL) for any subsystem in a clear and systematic manner."
+                "discretizing the result—you can manually calculate the Prototype Assurance Level (PAL) for any subsystem in a clear and systematic manner."
             )
             Story.append(Paragraph(exec_summary_text, pdf_styles["Normal"]))
             Story.append(Spacer(1, 12))
@@ -3451,7 +3451,7 @@ class FaultTreeApp:
             # --- Table 2: Output Discretization Mapping ---
             discretization_data = [
                 [Paragraph("<b>Continuous Value (Rounded)</b>", header_style),
-                 Paragraph("<b>Autonomous Evaluated Risk Level (AERL)</b>", header_style)],
+                 Paragraph("<b>Prototype Assurance Level (PAL)</b>", header_style)],
                 [Paragraph("< 1.5", header_style), Paragraph("Level 1 (Extra Low)", pdf_styles["Normal"])],
                 [Paragraph("1.5 – < 2.5", header_style), Paragraph("Level 2 (Low)", pdf_styles["Normal"])],
                 [Paragraph("2.5 – < 3.5", header_style), Paragraph("Level 3 (Moderate)", pdf_styles["Normal"])],
@@ -3475,7 +3475,7 @@ class FaultTreeApp:
             level_labels = {1: "Extra Low", 2: "Low", 3: "Moderate", 4: "High", 5: "High+"}
     
             # ------------------------------------------------------------------
-            # Helper: Get the highest Autonomous Evaluated Risk Level (AERL) from immediate parents.
+            # Helper: Get the highest Prototype Assurance Level (PAL) from immediate parents.
             # For a given node (or its clone), this returns the maximum assurance (as an integer 1-5)
             # among all its immediate parents. If no parent exists, it returns the node's own assurance.
             def get_immediate_parent_assurance(node):
@@ -3705,7 +3705,7 @@ class FaultTreeApp:
         self._generate_pdf_report(include_assurance=True)
 
     def generate_pdf_without_assurance(self):
-        """Generate a PDF report without the Autonomous Evaluated Risk Level (AERL) pages."""
+        """Generate a PDF report without the Prototype Assurance Level (PAL) pages."""
         self._generate_pdf_report(include_assurance=False)
 
     def capture_event_diagram(self, event_node):
@@ -4007,8 +4007,8 @@ class FaultTreeApp:
         # Use the original node's properties for clones.
         base_node = node if node.is_primary_instance else node.original
         label = base_node.display_label  # use original's display label
-        if "Autonomous Evaluated Risk Level (AERL)" in label:
-            base_type = "Autonomous Evaluated Risk Level (AERL)"
+        if "Prototype Assurance Level (PAL)" in label:
+            base_type = "Prototype Assurance Level (PAL)"
         elif "Maturity" in label:
             base_type = "Maturity"
         elif "Rigor" in label:
@@ -4025,7 +4025,7 @@ class FaultTreeApp:
             "Robustness": {"Function": "orange", "Human Task": "pink", "Default": "orange"},
             "Maturity": {"Functionality": "lightyellow", "Default": "lightyellow"},
             "Rigor": {"Capability": "turquoise", "Safety Mechanism": "yellow", "Default": "turquoise"},
-            "Autonomous Evaluated Risk Level (AERL)": {"Vehicle Level Function": "pink", "Functionality": "lightyellow","Capability": "turquoise", "Safety Mechanism": "yellow"},
+            "Prototype Assurance Level (PAL)": {"Vehicle Level Function": "pink", "Functionality": "lightyellow","Capability": "turquoise", "Safety Mechanism": "yellow"},
             "Other": {"Default": "lightblue"}
         }
         return color_mapping.get(base_type, {}).get(subtype, color_mapping.get(base_type, {}).get("Default", "lightblue"))
@@ -6044,7 +6044,6 @@ class FaultTreeApp:
                                                      resolution=c.resolution))
                 next_id += 1
         messagebox.showinfo("Merge", "Comments merged")
-
 
     def calculate_diff_nodes(self, old_data):
         old_map = self.node_map_from_data(old_data["top_events"])
