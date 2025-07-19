@@ -2115,6 +2115,7 @@ class FaultTreeApp:
         review_menu.add_command(label="Start Joint Review", command=self.start_joint_review)
         review_menu.add_command(label="Open Review Toolbox", command=self.open_review_toolbox)
         review_menu.add_command(label="Set Current User", command=self.set_current_user)
+        review_menu.add_command(label="Merge Review Comments", command=self.merge_review_comments)
         review_menu.add_command(label="Compare Versions", command=self.compare_versions)
         menubar.add_cascade(label="Review", menu=review_menu)
         root.config(menu=menubar)
@@ -5970,6 +5971,36 @@ class FaultTreeApp:
             return
         VersionCompareDialog(self.root, self)
 
+    def merge_review_comments(self):
+        path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
+        if not path:
+            return
+        with open(path, "r") as f:
+            data = json.load(f)
+
+        for rd in data.get("reviews", []):
+            participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
+            comments = [ReviewComment(**c) for c in rd.get("comments", [])]
+            review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
+            if review is None:
+                review = ReviewData(name=rd.get("name", ""), description=rd.get("description", ""),
+                                    mode=rd.get("mode", "peer"), participants=participants,
+                                    comments=comments, approved=rd.get("approved", False),
+                                    fta_ids=rd.get("fta_ids", []), fmea_names=rd.get("fmea_names", []))
+                self.reviews.append(review)
+                continue
+            for p in participants:
+                if all(p.name != ep.name for ep in review.participants):
+                    review.participants.append(p)
+            next_id = len(review.comments) + 1
+            for c in comments:
+                review.comments.append(ReviewComment(next_id, c.node_id, c.text, c.reviewer,
+                                                     target_type=c.target_type, req_id=c.req_id,
+                                                     field=c.field, resolved=c.resolved,
+                                                     resolution=c.resolution))
+                next_id += 1
+        messagebox.showinfo("Merge", "Comments merged")
+
     def calculate_diff_nodes(self, old_data):
         old_map = self.node_map_from_data(old_data["top_events"])
         new_map = self.node_map_from_data([e.to_dict() for e in self.top_events])
@@ -6167,35 +6198,49 @@ class FaultTreeApp:
     # --- Review Toolbox Methods ---
     def start_peer_review(self):
         dialog = ParticipantDialog(self.root, joint=False)
-        if dialog.result:
-            parts = dialog.result
-            name = simpledialog.askstring("Review Name", "Enter unique review name:")
-            if not name:
-                return
-            if any(r.name == name for r in self.reviews):
-                messagebox.showerror("Review", "Name already exists")
-                return
-            desc = simpledialog.askstring("Description", "Enter review description:")
-            self.review_data = ReviewData(name=name, description=desc or "", mode='peer', participants=parts, comments=[])
-            self.reviews.append(self.review_data)
-            self.current_user = parts[0].name
-            self.open_review_toolbox()
+        if not dialog.result:
+            return
+        parts = dialog.result
+        name = simpledialog.askstring("Review Name", "Enter unique review name:")
+        if not name:
+            return
+        if any(r.name == name for r in self.reviews):
+            messagebox.showerror("Review", "Name already exists")
+            return
+        desc = simpledialog.askstring("Description", "Enter review description:")
+        scope = ReviewScopeDialog(self.root, self)
+        fta_ids, fmea_names = scope.result if scope.result else ([], [])
+        review = ReviewData(name=name, description=desc or "", mode='peer',
+                            participants=parts, comments=[],
+                            fta_ids=fta_ids, fmea_names=fmea_names)
+        self.reviews.append(review)
+        self.review_data = review
+        self.current_user = parts[0].name
+        ReviewDocumentDialog(self.root, self, review)
+        self.open_review_toolbox()
 
     def start_joint_review(self):
         dialog = ParticipantDialog(self.root, joint=True)
-        if dialog.result:
-            participants = dialog.result
-            name = simpledialog.askstring("Review Name", "Enter unique review name:")
-            if not name:
-                return
-            if any(r.name == name for r in self.reviews):
-                messagebox.showerror("Review", "Name already exists")
-                return
-            desc = simpledialog.askstring("Description", "Enter review description:")
-            self.review_data = ReviewData(name=name, description=desc or "", mode='joint', participants=participants, comments=[])
-            self.reviews.append(self.review_data)
-            self.current_user = participants[0].name
-            self.open_review_toolbox()
+        if not dialog.result:
+            return
+        participants = dialog.result
+        name = simpledialog.askstring("Review Name", "Enter unique review name:")
+        if not name:
+            return
+        if any(r.name == name for r in self.reviews):
+            messagebox.showerror("Review", "Name already exists")
+            return
+        desc = simpledialog.askstring("Description", "Enter review description:")
+        scope = ReviewScopeDialog(self.root, self)
+        fta_ids, fmea_names = scope.result if scope.result else ([], [])
+        review = ReviewData(name=name, description=desc or "", mode='joint',
+                            participants=participants, comments=[],
+                            fta_ids=fta_ids, fmea_names=fmea_names)
+        self.reviews.append(review)
+        self.review_data = review
+        self.current_user = participants[0].name
+        ReviewDocumentDialog(self.root, self, review)
+        self.open_review_toolbox()
 
     def open_review_toolbox(self):
         if not self.review_data:
