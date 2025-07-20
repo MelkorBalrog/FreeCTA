@@ -258,6 +258,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from io import BytesIO, StringIO
 from email.utils import make_msgid
 import html
+import datetime
 import PIL.Image as PILImage
 from reportlab.platypus import LongTable
 from email.message import EmailMessage
@@ -5590,10 +5591,14 @@ class FaultTreeApp:
                 "name": r.name,
                 "description": r.description,
                 "mode": r.mode,
-                "moderator": r.moderator,
+                "moderators": [asdict(m) for m in r.moderators],
                 "approved": r.approved,
+                "due_date": r.due_date,
+                "closed": r.closed,
                 "participants": [asdict(p) for p in r.participants],
                 "comments": [asdict(c) for c in r.comments],
+                "fta_ids": r.fta_ids,
+                "fmea_names": r.fmea_names,
             })
         current_name = self.review_data.name if self.review_data else None
         data = {
@@ -5686,15 +5691,22 @@ class FaultTreeApp:
             for rd in reviews_data:
                 participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
                 comments = [ReviewComment(**c) for c in rd.get("comments", [])]
+                moderators = [ReviewParticipant(**m) for m in rd.get("moderators", [])]
+                if not moderators and rd.get("moderator"):
+                    moderators = [ReviewParticipant(rd.get("moderator"), "", "moderator")]
                 self.reviews.append(
                     ReviewData(
                         name=rd.get("name", ""),
                         description=rd.get("description", ""),
                         mode=rd.get("mode", "peer"),
-                        moderator=rd.get("moderator", ""),
+                        moderators=moderators,
                         participants=participants,
                         comments=comments,
                         approved=rd.get("approved", False),
+                        due_date=rd.get("due_date", ""),
+                        closed=rd.get("closed", False),
+                        fta_ids=rd.get("fta_ids", []),
+                        fmea_names=rd.get("fmea_names", []),
                     )
                 )
             current = data.get("current_review")
@@ -5708,14 +5720,21 @@ class FaultTreeApp:
             if rd:
                 participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
                 comments = [ReviewComment(**c) for c in rd.get("comments", [])]
+                moderators = [ReviewParticipant(**m) for m in rd.get("moderators", [])]
+                if not moderators and rd.get("moderator"):
+                    moderators = [ReviewParticipant(rd.get("moderator"), "", "moderator")]
                 review = ReviewData(
                     name=rd.get("name", "Review 1"),
                     description=rd.get("description", ""),
                     mode=rd.get("mode", "peer"),
-                    moderator=rd.get("moderator", ""),
+                    moderators=moderators,
                     participants=participants,
                     comments=comments,
                     approved=rd.get("approved", False),
+                    due_date=rd.get("due_date", ""),
+                    closed=rd.get("closed", False),
+                    fta_ids=rd.get("fta_ids", []),
+                    fmea_names=rd.get("fmea_names", []),
                 )
                 self.reviews = [review]
                 self.review_data = review
@@ -6023,28 +6042,28 @@ class FaultTreeApp:
         dialog = ParticipantDialog(self.root, joint=False)
 
         if dialog.result:
-            parts = dialog.result
-            moderator = dialog.moderator
+            moderators, parts = dialog.result
             name = simpledialog.askstring("Review Name", "Enter unique review name:")
             if not name:
                 return
             description = simpledialog.askstring("Description", "Enter a short description:")
             if description is None:
                 description = ""
-            if not moderator:
+            if not moderators:
                 messagebox.showerror("Review", "Please specify a moderator")
                 return
+            due_date = simpledialog.askstring("Due Date", "Enter due date (YYYY-MM-DD):")
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")
                 return
             scope = ReviewScopeDialog(self.root, self)
             fta_ids, fmea_names = scope.result if scope.result else ([], [])
-            review = ReviewData(name=name, description=description, mode='peer', moderator=moderator,
+            review = ReviewData(name=name, description=description, mode='peer', moderators=moderators,
                                participants=parts, comments=[],
-                               fta_ids=fta_ids, fmea_names=fmea_names)
+                               fta_ids=fta_ids, fmea_names=fmea_names, due_date=due_date)
             self.reviews.append(review)
             self.review_data = review
-            self.current_user = parts[0].name
+            self.current_user = moderators[0].name if moderators else parts[0].name
             ReviewDocumentDialog(self.root, self, review)
             self.send_review_email(review)
             self.open_review_toolbox()
@@ -6052,28 +6071,34 @@ class FaultTreeApp:
     def start_joint_review(self):
         dialog = ParticipantDialog(self.root, joint=True)
         if dialog.result:
-            participants = dialog.result
-            moderator = dialog.moderator
+            moderators, participants = dialog.result
             name = simpledialog.askstring("Review Name", "Enter unique review name:")
             if not name:
                 return
             description = simpledialog.askstring("Description", "Enter a short description:")
             if description is None:
                 description = ""
-            if not moderator:
+            if not moderators:
                 messagebox.showerror("Review", "Please specify a moderator")
                 return
+            if not any(p.role == 'reviewer' for p in participants):
+                messagebox.showerror("Review", "At least one reviewer required")
+                return
+            if not any(p.role == 'approver' for p in participants):
+                messagebox.showerror("Review", "At least one approver required")
+                return
+            due_date = simpledialog.askstring("Due Date", "Enter due date (YYYY-MM-DD):")
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")
                 return
             scope = ReviewScopeDialog(self.root, self)
             fta_ids, fmea_names = scope.result if scope.result else ([], [])
-            review = ReviewData(name=name, description=description, mode='joint', moderator=moderator,
+            review = ReviewData(name=name, description=description, mode='joint', moderators=moderators,
                                participants=participants, comments=[],
-                               fta_ids=fta_ids, fmea_names=fmea_names)
+                               fta_ids=fta_ids, fmea_names=fmea_names, due_date=due_date)
             self.reviews.append(review)
             self.review_data = review
-            self.current_user = participants[0].name
+            self.current_user = moderators[0].name if moderators else participants[0].name
             ReviewDocumentDialog(self.root, self, review)
             self.send_review_email(review)
             self.open_review_toolbox()
@@ -6159,7 +6184,7 @@ class FaultTreeApp:
         for cid, data in zip(image_cids, images):
             html_part.add_related(data, "image", "png", cid=cid)
 
-        # Attach FMEA tables as CSV files (showing diffs)
+        # Attach FMEA tables as CSV files (can be opened with Excel)
         for name in review.fmea_names:
             fmea = next((f for f in self.fmeas if f["name"] == name), None)
             if not fmea:
@@ -6167,7 +6192,6 @@ class FaultTreeApp:
             out = StringIO()
             writer = csv.writer(out)
             columns = [
-                "Status",
                 "Component",
                 "Parent",
                 "Failure Mode",
@@ -6180,62 +6204,30 @@ class FaultTreeApp:
                 "Requirements",
             ]
             writer.writerow(columns)
-            prev_entries = {}
-            if prev:
-                pf = next((f for f in prev.get("fmeas", []) if f["name"] == name), None)
-                if pf:
-                    prev_entries = {e["unique_id"]: e for e in pf.get("entries", [])}
-            curr_entries = {e.unique_id: e for e in fmea["entries"]}
-
-            for uid in set(prev_entries) | set(curr_entries):
-                if uid in curr_entries and uid not in prev_entries:
-                    st = "added"
-                    entry = curr_entries[uid]
-                elif uid in prev_entries and uid not in curr_entries:
-                    st = "removed"
-                    d = prev_entries[uid]
-                    class Dummy:
-                        pass
-                    entry = Dummy()
-                    entry.parents = d.get("parents", [])
-                    entry.description = d.get("description", "")
-                    entry.user_name = d.get("user_name", "")
-                    entry.fmea_effect = d.get("fmea_effect", "")
-                    entry.fmea_cause = d.get("fmea_cause", "")
-                    entry.fmea_severity = d.get("fmea_severity", 1)
-                    entry.fmea_occurrence = d.get("fmea_occurrence", 1)
-                    entry.fmea_detection = d.get("fmea_detection", 1)
-                    entry.safety_requirements = d.get("safety_requirements", [])
-                else:
-                    st = "existing"
-                    entry = curr_entries[uid]
-                    if json.dumps(prev_entries[uid], sort_keys=True) != json.dumps(entry.to_dict(), sort_keys=True):
-                        st = "updated"
-
-                parent = entry.parents[0] if entry.parents else None
+            for be in fmea["entries"]:
+                parent = be.parents[0] if be.parents else None
                 if parent:
                     comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
-                    if getattr(parent, "description", ""):
+                    if parent.description:
                         comp = f"{comp} - {parent.description}"
                     parent_name = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
                 else:
-                    comp = getattr(entry, "fmea_component", "") or "N/A"
+                    comp = getattr(be, "fmea_component", "") or "N/A"
                     parent_name = ""
                 req_ids = "; ".join(
-                    [f"{req['req_type']}:{req['text']}" for req in getattr(entry, 'safety_requirements', [])]
+                    [f"{req['req_type']}:{req['text']}" for req in getattr(be, 'safety_requirements', [])]
                 )
-                rpn = entry.fmea_severity * entry.fmea_occurrence * entry.fmea_detection
-                failure_mode = entry.description or (entry.user_name or f"BE {uid}")
+                rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
+                failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
                 row = [
-                    st,
                     comp,
                     parent_name,
                     failure_mode,
-                    entry.fmea_effect,
-                    getattr(entry, "fmea_cause", ""),
-                    entry.fmea_severity,
-                    entry.fmea_occurrence,
-                    entry.fmea_detection,
+                    be.fmea_effect,
+                    getattr(be, "fmea_cause", ""),
+                    be.fmea_severity,
+                    be.fmea_occurrence,
+                    be.fmea_detection,
                     rpn,
                     req_ids,
                 ]
@@ -6276,6 +6268,21 @@ class FaultTreeApp:
             messagebox.showerror("Email", f"Failed to send review email: {e}")
 
 
+    def review_is_closed(self):
+        if not self.review_data:
+            return False
+        if getattr(self.review_data, "closed", False):
+            return True
+        if self.review_data.due_date:
+            try:
+                due = datetime.datetime.strptime(self.review_data.due_date, "%Y-%m-%d").date()
+                if datetime.date.today() > due:
+                    return True
+            except ValueError:
+                pass
+        return False
+
+
     def add_version(self):
         name = f"v{len(self.versions)+1}"
         # Exclude the versions list when capturing a snapshot to avoid
@@ -6299,24 +6306,34 @@ class FaultTreeApp:
         for rd in data.get("reviews", []):
             participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
             comments = [ReviewComment(**c) for c in rd.get("comments", [])]
+            moderators = [ReviewParticipant(**m) for m in rd.get("moderators", [])]
+            if not moderators and rd.get("moderator"):
+                moderators = [ReviewParticipant(rd.get("moderator"), "", "moderator")]
             review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
             if review is None:
                 review = ReviewData(
                     name=rd.get("name", ""),
                     description=rd.get("description", ""),
                     mode=rd.get("mode", "peer"),
-                    moderator=rd.get("moderator", ""),
+                    moderators=moderators,
                     participants=participants,
                     comments=comments,
                     approved=rd.get("approved", False),
                     fta_ids=rd.get("fta_ids", []),
                     fmea_names=rd.get("fmea_names", []),
+                    due_date=rd.get("due_date", ""),
+                    closed=rd.get("closed", False),
                 )
                 self.reviews.append(review)
                 continue
             for p in participants:
                 if all(p.name != ep.name for ep in review.participants):
                     review.participants.append(p)
+            for m in moderators:
+                if all(m.name != em.name for em in review.moderators):
+                    review.moderators.append(m)
+            review.due_date = rd.get("due_date", review.due_date)
+            review.closed = rd.get("closed", review.closed)
             next_id = len(review.comments) + 1
             for c in comments:
                 review.comments.append(ReviewComment(next_id, c.node_id, c.text, c.reviewer,
@@ -6361,8 +6378,7 @@ class FaultTreeApp:
             messagebox.showwarning("User", "Start a review first")
             return
         allowed = [p.name for p in self.review_data.participants]
-        if self.review_data.moderator:
-            allowed.append(self.review_data.moderator)
+        allowed.extend(m.name for m in self.review_data.moderators)
         name = simpledialog.askstring("Current User", "Enter your name:", initialvalue=self.current_user)
         if not name:
             return
@@ -6374,7 +6390,7 @@ class FaultTreeApp:
     def get_current_user_role(self):
         if not self.review_data:
             return None
-        if self.current_user == self.review_data.moderator:
+        if self.current_user in [m.name for m in self.review_data.moderators]:
             return "moderator"
         for p in self.review_data.participants:
             if p.name == self.current_user:
