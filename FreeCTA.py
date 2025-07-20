@@ -6166,7 +6166,35 @@ class FaultTreeApp:
     def get_review_targets(self):
         targets = []
         target_map = {}
-        for node in self.get_all_nodes_in_model():
+
+        # Determine which FTAs and FMEAs are part of the current review.
+        if self.review_data:
+            allowed_ftas = set(self.review_data.fta_ids)
+            allowed_fmeas = set(self.review_data.fmea_names)
+        else:
+            allowed_ftas = set()
+            allowed_fmeas = set()
+
+        # Collect nodes from the selected FTAs (or all if none selected).
+        nodes = []
+        if allowed_ftas:
+            for te in self.top_events:
+                if te.unique_id in allowed_ftas:
+                    nodes.extend(self.get_all_nodes(te))
+        else:
+            nodes = self.get_all_nodes_in_model()
+
+        # Determine which nodes have FMEA entries in the selected FMEAs.
+        fmea_node_ids = set()
+        if allowed_fmeas:
+            for fmea in self.fmeas:
+                if fmea["name"] in allowed_fmeas:
+                    fmea_node_ids.update(be.unique_id for be in fmea["entries"])
+        else:
+            for fmea in self.fmeas:
+                fmea_node_ids.update(be.unique_id for be in fmea["entries"])
+
+        for node in nodes:
             label = node.user_name or node.description or f"Node {node.unique_id}"
             targets.append(label)
             target_map[label] = ("node", node.unique_id)
@@ -6175,7 +6203,8 @@ class FaultTreeApp:
                     rlabel = f"{label} [Req {req.get('id')}]"
                     targets.append(rlabel)
                     target_map[rlabel] = ("requirement", node.unique_id, req.get("id"))
-            if node.node_type.upper() == "BASIC EVENT":
+
+            if node.node_type.upper() == "BASIC EVENT" and node.unique_id in fmea_node_ids:
                 flabel = f"{label} [FMEA]"
                 targets.append(flabel)
                 target_map[flabel] = ("fmea", node.unique_id)
