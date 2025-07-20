@@ -117,6 +117,49 @@ class ParticipantDialog(simpledialog.Dialog):
         self.result = result
 
 
+class EmailConfigDialog(simpledialog.Dialog):
+    """Prompt for SMTP configuration and login credentials."""
+
+    def __init__(self, parent, default_email=""):
+        self.default_email = default_email
+        super().__init__(parent, title="Email Settings")
+
+    def body(self, master):
+        tk.Label(master, text="SMTP Server:").grid(row=0, column=0, sticky="w")
+        self.server_entry = tk.Entry(master)
+        self.server_entry.grid(row=0, column=1, pady=2)
+
+        tk.Label(master, text="Port:").grid(row=1, column=0, sticky="w")
+        self.port_entry = tk.Entry(master)
+        self.port_entry.insert(0, "465")
+        self.port_entry.grid(row=1, column=1, pady=2)
+
+        tk.Label(master, text="Email:").grid(row=2, column=0, sticky="w")
+        self.email_entry = tk.Entry(master)
+        if self.default_email:
+            self.email_entry.insert(0, self.default_email)
+        self.email_entry.grid(row=2, column=1, pady=2)
+
+        tk.Label(master, text="Password:").grid(row=3, column=0, sticky="w")
+        self.pass_entry = tk.Entry(master, show="*")
+        self.pass_entry.grid(row=3, column=1, pady=2)
+        return self.email_entry
+
+    def apply(self):
+        try:
+            port = int(self.port_entry.get().strip())
+        except ValueError:
+            messagebox.showerror("Email", "Invalid port number")
+            self.result = None
+            return
+        self.result = {
+            "server": self.server_entry.get().strip(),
+            "port": port,
+            "email": self.email_entry.get().strip(),
+            "password": self.pass_entry.get(),
+        }
+
+
 class ReviewScopeDialog(simpledialog.Dialog):
     def __init__(self, parent, app):
         self.app = app
