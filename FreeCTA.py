@@ -223,6 +223,7 @@ References
 
 import re
 import math
+import sys
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from review_toolbox import (
@@ -233,6 +234,7 @@ from review_toolbox import (
     ParticipantDialog,
     EmailConfigDialog,
     ReviewScopeDialog,
+    UserSelectDialog,
     ReviewDocumentDialog,
     VersionCompareDialog,
 )
@@ -258,6 +260,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from io import BytesIO, StringIO
 from email.utils import make_msgid
 import html
+import datetime
 import PIL.Image as PILImage
 from reportlab.platypus import LongTable
 from email.message import EmailMessage
@@ -2431,6 +2434,277 @@ class FaultTreeApp:
             img.load(scale=3)
         except Exception as e:
             print(f"Debug: Error loading image for page node {page_node.unique_id}: {e}")
+            img = None
+        temp.destroy()
+        return img.convert("RGB") if img else None
+
+    def capture_diff_diagram(self, top_event):
+        """Return an image of the FTA with diff colouring versus last version."""
+        if not self.versions:
+            return self.capture_page_diagram(top_event)
+
+        from io import BytesIO
+        from PIL import Image
+        import difflib
+
+        current = self.export_model_data(include_versions=False)
+        base_data = self.versions[-1]["data"]
+
+        def filter_events(data):
+            return [t for t in data.get("top_events", []) if t["unique_id"] == top_event.unique_id]
+
+        data1 = {"top_events": filter_events(base_data)}
+        data2 = {"top_events": filter_events(current)}
+
+        map1 = self.node_map_from_data(data1["top_events"])
+        map2 = self.node_map_from_data(data2["top_events"])
+
+        def build_conn_set(events):
+            conns = set()
+            def visit(d):
+                for ch in d.get("children", []):
+                    conns.add((d["unique_id"], ch["unique_id"]))
+                    visit(ch)
+            for t in events:
+                visit(t)
+            return conns
+
+        conns1 = build_conn_set(data1["top_events"])
+        conns2 = build_conn_set(data2["top_events"])
+
+        conn_status = {}
+        for c in conns1 | conns2:
+            if c in conns1 and c not in conns2:
+                conn_status[c] = "removed"
+            elif c in conns2 and c not in conns1:
+                conn_status[c] = "added"
+            else:
+                conn_status[c] = "existing"
+
+        status = {}
+        for nid in set(map1) | set(map2):
+            if nid in map1 and nid not in map2:
+                status[nid] = "removed"
+            elif nid in map2 and nid not in map1:
+                status[nid] = "added"
+            else:
+                if json.dumps(map1[nid], sort_keys=True) != json.dumps(map2[nid], sort_keys=True):
+                    status[nid] = "added"
+                else:
+                    status[nid] = "existing"
+
+        module = sys.modules.get(self.__class__.__module__)
+        FaultTreeNodeCls = getattr(module, 'FaultTreeNode', None)
+        if not FaultTreeNodeCls and self.top_events:
+            FaultTreeNodeCls = type(self.top_events[0])
+        new_roots = [FaultTreeNodeCls.from_dict(t) for t in data2["top_events"]]
+        removed_ids = [nid for nid, st in status.items() if st == "removed"]
+        for rid in removed_ids:
+            if rid in map1:
+                nd = map1[rid]
+                new_roots.append(FaultTreeNodeCls.from_dict(nd))
+
+        allow_ids = set()
+        def collect_ids(d):
+            allow_ids.add(d["unique_id"])
+            for ch in d.get("children", []):
+                collect_ids(ch)
+        if top_event.unique_id in map1:
+            collect_ids(map1[top_event.unique_id])
+        if top_event.unique_id in map2:
+            collect_ids(map2[top_event.unique_id])
+
+        node_objs = {}
+        def collect_nodes(n):
+            if n.unique_id not in node_objs:
+                node_objs[n.unique_id] = n
+            for ch in n.children:
+                collect_nodes(ch)
+        for r in new_roots:
+            collect_nodes(r)
+
+        def diff_segments(old, new):
+            matcher = difflib.SequenceMatcher(None, old, new)
+            segments = []
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag == "equal":
+                    segments.append((old[i1:i2], "black"))
+                elif tag == "delete":
+                    segments.append((old[i1:i2], "red"))
+                elif tag == "insert":
+                    segments.append((new[j1:j2], "blue"))
+                elif tag == "replace":
+                    segments.append((old[i1:i2], "red"))
+                    segments.append((new[j1:j2], "blue"))
+            return segments
+
+        def draw_segment_text(canvas, cx, cy, segments, font_obj):
+            lines = [[]]
+            for text, color in segments:
+                parts = text.split("\n")
+                for idx, part in enumerate(parts):
+                    if idx > 0:
+                        lines.append([])
+                    lines[-1].append((part, color))
+            line_height = font_obj.metrics("linespace")
+            total_height = line_height * len(lines)
+            start_y = cy - total_height / 2
+            for line in lines:
+                line_width = sum(font_obj.measure(part) for part, _ in line)
+                start_x = cx - line_width / 2
+                x = start_x
+                for part, color in line:
+                    if part:
+                        canvas.create_text(x, start_y, text=part, anchor="nw", fill=color, font=font_obj)
+                        x += font_obj.measure(part)
+                start_y += line_height
+
+        temp = tk.Toplevel(self.root)
+        temp.withdraw()
+        canvas = tk.Canvas(temp, bg="white", width=2000, height=2000)
+        canvas.pack()
+
+        def draw_connections(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_connections(ch)
+                return
+            region_width = 60
+            parent_bottom = (n.x, n.y + 20)
+            for i, ch in enumerate(n.children):
+                if ch.unique_id not in allow_ids:
+                    continue
+                parent_conn = (
+                    n.x - region_width / 2 + (i + 0.5) * (region_width / len(n.children)),
+                    parent_bottom[1],
+                )
+                child_top = (ch.x, ch.y - 25)
+                edge_st = conn_status.get((n.unique_id, ch.unique_id), "existing")
+                if status.get(n.unique_id) == "removed" or status.get(ch.unique_id) == "removed":
+                    edge_st = "removed"
+                color = "gray"
+                if edge_st == "added":
+                    color = "blue"
+                elif edge_st == "removed":
+                    color = "red"
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_90_connection(canvas, parent_conn, child_top, outline_color=color, line_width=1)
+                draw_connections(ch)
+
+        def draw_node(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_node(ch)
+                return
+            st = status.get(n.unique_id, "existing")
+            color = "dimgray"
+            if st == "added":
+                color = "blue"
+            elif st == "removed":
+                color = "red"
+
+            source = n if getattr(n, "is_primary_instance", True) else getattr(n, "original", n)
+            subtype_text = source.input_subtype if source.input_subtype else "N/A"
+            display_label = source.display_label
+            old_data = map1.get(n.unique_id)
+            new_data = map2.get(n.unique_id)
+            def req_lines(reqs):
+                return "; ".join(
+                    f"[{r.get('id','')}] [{r.get('req_type','')}] {r.get('text','')}" for r in reqs
+                )
+
+            if old_data and new_data:
+                desc_segments = [("Desc: ", "black")] + diff_segments(
+                    old_data.get("description", ""), new_data.get("description", "")
+                )
+                rat_segments = [("Rationale: ", "black")] + diff_segments(
+                    old_data.get("rationale", ""), new_data.get("rationale", "")
+                )
+                req_segments = [("Reqs: ", "black")] + diff_segments(
+                    req_lines(old_data.get("safety_requirements", [])),
+                    req_lines(new_data.get("safety_requirements", [])),
+                )
+            else:
+                desc_segments = [("Desc: " + source.description, "black")]
+                rat_segments = [("Rationale: " + source.rationale, "black")]
+                req_segments = [
+                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
+                ]
+
+            segments = [
+                (f"Type: {source.node_type}\n", "black"),
+                (f"Subtype: {subtype_text}\n", "black"),
+                (f"{display_label}\n", "black"),
+            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
+
+            top_text = "".join(seg[0] for seg in segments)
+            bottom_text = n.name
+            fill = self.get_node_fill_color(n)
+            eff_x, eff_y = n.x, n.y
+            typ = n.node_type.upper()
+            items_before = canvas.find_all()
+            if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
+                if n.gate_type and n.gate_type.upper() == "OR":
+                    if self.fta_drawing_helper:
+                        self.fta_drawing_helper.draw_rotated_or_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+                else:
+                    if self.fta_drawing_helper:
+                        self.fta_drawing_helper.draw_rotated_and_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+            else:
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_circle_event_shape(canvas, eff_x, eff_y, 45, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+
+            items_after = canvas.find_all()
+            text_id = None
+            for item in items_after:
+                if item in items_before:
+                    continue
+                if canvas.type(item) == "text" and canvas.itemcget(item, "text") == top_text:
+                    text_id = item
+                    break
+
+            if text_id and any(c in ("red", "blue") for _, c in segments):
+                bbox = canvas.bbox(text_id)
+                cx = (bbox[0] + bbox[2]) / 2
+                cy = (bbox[1] + bbox[3]) / 2
+                canvas.itemconfigure(text_id, state="hidden")
+                draw_segment_text(canvas, cx, cy, segments, self.diagram_font)
+            for ch in n.children:
+                draw_node(ch)
+
+        for r in new_roots:
+            draw_connections(r)
+            draw_node(r)
+
+        existing_pairs = set()
+        for p in node_objs.values():
+            for ch in p.children:
+                existing_pairs.add((p.unique_id, ch.unique_id))
+        for (pid, cid), st in conn_status.items():
+            if st != "removed":
+                continue
+            if (pid, cid) in existing_pairs:
+                continue
+            if pid in node_objs and cid in node_objs and pid in allow_ids and cid in allow_ids:
+                parent = node_objs[pid]
+                child = node_objs[cid]
+                parent_pt = (parent.x, parent.y + 20)
+                child_pt = (child.x, child.y - 25)
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_90_connection(canvas, parent_pt, child_pt, outline_color="red", line_width=1)
+
+        canvas.update()
+        bbox = canvas.bbox("all")
+        if not bbox:
+            temp.destroy()
+            return None
+        x, y, x2, y2 = bbox
+        ps = canvas.postscript(colormode="color", x=x, y=y, width=x2 - x, height=y2 - y)
+        ps_bytes = BytesIO(ps.encode("utf-8"))
+        try:
+            img = Image.open(ps_bytes)
+            img.load(scale=3)
+        except Exception:
             img = None
         temp.destroy()
         return img.convert("RGB") if img else None
@@ -5590,10 +5864,14 @@ class FaultTreeApp:
                 "name": r.name,
                 "description": r.description,
                 "mode": r.mode,
-                "moderator": r.moderator,
+                "moderators": [asdict(m) for m in r.moderators],
                 "approved": r.approved,
+                "due_date": r.due_date,
+                "closed": r.closed,
                 "participants": [asdict(p) for p in r.participants],
                 "comments": [asdict(c) for c in r.comments],
+                "fta_ids": r.fta_ids,
+                "fmea_names": r.fmea_names,
             })
         current_name = self.review_data.name if self.review_data else None
         data = {
@@ -5686,15 +5964,22 @@ class FaultTreeApp:
             for rd in reviews_data:
                 participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
                 comments = [ReviewComment(**c) for c in rd.get("comments", [])]
+                moderators = [ReviewParticipant(**m) for m in rd.get("moderators", [])]
+                if not moderators and rd.get("moderator"):
+                    moderators = [ReviewParticipant(rd.get("moderator"), "", "moderator")]
                 self.reviews.append(
                     ReviewData(
                         name=rd.get("name", ""),
                         description=rd.get("description", ""),
                         mode=rd.get("mode", "peer"),
-                        moderator=rd.get("moderator", ""),
+                        moderators=moderators,
                         participants=participants,
                         comments=comments,
                         approved=rd.get("approved", False),
+                        due_date=rd.get("due_date", ""),
+                        closed=rd.get("closed", False),
+                        fta_ids=rd.get("fta_ids", []),
+                        fmea_names=rd.get("fmea_names", []),
                     )
                 )
             current = data.get("current_review")
@@ -5708,14 +5993,21 @@ class FaultTreeApp:
             if rd:
                 participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
                 comments = [ReviewComment(**c) for c in rd.get("comments", [])]
+                moderators = [ReviewParticipant(**m) for m in rd.get("moderators", [])]
+                if not moderators and rd.get("moderator"):
+                    moderators = [ReviewParticipant(rd.get("moderator"), "", "moderator")]
                 review = ReviewData(
                     name=rd.get("name", "Review 1"),
                     description=rd.get("description", ""),
                     mode=rd.get("mode", "peer"),
-                    moderator=rd.get("moderator", ""),
+                    moderators=moderators,
                     participants=participants,
                     comments=comments,
                     approved=rd.get("approved", False),
+                    due_date=rd.get("due_date", ""),
+                    closed=rd.get("closed", False),
+                    fta_ids=rd.get("fta_ids", []),
+                    fmea_names=rd.get("fmea_names", []),
                 )
                 self.reviews = [review]
                 self.review_data = review
@@ -6007,28 +6299,31 @@ class FaultTreeApp:
         dialog = ParticipantDialog(self.root, joint=False)
 
         if dialog.result:
-            parts = dialog.result
-            moderator = dialog.moderator
+            moderators, parts = dialog.result
             name = simpledialog.askstring("Review Name", "Enter unique review name:")
             if not name:
                 return
             description = simpledialog.askstring("Description", "Enter a short description:")
             if description is None:
                 description = ""
-            if not moderator:
+            if not moderators:
                 messagebox.showerror("Review", "Please specify a moderator")
                 return
+            if not parts:
+                messagebox.showerror("Review", "At least one reviewer required")
+                return
+            due_date = simpledialog.askstring("Due Date", "Enter due date (YYYY-MM-DD):")
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")
                 return
             scope = ReviewScopeDialog(self.root, self)
             fta_ids, fmea_names = scope.result if scope.result else ([], [])
-            review = ReviewData(name=name, description=description, mode='peer', moderator=moderator,
+            review = ReviewData(name=name, description=description, mode='peer', moderators=moderators,
                                participants=parts, comments=[],
-                               fta_ids=fta_ids, fmea_names=fmea_names)
+                               fta_ids=fta_ids, fmea_names=fmea_names, due_date=due_date)
             self.reviews.append(review)
             self.review_data = review
-            self.current_user = parts[0].name
+            self.current_user = moderators[0].name if moderators else parts[0].name
             ReviewDocumentDialog(self.root, self, review)
             self.send_review_email(review)
             self.open_review_toolbox()
@@ -6036,28 +6331,34 @@ class FaultTreeApp:
     def start_joint_review(self):
         dialog = ParticipantDialog(self.root, joint=True)
         if dialog.result:
-            participants = dialog.result
-            moderator = dialog.moderator
+            moderators, participants = dialog.result
             name = simpledialog.askstring("Review Name", "Enter unique review name:")
             if not name:
                 return
             description = simpledialog.askstring("Description", "Enter a short description:")
             if description is None:
                 description = ""
-            if not moderator:
+            if not moderators:
                 messagebox.showerror("Review", "Please specify a moderator")
                 return
+            if not any(p.role == 'reviewer' for p in participants):
+                messagebox.showerror("Review", "At least one reviewer required")
+                return
+            if not any(p.role == 'approver' for p in participants):
+                messagebox.showerror("Review", "At least one approver required")
+                return
+            due_date = simpledialog.askstring("Due Date", "Enter due date (YYYY-MM-DD):")
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")
                 return
             scope = ReviewScopeDialog(self.root, self)
             fta_ids, fmea_names = scope.result if scope.result else ([], [])
-            review = ReviewData(name=name, description=description, mode='joint', moderator=moderator,
+            review = ReviewData(name=name, description=description, mode='joint', moderators=moderators,
                                participants=participants, comments=[],
-                               fta_ids=fta_ids, fmea_names=fmea_names)
+                               fta_ids=fta_ids, fmea_names=fmea_names, due_date=due_date)
             self.reviews.append(review)
             self.review_data = review
-            self.current_user = participants[0].name
+            self.current_user = moderators[0].name if moderators else participants[0].name
             ReviewDocumentDialog(self.root, self, review)
             self.send_review_email(review)
             self.open_review_toolbox()
@@ -6118,7 +6419,7 @@ class FaultTreeApp:
             node = self.find_node_by_id_all(tid)
             if not node:
                 continue
-            img = self.capture_page_diagram(node)
+            img = self.capture_diff_diagram(node)
             if img is None:
                 continue
             buf = BytesIO()
@@ -6221,6 +6522,21 @@ class FaultTreeApp:
             messagebox.showerror("Email", f"Failed to send review email: {e}")
 
 
+    def review_is_closed(self):
+        if not self.review_data:
+            return False
+        if getattr(self.review_data, "closed", False):
+            return True
+        if self.review_data.due_date:
+            try:
+                due = datetime.datetime.strptime(self.review_data.due_date, "%Y-%m-%d").date()
+                if datetime.date.today() > due:
+                    return True
+            except ValueError:
+                pass
+        return False
+
+
     def add_version(self):
         name = f"v{len(self.versions)+1}"
         # Exclude the versions list when capturing a snapshot to avoid
@@ -6244,24 +6560,34 @@ class FaultTreeApp:
         for rd in data.get("reviews", []):
             participants = [ReviewParticipant(**p) for p in rd.get("participants", [])]
             comments = [ReviewComment(**c) for c in rd.get("comments", [])]
+            moderators = [ReviewParticipant(**m) for m in rd.get("moderators", [])]
+            if not moderators and rd.get("moderator"):
+                moderators = [ReviewParticipant(rd.get("moderator"), "", "moderator")]
             review = next((r for r in self.reviews if r.name == rd.get("name", "")), None)
             if review is None:
                 review = ReviewData(
                     name=rd.get("name", ""),
                     description=rd.get("description", ""),
                     mode=rd.get("mode", "peer"),
-                    moderator=rd.get("moderator", ""),
+                    moderators=moderators,
                     participants=participants,
                     comments=comments,
                     approved=rd.get("approved", False),
                     fta_ids=rd.get("fta_ids", []),
                     fmea_names=rd.get("fmea_names", []),
+                    due_date=rd.get("due_date", ""),
+                    closed=rd.get("closed", False),
                 )
                 self.reviews.append(review)
                 continue
             for p in participants:
                 if all(p.name != ep.name for ep in review.participants):
                     review.participants.append(p)
+            for m in moderators:
+                if all(m.name != em.name for em in review.moderators):
+                    review.moderators.append(m)
+            review.due_date = rd.get("due_date", review.due_date)
+            review.closed = rd.get("closed", review.closed)
             next_id = len(review.comments) + 1
             for c in comments:
                 review.comments.append(ReviewComment(next_id, c.node_id, c.text, c.reviewer,
@@ -6305,12 +6631,12 @@ class FaultTreeApp:
         if not self.review_data:
             messagebox.showwarning("User", "Start a review first")
             return
-        allowed = [p.name for p in self.review_data.participants]
-        if self.review_data.moderator:
-            allowed.append(self.review_data.moderator)
-        name = simpledialog.askstring("Current User", "Enter your name:", initialvalue=self.current_user)
-        if not name:
+        parts = self.review_data.participants + self.review_data.moderators
+        dlg = UserSelectDialog(self.root, parts, initial_name=self.current_user)
+        if not dlg.result:
             return
+        name, _ = dlg.result
+        allowed = [p.name for p in parts]
         if name not in allowed:
             messagebox.showerror("User", "Name not found in participants")
             return
@@ -6319,7 +6645,7 @@ class FaultTreeApp:
     def get_current_user_role(self):
         if not self.review_data:
             return None
-        if self.current_user == self.review_data.moderator:
+        if self.current_user in [m.name for m in self.review_data.moderators]:
             return "moderator"
         for p in self.review_data.participants:
             if p.name == self.current_user:
