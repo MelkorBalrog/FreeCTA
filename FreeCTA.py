@@ -2101,7 +2101,7 @@ class FaultTreeApp:
         file_menu.add_command(label="Save PDF Without Assurance", command=self.generate_pdf_without_assurance)
         file_menu.add_command(label="Export SG Requirements", command=self.export_safety_goal_requirements)
         file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=root.quit)
+        file_menu.add_command(label="Exit", command=self.confirm_close)
         menubar.add_cascade(label="File", menu=file_menu)
         edit_menu = tk.Menu(menubar, tearoff=0)
         edit_menu.add_command(label="Add Confidence", command=lambda: self.add_node_of_type("Confidence Level"), accelerator="Ctrl+Shift+C")
@@ -2215,6 +2215,9 @@ class FaultTreeApp:
         self.drag_offset_y = 0
         self.grid_size = 20
         self.update_views()
+        # Track the last saved state so we can prompt on exit
+        self.last_saved_state = json.dumps(self.export_model_data(), sort_keys=True)
+        root.protocol("WM_DELETE_WINDOW", self.confirm_close)
 
     def generate_recommendations_for_top_event(self, node):
         # Determine the Prototype Assurance Level (PAL) based on the node’s quantitative score.
@@ -4021,6 +4024,7 @@ class FaultTreeApp:
         self.fmea_entries = []
         self.fmeas = []
         self.update_views()
+        self.set_last_saved_state()
         self.canvas.update()
 
     def compute_occurrence_counts(self):
@@ -5595,6 +5599,25 @@ class FaultTreeApp:
         self.sync_nodes_by_id(target)
         self.update_views()
 
+    def set_last_saved_state(self):
+        """Record the current model state for change detection."""
+        self.last_saved_state = json.dumps(self.export_model_data(), sort_keys=True)
+
+    def has_unsaved_changes(self):
+        """Return True if the model differs from the last saved state."""
+        current_state = json.dumps(self.export_model_data(), sort_keys=True)
+        return current_state != getattr(self, "last_saved_state", None)
+
+    def confirm_close(self):
+        """Prompt to save if there are unsaved changes before closing."""
+        if self.has_unsaved_changes():
+            result = messagebox.askyesnocancel("Unsaved Changes", "Save changes before exiting?")
+            if result is None:
+                return
+            if result:
+                self.save_model()
+        self.root.destroy()
+
     def export_model_data(self):
         reviews = []
         for r in self.reviews:
@@ -5627,6 +5650,7 @@ class FaultTreeApp:
             with open(path, "w") as f:
                 json.dump(data, f, indent=4)
             messagebox.showinfo("Saved", "Model saved with all configuration and safety goal information.")
+            self.set_last_saved_state()
 
     def load_model(self):
         global AD_RiskAssessment_Helper
@@ -5736,6 +5760,7 @@ class FaultTreeApp:
         if hasattr(self, "page_diagram") and self.page_diagram is not None:
             self.close_page_diagram()
         self.update_views()
+        self.set_last_saved_state()
         
     def update_global_requirements_from_nodes(self,node):
         if hasattr(node, "safety_requirements"):
