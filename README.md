@@ -22,6 +22,13 @@ Comments can be attached to FMEA entries and individual requirements. Resolving 
 
 Review information (participants, comments, review names, descriptions and approval state) is saved as part of the model file and restored on load.
 
+## Email Setup
+
+When sending review summaries, the application asks for SMTP settings and login details.
+If you use Gmail with two-factor authentication enabled, create an **app password**
+and enter it instead of your normal account password. Authentication failures will
+prompt you to re-enter these settings.
+
 ## License
 
 This project is licensed under the GNU General Public License version 3. See the [LICENSE](LICENSE) file for details.
