@@ -33,7 +33,7 @@ fta_drawing_helper = getattr(sys.modules.get('__main__'), 'fta_drawing_helper', 
 class ReviewParticipant:
     name: str
     email: str
-    role: str  # 'reviewer' or 'approver'
+    role: str  # 'reviewer', 'approver', or 'moderator'
     done: bool = False
 
 @dataclass
@@ -53,40 +53,63 @@ class ReviewData:
     name: str = ""
     description: str = ""
     mode: str = "peer"  # 'peer' or 'joint'
-    moderator: str = ""
+    moderators: List[ReviewParticipant] = field(default_factory=list)
     participants: List[ReviewParticipant] = field(default_factory=list)
     comments: List[ReviewComment] = field(default_factory=list)
     fta_ids: List[int] = field(default_factory=list)
     fmea_names: List[str] = field(default_factory=list)
+    due_date: str = ""
+    closed: bool = False
     approved: bool = False
 
 class ParticipantDialog(simpledialog.Dialog):
-    def __init__(self, parent, joint: bool):
+    def __init__(self, parent, joint: bool, initial_mods=None, initial_parts=None):
         self.joint = joint
-        self.participants: List[ReviewParticipant] = []
-        self.moderator = ""
+        self.initial_mods = initial_mods or []
+        self.initial_parts = initial_parts or []
+        self.mod_rows = []
+        self.part_rows = []
         super().__init__(parent, title="Review Participants")
 
     def body(self, master):
-        tk.Label(master, text="Moderator:").pack(anchor="w")
-        self.mod_entry = tk.Entry(master)
-        self.mod_entry.pack(fill=tk.X, padx=5, pady=(0, 5))
-
-        tk.Label(master, text="Participants:").pack(anchor="w")
+        tk.Label(master, text="Moderators:").pack(anchor="w")
         header = tk.Frame(master)
         header.pack(fill=tk.X)
         tk.Label(header, text="Name", width=15).pack(side=tk.LEFT)
         tk.Label(header, text="Email", width=20).pack(side=tk.LEFT, padx=5)
-        if self.joint:
-            tk.Label(header, text="Role", width=10).pack(side=tk.LEFT, padx=5)
-        self.row_frame = tk.Frame(master)
-        self.row_frame.pack(fill=tk.BOTH, expand=True)
-        btn = tk.Button(master, text="Add Participant", command=self.add_row)
-        btn.pack(pady=5)
-        self.add_row()
+        self.mod_frame = tk.Frame(master)
+        self.mod_frame.pack(fill=tk.BOTH, expand=True)
+        tk.Button(master, text="Add Moderator", command=self.add_mod_row).pack(pady=5)
+        for m in (self.initial_mods or [None]):
+            self.add_mod_row(m)
 
-    def add_row(self):
-        frame = tk.Frame(self.row_frame)
+        tk.Label(master, text="Participants:").pack(anchor="w")
+        phead = tk.Frame(master)
+        phead.pack(fill=tk.X)
+        tk.Label(phead, text="Name", width=15).pack(side=tk.LEFT)
+        tk.Label(phead, text="Email", width=20).pack(side=tk.LEFT, padx=5)
+        if self.joint:
+            tk.Label(phead, text="Role", width=10).pack(side=tk.LEFT, padx=5)
+        self.part_frame = tk.Frame(master)
+        self.part_frame.pack(fill=tk.BOTH, expand=True)
+        tk.Button(master, text="Add Participant", command=self.add_part_row).pack(pady=5)
+        for p in (self.initial_parts or [None]):
+            self.add_part_row(p)
+
+    def add_mod_row(self, data=None):
+        frame = tk.Frame(self.mod_frame)
+        frame.pack(fill=tk.X, pady=2)
+        name = tk.Entry(frame, width=15)
+        name.pack(side=tk.LEFT)
+        email = tk.Entry(frame, width=20)
+        email.pack(side=tk.LEFT, padx=5)
+        if isinstance(data, ReviewParticipant):
+            name.insert(0, data.name)
+            email.insert(0, data.email)
+        self.mod_rows.append((name, email))
+
+    def add_part_row(self, data=None):
+        frame = tk.Frame(self.part_frame)
         frame.pack(fill=tk.X, pady=2)
         name = tk.Entry(frame, width=15)
         name.pack(side=tk.LEFT)
@@ -98,11 +121,34 @@ class ParticipantDialog(simpledialog.Dialog):
             role_cb.pack(side=tk.LEFT, padx=5)
         else:
             role_cb = None
-        self.participants.append((name, email, role_cb))
+        if isinstance(data, ReviewParticipant):
+            name.insert(0, data.name)
+            email.insert(0, data.email)
+            if role_cb:
+                role_cb.set(data.role)
+        self.part_rows.append((name, email, role_cb))
 
     def apply(self):
-        result = []
-        for name_entry, email_entry, role_cb in self.participants:
+        moderators = []
+        seen = {}
+        for name_e, email_e in self.mod_rows:
+            name = name_e.get().strip()
+            if not name:
+                continue
+            email = email_e.get().strip()
+            if email and not EMAIL_REGEX.fullmatch(email):
+                messagebox.showerror("Email", f"Invalid email address: {email}")
+                self.result = None
+                return
+            if name in seen:
+                messagebox.showerror("Participants", f"{name} already added")
+                self.result = None
+                return
+            seen[name] = "moderator"
+            moderators.append(ReviewParticipant(name, email, "moderator"))
+
+        participants = []
+        for name_entry, email_entry, role_cb in self.part_rows:
             name = name_entry.get().strip()
             if not name:
                 continue
@@ -112,9 +158,14 @@ class ParticipantDialog(simpledialog.Dialog):
                 self.result = None
                 return
             role = role_cb.get() if role_cb else "reviewer"
-            result.append(ReviewParticipant(name, email, role))
-        self.moderator = self.mod_entry.get().strip()
-        self.result = result
+            if name in seen:
+                messagebox.showerror("Participants", f"{name} already added")
+                self.result = None
+                return
+            seen[name] = role
+            participants.append(ReviewParticipant(name, email, role))
+
+        self.result = (moderators, participants)
 
 
 class EmailConfigDialog(simpledialog.Dialog):
@@ -195,6 +246,47 @@ class ReviewScopeDialog(simpledialog.Dialog):
         fmea_names = [name for var, name in self.fmea_vars if var.get()]
         self.result = (fta_ids, fmea_names)
 
+
+class UserSelectDialog(simpledialog.Dialog):
+    """Prompt for user selection via combo box with email."""
+
+    def __init__(self, parent, participants, initial_name=""):
+        self.participants = participants
+        self.initial_name = initial_name
+        super().__init__(parent, title="Select User")
+
+    def body(self, master):
+        tk.Label(master, text="Name:").grid(row=0, column=0, sticky="w")
+        names = [p.name for p in self.participants]
+        self.name_var = tk.StringVar()
+        self.name_combo = ttk.Combobox(master, values=names, textvariable=self.name_var, state="readonly")
+        self.name_combo.grid(row=0, column=1, pady=5)
+        self.name_combo.bind("<<ComboboxSelected>>", self.on_select)
+        if self.initial_name and self.initial_name in names:
+            self.name_combo.set(self.initial_name)
+        elif names:
+            self.name_combo.current(0)
+
+        tk.Label(master, text="Email:").grid(row=1, column=0, sticky="w")
+        self.email_entry = tk.Entry(master)
+        self.email_entry.grid(row=1, column=1, pady=5)
+        self.on_select()
+        return self.name_combo
+
+    def on_select(self, event=None):
+        name = self.name_var.get()
+        email = ""
+        for p in self.participants:
+            if p.name == name:
+                email = p.email
+                break
+        self.email_entry.delete(0, tk.END)
+        if email:
+            self.email_entry.insert(0, email)
+
+    def apply(self):
+        self.result = (self.name_var.get().strip(), self.email_entry.get().strip())
+
 class ReviewToolbox(tk.Toplevel):
     def __init__(self, master, app):
         super().__init__(master)
@@ -216,6 +308,8 @@ class ReviewToolbox(tk.Toplevel):
         tk.Label(self, textvariable=self.desc_var, wraplength=400, justify="left").pack(fill=tk.X, padx=5)
         self.mod_var = tk.StringVar()
         tk.Label(self, textvariable=self.mod_var).pack(fill=tk.X, padx=5)
+        self.due_var = tk.StringVar()
+        tk.Label(self, textvariable=self.due_var).pack(fill=tk.X, padx=5)
 
         user_frame = tk.Frame(self)
         user_frame.pack(fill=tk.X)
@@ -252,6 +346,8 @@ class ReviewToolbox(tk.Toplevel):
         tk.Button(btn_frame, text="Open Document", command=self.open_document).pack(side=tk.LEFT)
         self.approve_btn = tk.Button(btn_frame, text="Approve", command=self.approve)
         self.approve_btn.pack(side=tk.LEFT)
+        self.edit_btn = tk.Button(btn_frame, text="Edit Review", command=self.edit_review)
+        self.edit_btn.pack(side=tk.LEFT)
 
         self.update_buttons()
 
@@ -271,12 +367,15 @@ class ReviewToolbox(tk.Toplevel):
             self.review_var.set(self.app.review_data.name)
             self.status_var.set("approved" if self.app.review_data.approved else "open")
             self.desc_var.set(self.app.review_data.description)
-            self.mod_var.set(f"Moderator: {self.app.review_data.moderator}")
+            mods = ", ".join(m.name for m in self.app.review_data.moderators)
+            self.mod_var.set(f"Moderators: {mods}")
+            self.due_var.set(f"Due: {self.app.review_data.due_date}")
         else:
             self.review_var.set("")
             self.status_var.set("")
             self.desc_var.set("")
             self.mod_var.set("")
+            self.due_var.set("")
 
     def on_review_change(self, event=None):
         name = self.review_var.get()
@@ -287,10 +386,13 @@ class ReviewToolbox(tk.Toplevel):
         self.status_var.set("approved" if self.app.review_data and self.app.review_data.approved else "open")
         if self.app.review_data:
             self.desc_var.set(self.app.review_data.description)
-            self.mod_var.set(f"Moderator: {self.app.review_data.moderator}")
+            mods = ", ".join(m.name for m in self.app.review_data.moderators)
+            self.mod_var.set(f"Moderators: {mods}")
+            self.due_var.set(f"Due: {self.app.review_data.due_date}")
         else:
             self.desc_var.set("")
             self.mod_var.set("")
+            self.due_var.set("")
         self.refresh_comments()
         self.refresh_targets()
         self.update_buttons()
@@ -305,8 +407,7 @@ class ReviewToolbox(tk.Toplevel):
         if not self.app.review_data:
             return
         names = [p.name for p in self.app.review_data.participants]
-        if self.app.review_data.moderator:
-            names.append(self.app.review_data.moderator)
+        names.extend(m.name for m in self.app.review_data.moderators)
         self.user_combo['values'] = names
         if self.app.current_user:
             self.user_var.set(self.app.current_user)
@@ -344,12 +445,15 @@ class ReviewToolbox(tk.Toplevel):
         if not target and not self.app.selected_node:
             messagebox.showwarning("Add Comment", "Select a node first")
             return
-        allowed = [p.name for p in self.app.review_data.participants]
-        if self.app.review_data.moderator:
-            allowed.append(self.app.review_data.moderator)
-        reviewer = simpledialog.askstring("User", "Enter your name:", initialvalue=self.app.current_user)
-        if not reviewer:
+        if self.app.review_is_closed():
+            messagebox.showwarning("Review", "This review is closed")
             return
+        all_parts = self.app.review_data.participants + self.app.review_data.moderators
+        dlg = UserSelectDialog(self, all_parts, initial_name=self.app.current_user)
+        if not dlg.result:
+            return
+        reviewer, _ = dlg.result
+        allowed = [p.name for p in all_parts]
         if reviewer not in allowed:
             messagebox.showerror("User", "Name not found in participants")
             return
@@ -390,8 +494,11 @@ class ReviewToolbox(tk.Toplevel):
         idx = self.comment_list.curselection()
         if not idx:
             return
-        if self.app.current_user != self.app.review_data.moderator:
-            messagebox.showerror("Resolve", "Only the moderator can resolve comments")
+        if self.app.review_is_closed():
+            messagebox.showwarning("Review", "This review is closed")
+            return
+        if self.app.current_user not in [m.name for m in self.app.review_data.moderators]:
+            messagebox.showerror("Resolve", "Only a moderator can resolve comments")
             return
         c = self.app.review_data.comments[idx[0]]
         resolution = simpledialog.askstring("Resolve Comment", "Enter resolution comment:")
@@ -402,6 +509,9 @@ class ReviewToolbox(tk.Toplevel):
         self.refresh_comments()
 
     def mark_done(self):
+        if self.app.review_is_closed():
+            messagebox.showwarning("Review", "This review is closed")
+            return
         user = self.app.current_user
         for p in self.app.review_data.participants:
             if p.name == user:
@@ -410,6 +520,9 @@ class ReviewToolbox(tk.Toplevel):
         self.update_buttons()
 
     def approve(self):
+        if self.app.review_is_closed():
+            messagebox.showwarning("Review", "This review is closed")
+            return
         if self.app.review_data.mode == 'joint':
             all_done = all(p.done for p in self.app.review_data.participants if p.role == 'reviewer')
             if not all_done:
@@ -423,6 +536,35 @@ class ReviewToolbox(tk.Toplevel):
         messagebox.showinfo("Approve", "Review approved")
         self.app.add_version()
         self.refresh_reviews()
+
+    def edit_review(self):
+        if not self.app.review_data:
+            return
+        if self.app.current_user not in [m.name for m in self.app.review_data.moderators]:
+            messagebox.showerror("Edit", "Only a moderator can edit the review")
+            return
+        dialog = ParticipantDialog(
+            self,
+            self.app.review_data.mode == 'joint',
+            initial_mods=self.app.review_data.moderators,
+            initial_parts=self.app.review_data.participants,
+        )
+        if not dialog.result:
+            return
+        moderators, participants = dialog.result
+        if not moderators:
+            messagebox.showerror("Review", "At least one moderator required")
+            return
+        self.app.review_data.moderators = moderators
+        self.app.review_data.participants = participants
+        desc = simpledialog.askstring("Description", "Edit description:", initialvalue=self.app.review_data.description)
+        if desc is not None:
+            self.app.review_data.description = desc
+        due = simpledialog.askstring("Due Date", "Edit due date (YYYY-MM-DD):", initialvalue=self.app.review_data.due_date)
+        if due is not None:
+            self.app.review_data.due_date = due
+        self.refresh_reviews()
+        self.refresh_comments()
 
     def open_document(self):
         if not self.app.review_data:
@@ -456,14 +598,16 @@ class ReviewToolbox(tk.Toplevel):
             if p.name == self.app.current_user:
                 role = p.role
                 break
-        if self.app.review_data and self.app.review_data.mode == 'joint' and role == 'approver':
+        if self.app.review_data and self.app.review_data.mode == 'joint' and role == 'approver' and not self.app.review_is_closed():
             self.approve_btn.pack(side=tk.LEFT)
         else:
             self.approve_btn.pack_forget()
-        if self.app.review_data and self.app.current_user == self.app.review_data.moderator:
+        if self.app.review_data and self.app.current_user in [m.name for m in self.app.review_data.moderators] and not self.app.review_is_closed():
             self.resolve_btn.pack(side=tk.LEFT)
+            self.edit_btn.pack(side=tk.LEFT)
         else:
             self.resolve_btn.pack_forget()
+            self.edit_btn.pack_forget()
 
     def refresh_targets(self):
         items, self.target_map = self.app.get_review_targets()
@@ -511,7 +655,7 @@ class ReviewDocumentDialog(tk.Toplevel):
         )
         self.populate()
 
-    def draw_tree(self, canvas, node):
+    def draw_tree(self, canvas, node, diff_nodes=None):
         def draw_connections(n):
             region_width = 100
             parent_bottom = (n.x, n.y + 40)
@@ -522,9 +666,10 @@ class ReviewDocumentDialog(tk.Toplevel):
                 )
                 child_top = (ch.x, ch.y - 45)
                 if self.dh:
+                    color = "blue" if diff_nodes and ch.unique_id in diff_nodes else "dimgray"
                     self.dh.draw_90_connection(
                         canvas, parent_conn, child_top,
-                        outline_color="dimgray", line_width=1
+                        outline_color=color, line_width=1
                     )
                 draw_connections(ch)
 
@@ -548,7 +693,7 @@ class ReviewDocumentDialog(tk.Toplevel):
                         top_text=top_text,
                         bottom_text=bottom_text,
                         fill=fill,
-                        outline_color="dimgray",
+                        outline_color="blue" if diff_nodes and n.unique_id in diff_nodes else "dimgray",
                         line_width=1,
                     )
             elif typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
@@ -562,7 +707,7 @@ class ReviewDocumentDialog(tk.Toplevel):
                             top_text=top_text,
                             bottom_text=bottom_text,
                             fill=fill,
-                            outline_color="dimgray",
+                            outline_color="blue" if diff_nodes and n.unique_id in diff_nodes else "dimgray",
                             line_width=1,
                         )
                 else:
@@ -575,7 +720,7 @@ class ReviewDocumentDialog(tk.Toplevel):
                             top_text=top_text,
                             bottom_text=bottom_text,
                             fill=fill,
-                            outline_color="dimgray",
+                            outline_color="blue" if diff_nodes and n.unique_id in diff_nodes else "dimgray",
                             line_width=1,
                         )
             else:
@@ -588,7 +733,7 @@ class ReviewDocumentDialog(tk.Toplevel):
                         top_text=top_text,
                         bottom_text=bottom_text,
                         fill=fill,
-                        outline_color="dimgray",
+                        outline_color="blue" if diff_nodes and n.unique_id in diff_nodes else "dimgray",
                         line_width=1,
                     )
 
@@ -604,6 +749,16 @@ class ReviewDocumentDialog(tk.Toplevel):
 
     def populate(self):
         row = 0
+        if self.app.versions:
+            base_data = self.app.versions[-1]["data"]
+            diff_nodes = set(self.app.calculate_diff_between(base_data, self.app.export_model_data(include_versions=False)))
+            old_fmea = {
+                f["name"]: {e["unique_id"]: e for e in f.get("entries", [])}
+                for f in base_data.get("fmeas", [])
+            }
+        else:
+            diff_nodes = set()
+            old_fmea = {}
         heading_font = ("TkDefaultFont", 10, "bold")
         for nid in self.review.fta_ids:
             node = self.app.find_node_by_id_all(nid)
@@ -626,7 +781,7 @@ class ReviewDocumentDialog(tk.Toplevel):
             frame.columnconfigure(0, weight=1)
             c.bind("<ButtonPress-1>", lambda e, cv=c: cv.scan_mark(e.x, e.y))
             c.bind("<B1-Motion>", lambda e, cv=c: cv.scan_dragto(e.x, e.y, gain=1))
-            self.draw_tree(c, node)
+            self.draw_tree(c, node, diff_nodes)
             bbox = c.bbox("all")
             if bbox:
                 c.config(scrollregion=bbox)
@@ -669,6 +824,7 @@ class ReviewDocumentDialog(tk.Toplevel):
             frame.grid_columnconfigure(0, weight=1)
             frame.grid_rowconfigure(0, weight=1)
 
+            tree.tag_configure("added", background="#cce5ff")
             for entry in fmea["entries"]:
                 parent = entry.parents[0] if entry.parents else None
                 if parent:
@@ -694,7 +850,12 @@ class ReviewDocumentDialog(tk.Toplevel):
                     rpn,
                     req_ids,
                 ]
-                tree.insert("", "end", values=vals)
+                status = "existing"
+                old_entries = old_fmea.get(name, {})
+                old_entry = old_entries.get(entry.unique_id)
+                if not old_entry or json.dumps(old_entry, sort_keys=True) != json.dumps(entry.to_dict(), sort_keys=True):
+                    status = "added"
+                tree.insert("", "end", values=vals, tags=(status,))
 
             row += 1
 
