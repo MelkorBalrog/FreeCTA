@@ -5896,79 +5896,95 @@ class FaultTreeApp:
         if node.rationale:
             top_text += f"\nRationale: {node.rationale}"
         bottom_text = node.name
+
+        outline_color = "dimgray"
+        line_width = 1
+        if node.unique_id in getattr(self.app, "diff_nodes", []):
+            outline_color = "blue"
+            line_width = 2
+        elif not node.is_primary_instance:
+            outline_color = "red"
         
         # For page elements, assume they use a triangle shape.
         if node.is_page:
-            # If it’s a clone, you might choose to draw with a different outline (e.g. red or dashed)
-            if not node.is_primary_instance:
-                fta_drawing_helper.draw_triangle_shape(canvas, eff_x, eff_y, scale=40,
-                                                       top_text=top_text,
-                                                       bottom_text=bottom_text,
-                                                       fill=fill_color,
-                                                       outline_color="red",  # mark clone with red outline
-                                                       line_width=1,
-                                                       font_obj=self.diagram_font)
-            else:
-                fta_drawing_helper.draw_triangle_shape(canvas, eff_x, eff_y, scale=40,
-                                                       top_text=top_text,
-                                                       bottom_text=bottom_text,
-                                                       fill=fill_color,
-                                                       outline_color="dimgray",
-                                                       line_width=1,
-                                                       font_obj=self.diagram_font)
+            fta_drawing_helper.draw_triangle_shape(
+                canvas,
+                eff_x,
+                eff_y,
+                scale=40,
+                top_text=top_text,
+                bottom_text=bottom_text,
+                fill=fill_color,
+                outline_color=outline_color,
+                line_width=line_width,
+                font_obj=self.diagram_font,
+            )
         else:
             node_type_upper = node.node_type.upper()
             if node_type_upper in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
                 if node.gate_type and node.gate_type.upper() == "OR":
-                    fta_drawing_helper.draw_rotated_or_gate_shape(self.page_canvas, eff_x, eff_y,
-                                               scale=40,
-                                               top_text=top_text,
-                                               bottom_text=bottom_text,
-                                               fill=fill_color,
-                                               outline_color="dimgray",
-                                               line_width=1)
+                    fta_drawing_helper.draw_rotated_or_gate_shape(
+                        self.page_canvas,
+                        eff_x,
+                        eff_y,
+                        scale=40,
+                        top_text=top_text,
+                        bottom_text=bottom_text,
+                        fill=fill_color,
+                        outline_color=outline_color,
+                        line_width=line_width,
+                    )
                 else:
-                    fta_drawing_helper.draw_rotated_and_gate_shape(self.page_canvas, eff_x, eff_y,
-                                                scale=40,
-                                                top_text=top_text,
-                                                bottom_text=bottom_text,
-                                                fill=fill_color,
-                                                outline_color="dimgray",
-                                                line_width=1)
+                    fta_drawing_helper.draw_rotated_and_gate_shape(
+                        self.page_canvas,
+                        eff_x,
+                        eff_y,
+                        scale=40,
+                        top_text=top_text,
+                        bottom_text=bottom_text,
+                        fill=fill_color,
+                        outline_color=outline_color,
+                        line_width=line_width,
+                    )
             elif node_type_upper in ["CONFIDENCE LEVEL", "ROBUSTNESS SCORE"]:
-                fta_drawing_helper.draw_circle_event_shape(self.page_canvas, eff_x, eff_y, 45,
-                                        top_text=top_text,
-                                        bottom_text=bottom_text,
-                                        fill=fill_color,
-                                        outline_color="dimgray",
-                                        line_width=1)
+                fta_drawing_helper.draw_circle_event_shape(
+                    self.page_canvas,
+                    eff_x,
+                    eff_y,
+                    45,
+                    top_text=top_text,
+                    bottom_text=bottom_text,
+                    fill=fill_color,
+                    outline_color=outline_color,
+                    line_width=line_width,
+                )
             else:
-                fta_drawing_helper.draw_circle_event_shape(self.page_canvas, eff_x, eff_y, 45,
-                                        top_text=top_text,
-                                        bottom_text=bottom_text,
-                                        fill=fill_color,
-                                        outline_color="dimgray",
-                                        line_width=1)
+                fta_drawing_helper.draw_circle_event_shape(
+                    self.page_canvas,
+                    eff_x,
+                    eff_y,
+                    45,
+                    top_text=top_text,
+                    bottom_text=bottom_text,
+                    fill=fill_color,
+                    outline_color=outline_color,
+                    line_width=line_width,
+                )
 
         if self.review_data:
-            unresolved = any(c.node_id == node.unique_id and not c.resolved for c in self.review_data.comments)
+            unresolved = any(
+                c.node_id == node.unique_id and not c.resolved
+                for c in self.review_data.comments
+            )
             if unresolved:
-                canvas.create_oval(eff_x + 35, eff_y + 35, eff_x + 45, eff_y + 45, fill='yellow', outline='black')
-
-        if self.review_data:
-            unresolved = any(c.node_id == node.unique_id and not c.resolved for c in self.review_data.comments)
-            if unresolved:
-                canvas.create_oval(eff_x + 35, eff_y + 35, eff_x + 45, eff_y + 45, fill='yellow', outline='black')
-
-        if self.review_data:
-            unresolved = any(c.node_id == node.unique_id and not c.resolved for c in self.review_data.comments)
-            if unresolved:
-                canvas.create_oval(eff_x + 35, eff_y + 35, eff_x + 45, eff_y + 45, fill='yellow', outline='black')
-
-        if self.review_data:
-            unresolved = any(c.node_id == node.unique_id and not c.resolved for c in self.review_data.comments)
-            if unresolved:
-                canvas.create_oval(eff_x + 35, eff_y + 35, eff_x + 45, eff_y + 45, fill='yellow', outline='black')
+                canvas.create_oval(
+                    eff_x + 35,
+                    eff_y + 35,
+                    eff_x + 45,
+                    eff_y + 45,
+                    fill="yellow",
+                    outline="black",
+                )
 
     def on_ctrl_mousewheel_page(self, event):
         if event.delta > 0:
@@ -6141,6 +6157,11 @@ class FaultTreeApp:
         msg.set_content(content)
 
         html_lines = ["<html><body>", "<pre>", html.escape(content), "</pre>"]
+        prev = self.versions[-1]["data"] if self.versions else None
+        current = self.export_model_data(include_versions=False)
+        diff_nodes = self.calculate_diff_between(prev, current) if prev else []
+        old_diff = self.diff_nodes
+        self.diff_nodes = diff_nodes
         image_cids = []
         images = []
         for tid in review.fta_ids:
@@ -6159,6 +6180,7 @@ class FaultTreeApp:
                              f"<img src=\"cid:{cid[1:-1]}\" alt=\"{html.escape(label)}\"></p>")
             image_cids.append(cid)
             images.append(buf.getvalue())
+        self.diff_nodes = old_diff
         html_lines.append("</body></html>")
         html_body = "\n".join(html_lines)
         msg.add_alternative(html_body, subtype="html")

@@ -650,6 +650,13 @@ class ReviewDocumentDialog(tk.Toplevel):
         self.dh = getattr(app, 'fta_drawing_helper', None) or fta_drawing_helper
         self.title(f"Review Document - {review.name}")
 
+        self.prev_data = app.versions[-1]["data"] if app.versions else None
+        self.curr_data = app.export_model_data(include_versions=False)
+        if self.prev_data:
+            self.diff_nodes = app.calculate_diff_between(self.prev_data, self.curr_data)
+        else:
+            self.diff_nodes = []
+
         self.outer = tk.Canvas(self)
         vbar = tk.Scrollbar(self, orient=tk.VERTICAL, command=self.outer.yview)
         self.outer.configure(yscrollcommand=vbar.set)
@@ -691,6 +698,8 @@ class ReviewDocumentDialog(tk.Toplevel):
                 top_text += f"\n{n.description}"
             bottom_text = n.name
             typ = n.node_type.upper()
+            outline = "blue" if n.unique_id in self.diff_nodes else "dimgray"
+            lw = 2 if n.unique_id in self.diff_nodes else 1
             if n.is_page:
                 if self.dh:
                     self.dh.draw_triangle_shape(
