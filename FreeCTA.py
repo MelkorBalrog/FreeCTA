@@ -257,6 +257,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from io import BytesIO
 import PIL.Image as PILImage
 from reportlab.platypus import LongTable
+from email.message import EmailMessage
+import smtplib
 
 styles = getSampleStyleSheet()  # Create the stylesheet.
 preformatted_style = ParagraphStyle(name="Preformatted", fontName="Courier", fontSize=10)
@@ -6021,6 +6023,7 @@ class FaultTreeApp:
             self.review_data = review
             self.current_user = parts[0].name
             ReviewDocumentDialog(self.root, self, review)
+            self.send_review_email(review)
             self.open_review_toolbox()
 
     def start_joint_review(self):
@@ -6046,6 +6049,7 @@ class FaultTreeApp:
             self.review_data = review
             self.current_user = participants[0].name
             ReviewDocumentDialog(self.root, self, review)
+            self.send_review_email(review)
             self.open_review_toolbox()
 
     def open_review_toolbox(self):
@@ -6057,6 +6061,37 @@ class FaultTreeApp:
         if self.review_window is None or not self.review_window.winfo_exists():
             self.review_window = ReviewToolbox(self.root, self)
         self.set_current_user()
+
+    def send_review_email(self, review):
+        """Send the review summary to all reviewers via local SMTP."""
+        recipients = [p.email for p in review.participants if p.role == 'reviewer' and p.email]
+        if not recipients:
+            return
+        subject = f"Review: {review.name}"
+        lines = [f"Review Name: {review.name}", f"Description: {review.description}", ""]
+        if review.fta_ids:
+            lines.append("FTAs:")
+            for tid in review.fta_ids:
+                te = next((t for t in self.top_events if t.unique_id == tid), None)
+                if te:
+                    lines.append(f" - {te.name}")
+            lines.append("")
+        if review.fmea_names:
+            lines.append("FMEAs:")
+            for name in review.fmea_names:
+                lines.append(f" - {name}")
+            lines.append("")
+        content = "\n".join(lines)
+        msg = EmailMessage()
+        msg['Subject'] = subject
+        msg['From'] = 'noreply@example.com'
+        msg['To'] = ', '.join(recipients)
+        msg.set_content(content)
+        try:
+            with smtplib.SMTP('localhost') as server:
+                server.send_message(msg)
+        except Exception as e:
+            print(f"Failed to send review email: {e}")
 
     def add_version(self):
         name = f"v{len(self.versions)+1}"
