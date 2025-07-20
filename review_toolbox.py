@@ -778,6 +778,27 @@ class VersionCompareDialog(tk.Toplevel):
         map1 = self.app.node_map_from_data(data1["top_events"])
         map2 = self.app.node_map_from_data(data2["top_events"])
 
+        def build_conn_set(events):
+            conns = set()
+            def visit(d):
+                for ch in d.get("children", []):
+                    conns.add((d["unique_id"], ch["unique_id"]))
+                    visit(ch)
+            for t in events:
+                visit(t)
+            return conns
+
+        conns1 = build_conn_set(data1["top_events"])
+        conns2 = build_conn_set(data2["top_events"])
+        conn_status = {}
+        for c in conns1 | conns2:
+            if c in conns1 and c not in conns2:
+                conn_status[c] = "removed"
+            elif c in conns2 and c not in conns1:
+                conn_status[c] = "added"
+            else:
+                conn_status[c] = "existing"
+
         status = {}
         for nid in set(map1) | set(map2):
             if nid in map1 and nid not in map2:
@@ -815,8 +836,20 @@ class VersionCompareDialog(tk.Toplevel):
                 )
                 child_top = (ch.x, ch.y - 25)
                 if self.app.fta_drawing_helper:
+                    edge_st = conn_status.get((n.unique_id, ch.unique_id), "existing")
+                    if status.get(n.unique_id) == "removed" or status.get(ch.unique_id) == "removed":
+                        edge_st = "removed"
+                    color = "gray"
+                    if edge_st == "added":
+                        color = "blue"
+                    elif edge_st == "removed":
+                        color = "red"
                     self.app.fta_drawing_helper.draw_90_connection(
-                        self.tree_canvas, parent_conn, child_top, outline_color="gray", line_width=1
+                        self.tree_canvas,
+                        parent_conn,
+                        child_top,
+                        outline_color=color,
+                        line_width=1,
                     )
                 draw_connections(ch)
 
