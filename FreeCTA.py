@@ -6240,8 +6240,8 @@ class FaultTreeApp:
                 if fmea["name"] in allowed_fmeas:
                     fmea_node_ids.update(be.unique_id for be in fmea["entries"])
         else:
-            for fmea in self.fmeas:
-                fmea_node_ids.update(be.unique_id for be in fmea["entries"])
+            # When no FMEA was selected, do not offer FMEA-related targets
+            fmea_node_ids = set()
 
         for node in nodes:
             label = node.user_name or node.description or f"Node {node.unique_id}"
