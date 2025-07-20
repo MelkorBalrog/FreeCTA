@@ -679,16 +679,17 @@ class VersionCompareDialog(tk.Toplevel):
         self.log_text.tag_configure("removed", foreground="red")
 
     def insert_diff(self, old, new):
-        diff = difflib.ndiff(old.split(), new.split())
+        """Insert a colorized diff between old and new strings."""
+        diff = difflib.ndiff(list(old), list(new))
         for token in diff:
             if token.startswith("- "):
-                self.log_text.insert(tk.END, token[2:] + " ", "removed")
+                self.log_text.insert(tk.END, token[2:], "removed")
             elif token.startswith("+ "):
-                self.log_text.insert(tk.END, token[2:] + " ", "added")
+                self.log_text.insert(tk.END, token[2:], "added")
             elif token.startswith("? "):
                 continue
             else:
-                self.log_text.insert(tk.END, token[2:] + " ")
+                self.log_text.insert(tk.END, token[2:])
 
     def draw_small_tree(self, canvas, node):
         def draw_connections(n):
@@ -860,10 +861,23 @@ class VersionCompareDialog(tk.Toplevel):
                 color = "blue"
             elif st == "removed":
                 color = "red"
+
+            # Use the same information as the main diagram
+            source = n if getattr(n, "is_primary_instance", True) else getattr(n, "original", n)
+            subtype_text = source.input_subtype if source.input_subtype else "N/A"
+            display_label = source.display_label
+
+            top_text = (
+                f"Type: {source.node_type}\n"
+                f"Subtype: {subtype_text}\n"
+                f"{display_label}\n"
+                f"Desc: {source.description}\n\n"
+                f"Rationale: {source.rationale}"
+            )
+            bottom_text = n.name
+
             fill = self.app.get_node_fill_color(n)
             eff_x, eff_y = n.x, n.y
-            top_text = n.node_type
-            bottom_text = n.name
             typ = n.node_type.upper()
             if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
                 if n.gate_type and n.gate_type.upper() == "OR":
