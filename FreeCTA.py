@@ -1,4 +1,20 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Copyright (C) 2025 Capek System Safety & Robotic Solutions
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 ===============================================================================
 Risk & Assurance Gate Calculator for Autonomous Systems
@@ -1701,37 +1717,6 @@ class EditNodeDialog(simpledialog.Dialog):
                 self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
-                ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-                self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
-                self.sg_asil_combo = ttk.Combobox(
-                    master,
-                    textvariable=self.sg_asil_var,
-                    values=ASIL_LEVEL_OPTIONS,
-                    state="readonly",
-                    width=8,
-                )
-                self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
-                row_next += 1
-
-                ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-                self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
-                self.sg_asil_combo = ttk.Combobox(
-                    master,
-                    textvariable=self.sg_asil_var,
-                    values=ASIL_LEVEL_OPTIONS,
-                    state="readonly",
-                    width=8,
-                )
-                self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
-                row_next += 1
-
-                ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-                self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
-                self.sg_asil_combo = ttk.Combobox(master, textvariable=self.sg_asil_var,
-                                                  values=["QM", "A", "B", "C", "D"],
-                                                  state="readonly", width=5)
-                self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
-                row_next += 1
 
         if self.node.node_type.upper() not in ["TOP EVENT", "BASIC EVENT"]:
             self.is_page_var = tk.BooleanVar(value=self.node.is_page)
@@ -4228,9 +4213,6 @@ class FaultTreeApp:
         """Return a list of all basic events across all top-level trees."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]
 
-    def get_all_basic_events(self):
-        """Return a list of all basic events across all top-level trees."""
-        return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]
 
     def get_all_nodes(self, node=None):
         if node is None:
@@ -4880,25 +4862,6 @@ class FaultTreeApp:
             self.app.comment_target = ("fmea", self.node.unique_id)
             self.app.open_review_toolbox()
 
-        def comment_requirement(self):
-            sel = self.req_listbox.curselection()
-            if not sel:
-                messagebox.showwarning("Comment", "Select a requirement")
-                return
-            req = self.node.safety_requirements[sel[0]]
-            self.app.selected_node = self.node
-            self.app.comment_target = ("requirement", self.node.unique_id, req.get("id"))
-            self.app.open_review_toolbox()
-
-        def comment_requirement(self):
-            sel = self.req_listbox.curselection()
-            if not sel:
-                messagebox.showwarning("Comment", "Select a requirement")
-                return
-            req = self.node.safety_requirements[sel[0]]
-            self.app.selected_node = self.node
-            self.app.comment_target = ("requirement", self.node.unique_id, req.get("id"))
-            self.app.open_review_toolbox()
 
         def add_safety_requirement(self):
             global global_requirements
@@ -5318,28 +5281,6 @@ class FaultTreeApp:
                     writer.writerow([sg_text, sg_asil, rid, req.get("asil", ""), req.get("text", "")])
         messagebox.showinfo("Export", "Safety goal requirements exported.")
 
-    def export_safety_goal_requirements(self):
-        """Export requirements traced to safety goals including their ASIL."""
-        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
-        if not path:
-            return
-
-        columns = ["Safety Goal", "SG ASIL", "Requirement ID", "Req ASIL", "Text"]
-        with open(path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(columns)
-            for te in self.top_events:
-                sg_text = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
-                sg_asil = te.safety_goal_asil
-                reqs = self.collect_requirements_recursive(te)
-                seen = set()
-                for req in reqs:
-                    rid = req.get("id")
-                    if rid in seen:
-                        continue
-                    seen.add(rid)
-                    writer.writerow([sg_text, sg_asil, rid, req.get("asil", ""), req.get("text", "")])
-        messagebox.showinfo("Export", "Safety goal requirements exported.")
 
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
@@ -5618,7 +5559,7 @@ class FaultTreeApp:
                 self.save_model()
         self.root.destroy()
 
-    def export_model_data(self):
+    def export_model_data(self, include_versions=True):
         reviews = []
         for r in self.reviews:
             reviews.append({
@@ -5631,15 +5572,17 @@ class FaultTreeApp:
                 "comments": [asdict(c) for c in r.comments],
             })
         current_name = self.review_data.name if self.review_data else None
-        return {
+        data = {
             "top_events": [event.to_dict() for event in self.top_events],
             "fmeas": [{"name": f['name'], "file": f['file'], "entries": [e.to_dict() for e in f['entries']]} for f in self.fmeas],
             "project_properties": self.project_properties,
             "global_requirements": global_requirements,
             "reviews": reviews,
             "current_review": current_name,
-            "versions": self.versions,
         }
+        if include_versions:
+            data["versions"] = self.versions
+        return data
 
     def save_model(self):
         path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
@@ -6099,7 +6042,9 @@ class FaultTreeApp:
 
     def add_version(self):
         name = f"v{len(self.versions)+1}"
-        data = self.export_model_data()
+        # Exclude the versions list when capturing a snapshot to avoid
+        # recursively embedding previous versions within each saved state.
+        data = self.export_model_data(include_versions=False)
         self.versions.append({"name": name, "data": data})
 
     def compare_versions(self):
