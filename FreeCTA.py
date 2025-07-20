@@ -6009,6 +6009,9 @@ class FaultTreeApp:
             name = simpledialog.askstring("Review Name", "Enter unique review name:")
             if not name:
                 return
+            description = simpledialog.askstring("Description", "Enter a short description:")
+            if description is None:
+                description = ""
             if not moderator:
                 messagebox.showerror("Review", "Please specify a moderator")
                 return
@@ -6017,7 +6020,7 @@ class FaultTreeApp:
                 return
             scope = ReviewScopeDialog(self.root, self)
             fta_ids, fmea_names = scope.result if scope.result else ([], [])
-            review = ReviewData(name=name, mode='peer', moderator=moderator,
+            review = ReviewData(name=name, description=description, mode='peer', moderator=moderator,
                                participants=parts, comments=[],
                                fta_ids=fta_ids, fmea_names=fmea_names)
             self.reviews.append(review)
@@ -6035,6 +6038,9 @@ class FaultTreeApp:
             name = simpledialog.askstring("Review Name", "Enter unique review name:")
             if not name:
                 return
+            description = simpledialog.askstring("Description", "Enter a short description:")
+            if description is None:
+                description = ""
             if not moderator:
                 messagebox.showerror("Review", "Please specify a moderator")
                 return
@@ -6043,7 +6049,7 @@ class FaultTreeApp:
                 return
             scope = ReviewScopeDialog(self.root, self)
             fta_ids, fmea_names = scope.result if scope.result else ([], [])
-            review = ReviewData(name=name, mode='joint', moderator=moderator,
+            review = ReviewData(name=name, description=description, mode='joint', moderator=moderator,
                                participants=participants, comments=[],
                                fta_ids=fta_ids, fmea_names=fmea_names)
             self.reviews.append(review)
@@ -6062,6 +6068,137 @@ class FaultTreeApp:
         if self.review_window is None or not self.review_window.winfo_exists():
             self.review_window = ReviewToolbox(self.root, self)
         self.set_current_user()
+
+    def send_review_email(self, review):
+        """Send the review summary to all reviewers via configured SMTP."""
+        recipients = [p.email for p in review.participants if p.role == 'reviewer' and p.email]
+        if not recipients:
+            return
+
+        # Determine the current user's email if available
+        current_email = next((p.email for p in review.participants
+                              if p.name == self.current_user), "")
+
+        if not getattr(self, "email_config", None):
+            cfg = EmailConfigDialog(self.root, default_email=current_email).result
+            self.email_config = cfg
+
+        cfg = getattr(self, "email_config", None)
+        if not cfg:
+            return
+
+        subject = f"Review: {review.name}"
+        lines = [f"Review Name: {review.name}", f"Description: {review.description}", ""]
+        if review.fta_ids:
+            lines.append("FTAs:")
+            for tid in review.fta_ids:
+                te = next((t for t in self.top_events if t.unique_id == tid), None)
+                if te:
+                    lines.append(f" - {te.name}")
+            lines.append("")
+        if review.fmea_names:
+            lines.append("FMEAs:")
+            for name in review.fmea_names:
+                lines.append(f" - {name}")
+            lines.append("")
+        content = "\n".join(lines)
+        msg = EmailMessage()
+        msg['Subject'] = subject
+        msg['From'] = cfg['email']
+        msg['To'] = ', '.join(recipients)
+        msg.set_content(content)
+
+        # Attach FTA images
+        for tid in review.fta_ids:
+            node = self.find_node_by_id_all(tid)
+            if not node:
+                continue
+            img = self.capture_page_diagram(node)
+            if img is None:
+                continue
+            buf = BytesIO()
+            img.save(buf, format="PNG")
+            buf.seek(0)
+            filename = f"fta_{node.name or tid}.png"
+            msg.add_attachment(buf.getvalue(), maintype="image", subtype="png",
+                               filename=filename)
+
+        # Attach FMEA tables as CSV files (can be opened with Excel)
+        for name in review.fmea_names:
+            fmea = next((f for f in self.fmeas if f["name"] == name), None)
+            if not fmea:
+                continue
+            out = BytesIO()
+            writer = csv.writer(out)
+            columns = [
+                "Component",
+                "Parent",
+                "Failure Mode",
+                "Failure Effect",
+                "Cause",
+                "S",
+                "O",
+                "D",
+                "RPN",
+                "Requirements",
+            ]
+            writer.writerow(columns)
+            for be in fmea["entries"]:
+                parent = be.parents[0] if be.parents else None
+                if parent:
+                    comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                    if parent.description:
+                        comp = f"{comp} - {parent.description}"
+                    parent_name = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                else:
+                    comp = getattr(be, "fmea_component", "") or "N/A"
+                    parent_name = ""
+                req_ids = "; ".join(
+                    [f"{req['req_type']}:{req['text']}" for req in getattr(be, 'safety_requirements', [])]
+                )
+                rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
+                failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
+                row = [
+                    comp,
+                    parent_name,
+                    failure_mode,
+                    be.fmea_effect,
+                    getattr(be, "fmea_cause", ""),
+                    be.fmea_severity,
+                    be.fmea_occurrence,
+                    be.fmea_detection,
+                    rpn,
+                    req_ids,
+                ]
+                writer.writerow(row)
+            csv_bytes = out.getvalue()
+            out.close()
+            msg.add_attachment(
+                csv_bytes,
+                maintype="text",
+                subtype="csv",
+                filename=f"fmea_{name}.csv",
+            )
+        try:
+            port = cfg.get('port', 465)
+            if port == 465:
+                with smtplib.SMTP_SSL(cfg['server'], port) as server:
+                    server.login(cfg['email'], cfg['password'])
+                    server.send_message(msg)
+            else:
+                with smtplib.SMTP(cfg['server'], port) as server:
+                    server.starttls()
+                    server.login(cfg['email'], cfg['password'])
+                    server.send_message(msg)
+        except smtplib.SMTPAuthenticationError:
+            messagebox.showerror(
+                "Email",
+                "Login failed. If your account uses two-factor authentication, "
+                "create an app password and use that instead of your normal password."
+            )
+            self.email_config = None
+        except Exception as e:
+            messagebox.showerror("Email", f"Failed to send review email: {e}")
 
     def send_review_email(self, review):
         """Send the review summary to all reviewers via configured SMTP."""

@@ -29,6 +29,10 @@ If you use Gmail with two-factor authentication enabled, create an **app passwor
 and enter it instead of your normal account password. Authentication failures will
 prompt you to re-enter these settings.
 
+Each summary email includes a PNG image for every selected FTA and CSV files
+containing the FMEA tables so reviewers can view the content without opening the
+tool.
+
 ## License
 
 This project is licensed under the GNU General Public License version 3. See the [LICENSE](LICENSE) file for details.
