@@ -22,6 +22,9 @@ from typing import List
 import difflib
 import sys
 import json
+import re
+
+EMAIL_REGEX = re.compile(r"[^@]+@[^@]+\.[^@]+")
 
 # Access the drawing helper defined in the main application if available.
 fta_drawing_helper = getattr(sys.modules.get('__main__'), 'fta_drawing_helper', None)
@@ -70,6 +73,12 @@ class ParticipantDialog(simpledialog.Dialog):
         self.mod_entry.pack(fill=tk.X, padx=5, pady=(0, 5))
 
         tk.Label(master, text="Participants:").pack(anchor="w")
+        header = tk.Frame(master)
+        header.pack(fill=tk.X)
+        tk.Label(header, text="Name", width=15).pack(side=tk.LEFT)
+        tk.Label(header, text="Email", width=20).pack(side=tk.LEFT, padx=5)
+        if self.joint:
+            tk.Label(header, text="Role", width=10).pack(side=tk.LEFT, padx=5)
         self.row_frame = tk.Frame(master)
         self.row_frame.pack(fill=tk.BOTH, expand=True)
         btn = tk.Button(master, text="Add Participant", command=self.add_row)
@@ -98,6 +107,10 @@ class ParticipantDialog(simpledialog.Dialog):
             if not name:
                 continue
             email = email_entry.get().strip()
+            if email and not EMAIL_REGEX.fullmatch(email):
+                messagebox.showerror("Email", f"Invalid email address: {email}")
+                self.result = None
+                return
             role = role_cb.get() if role_cb else "reviewer"
             result.append(ReviewParticipant(name, email, role))
         self.moderator = self.mod_entry.get().strip()
