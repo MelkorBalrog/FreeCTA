@@ -6053,6 +6053,9 @@ class FaultTreeApp:
             if not moderators:
                 messagebox.showerror("Review", "Please specify a moderator")
                 return
+            if not parts:
+                messagebox.showerror("Review", "At least one reviewer required")
+                return
             due_date = simpledialog.askstring("Due Date", "Enter due date (YYYY-MM-DD):")
             if any(r.name == name for r in self.reviews):
                 messagebox.showerror("Review", "Name already exists")

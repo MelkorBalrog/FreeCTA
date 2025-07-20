@@ -598,13 +598,21 @@ class ReviewToolbox(tk.Toplevel):
             if p.name == self.app.current_user:
                 role = p.role
                 break
-        if self.app.review_data and self.app.review_data.mode == 'joint' and role == 'approver' and not self.app.review_is_closed():
+        if (
+            self.app.review_data
+            and self.app.review_data.mode == 'joint'
+            and role == 'approver'
+            and not self.app.review_is_closed()
+        ):
             self.approve_btn.pack(side=tk.LEFT)
         else:
             self.approve_btn.pack_forget()
-        if self.app.review_data and self.app.current_user in [m.name for m in self.app.review_data.moderators] and not self.app.review_is_closed():
-            self.resolve_btn.pack(side=tk.LEFT)
+        if self.app.review_data and self.app.current_user in [m.name for m in self.app.review_data.moderators]:
             self.edit_btn.pack(side=tk.LEFT)
+            if not self.app.review_is_closed():
+                self.resolve_btn.pack(side=tk.LEFT)
+            else:
+                self.resolve_btn.pack_forget()
         else:
             self.resolve_btn.pack_forget()
             self.edit_btn.pack_forget()
@@ -756,35 +764,185 @@ class ReviewDocumentDialog(tk.Toplevel):
         draw_all(node)
         canvas.config(scrollregion=canvas.bbox("all"))
 
+    def draw_diff_tree(self, canvas, roots, status, conn_status, node_objs, allow_ids):
+        def draw_connections(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_connections(ch)
+                return
+            region_width = 60
+            parent_bottom = (n.x, n.y + 20)
+            for i, ch in enumerate(n.children):
+                if ch.unique_id not in allow_ids:
+                    continue
+                parent_conn = (
+                    n.x - region_width / 2 + (i + 0.5) * (region_width / len(n.children)),
+                    parent_bottom[1],
+                )
+                child_top = (ch.x, ch.y - 25)
+                if self.dh:
+                    edge_st = conn_status.get((n.unique_id, ch.unique_id), "existing")
+                    if status.get(n.unique_id) == "removed" or status.get(ch.unique_id) == "removed":
+                        edge_st = "removed"
+                    color = "gray"
+                    if edge_st == "added":
+                        color = "blue"
+                    elif edge_st == "removed":
+                        color = "red"
+                    self.dh.draw_90_connection(canvas, parent_conn, child_top, outline_color=color, line_width=1)
+                draw_connections(ch)
+
+        def draw_node(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_node(ch)
+                return
+            st = status.get(n.unique_id, "existing")
+            color = "dimgray"
+            if st == "added":
+                color = "blue"
+            elif st == "removed":
+                color = "red"
+
+            source = n if getattr(n, "is_primary_instance", True) else getattr(n, "original", n)
+            subtype_text = source.input_subtype if source.input_subtype else "N/A"
+            display_label = source.display_label
+            top_text = f"Type: {source.node_type}\nSubtype: {subtype_text}\n{display_label}\nDesc: {source.description}\n\nRationale: {source.rationale}"
+            bottom_text = n.name
+            fill = self.app.get_node_fill_color(n)
+            eff_x, eff_y = n.x, n.y
+            typ = n.node_type.upper()
+            if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
+                if n.gate_type and n.gate_type.upper() == "OR":
+                    if self.dh:
+                        self.dh.draw_rotated_or_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+                else:
+                    if self.dh:
+                        self.dh.draw_rotated_and_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+            else:
+                if self.dh:
+                    self.dh.draw_circle_event_shape(canvas, eff_x, eff_y, 45, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+            for ch in n.children:
+                draw_node(ch)
+
+        canvas.delete("all")
+        for r in roots:
+            draw_connections(r)
+            draw_node(r)
+
+        existing_pairs = set()
+        for p in node_objs.values():
+            for ch in p.children:
+                existing_pairs.add((p.unique_id, ch.unique_id))
+
+        for (pid, cid), st in conn_status.items():
+            if st != "removed":
+                continue
+            if (pid, cid) in existing_pairs:
+                continue
+            if pid in node_objs and cid in node_objs and pid in allow_ids and cid in allow_ids:
+                parent = node_objs[pid]
+                child = node_objs[cid]
+                parent_pt = (parent.x, parent.y + 20)
+                child_pt = (child.x, child.y - 25)
+                if self.dh:
+                    self.dh.draw_90_connection(canvas, parent_pt, child_pt, outline_color="red", line_width=1)
+
+        canvas.config(scrollregion=canvas.bbox("all"))
+
     def populate(self):
         row = 0
-        if self.app.versions:
-            base_data = self.app.versions[-1]["data"]
-            current = self.app.export_model_data(include_versions=False)
-            map1 = self.app.node_map_from_data(base_data["top_events"])
-            map2 = self.app.node_map_from_data(current["top_events"])
-            diff_nodes = {
-                nid
-                for nid in map2
-                if nid not in map1
-                or json.dumps(map1.get(nid, {}), sort_keys=True)
-                != json.dumps(map2[nid], sort_keys=True)
+        current = self.app.export_model_data(include_versions=False)
+        base_data = self.app.versions[-1]["data"] if self.app.versions else {"top_events": [], "fmeas": []}
+
+        def filter_data(data):
+            return {
+                "top_events": [t for t in data.get("top_events", []) if t["unique_id"] in self.review.fta_ids],
+                "fmeas": [f for f in data.get("fmeas", []) if f.get("name") in self.review.fmea_names],
             }
-            old_fmea = {
-                f["name"]: {e["unique_id"]: e for e in f.get("entries", [])}
-                for f in base_data.get("fmeas", [])
-            }
-        else:
-            diff_nodes = set()
-            old_fmea = {}
+
+        data1 = filter_data(base_data)
+        data2 = filter_data(current)
+
+        map1 = self.app.node_map_from_data(data1["top_events"])
+        map2 = self.app.node_map_from_data(data2["top_events"])
+
+        def build_conn_set(events):
+            conns = set()
+            def visit(d):
+                for ch in d.get("children", []):
+                    conns.add((d["unique_id"], ch["unique_id"]))
+                    visit(ch)
+            for t in events:
+                visit(t)
+            return conns
+
+        conns1 = build_conn_set(data1["top_events"])
+        conns2 = build_conn_set(data2["top_events"])
+
+        conn_status = {}
+        for c in conns1 | conns2:
+            if c in conns1 and c not in conns2:
+                conn_status[c] = "removed"
+            elif c in conns2 and c not in conns1:
+                conn_status[c] = "added"
+            else:
+                conn_status[c] = "existing"
+
+        status = {}
+        for nid in set(map1) | set(map2):
+            if nid in map1 and nid not in map2:
+                status[nid] = "removed"
+            elif nid in map2 and nid not in map1:
+                status[nid] = "added"
+            else:
+                if json.dumps(map1[nid], sort_keys=True) != json.dumps(map2[nid], sort_keys=True):
+                    status[nid] = "added"
+                else:
+                    status[nid] = "existing"
+
+        module = sys.modules.get(self.app.__class__.__module__)
+        FaultTreeNodeCls = getattr(module, 'FaultTreeNode', None)
+        if not FaultTreeNodeCls and self.app.top_events:
+            FaultTreeNodeCls = type(self.app.top_events[0])
+
+        new_roots = [FaultTreeNodeCls.from_dict(t) for t in data2["top_events"]]
+        removed_ids = [nid for nid, st in status.items() if st == "removed"]
+        for rid in removed_ids:
+            if rid in map1:
+                nd = map1[rid]
+                new_roots.append(FaultTreeNodeCls.from_dict(nd))
+
+        relevant_ids = set()
+        def collect_ids(d):
+            relevant_ids.add(d["unique_id"])
+            for ch in d.get("children", []):
+                collect_ids(ch)
+        for t in data1["top_events"]:
+            collect_ids(t)
+        for t in data2["top_events"]:
+            collect_ids(t)
+
+        node_objs = {}
+        def collect_nodes(n):
+            if n.unique_id not in node_objs:
+                node_objs[n.unique_id] = n
+            for ch in n.children:
+                collect_nodes(ch)
+        for rnode in new_roots:
+            collect_nodes(rnode)
+
+        old_fmea = {
+            f["name"]: {e["unique_id"]: e for e in f.get("entries", [])}
+            for f in data1.get("fmeas", [])
+        }
+
         heading_font = ("TkDefaultFont", 10, "bold")
         for nid in self.review.fta_ids:
             node = self.app.find_node_by_id_all(nid)
             if not node:
                 continue
-            tk.Label(self.inner, text=f"FTA: {node.name}", font=heading_font).grid(
-                row=row, column=0, sticky="w", padx=5, pady=5
-            )
+            tk.Label(self.inner, text=f"FTA: {node.name}", font=heading_font).grid(row=row, column=0, sticky="w", padx=5, pady=5)
             row += 1
             frame = tk.Frame(self.inner)
             frame.grid(row=row, column=0, padx=5, pady=5, sticky="nsew")
@@ -799,18 +957,27 @@ class ReviewDocumentDialog(tk.Toplevel):
             frame.columnconfigure(0, weight=1)
             c.bind("<ButtonPress-1>", lambda e, cv=c: cv.scan_mark(e.x, e.y))
             c.bind("<B1-Motion>", lambda e, cv=c: cv.scan_dragto(e.x, e.y, gain=1))
-            self.draw_tree(c, node, diff_nodes)
+
+            allow_ids = set()
+            def collect_ids(d):
+                allow_ids.add(d["unique_id"])
+                for ch in d.get("children", []):
+                    collect_ids(ch)
+            if nid in map1:
+                collect_ids(map1[nid])
+            if nid in map2:
+                collect_ids(map2[nid])
+
+            self.draw_diff_tree(c, new_roots, status, conn_status, node_objs, allow_ids)
             bbox = c.bbox("all")
             if bbox:
                 c.config(scrollregion=bbox)
             row += 1
         for name in self.review.fmea_names:
-            fmea = next((f for f in self.app.fmeas if f["name"] == name), None)
-            if not fmea:
+            cur_fmea = next((f for f in data2.get("fmeas", []) if f["name"] == name), None)
+            if not cur_fmea and name not in old_fmea:
                 continue
-            tk.Label(self.inner, text=f"FMEA: {name}", font=heading_font).grid(
-                row=row, column=0, sticky="w", padx=5, pady=5
-            )
+            tk.Label(self.inner, text=f"FMEA: {name}", font=heading_font).grid(row=row, column=0, sticky="w", padx=5, pady=5)
             row += 1
             frame = tk.Frame(self.inner)
             frame.grid(row=row, column=0, sticky="nsew", padx=5, pady=5)
@@ -841,68 +1008,52 @@ class ReviewDocumentDialog(tk.Toplevel):
             hsb.grid(row=1, column=0, sticky="ew")
             frame.grid_columnconfigure(0, weight=1)
             frame.grid_rowconfigure(0, weight=1)
+
             tree.tag_configure("added", background="#cce5ff")
             tree.tag_configure("removed", background="#f8d7da")
-            tree.tag_configure("added", background="#cce5ff")
-            for entry in fmea["entries"]:
-                prev_entries.setdefault(entry.unique_id, None)
+            tree.tag_configure("existing", background="#e2e3e5")
 
-            for uid, prev in list(prev_entries.items()):
-                curr = next((e for e in fmea["entries"] if e.unique_id == uid), None)
-                if curr and prev is not None:
-                    st = "existing"
-                    if json.dumps(prev, sort_keys=True) != json.dumps(curr.to_dict(), sort_keys=True):
-                        st = "added"
-                    entry = curr
-                elif curr and prev is None:
-                    st = "added"
-                    entry = curr
-                else:
+            entries1 = old_fmea.get(name, {})
+            entries2 = {e["unique_id"]: e for e in (cur_fmea.get("entries", []) if cur_fmea else [])}
+
+            for uid in set(entries1) | set(entries2):
+                if uid in entries1 and uid not in entries2:
                     st = "removed"
-                    d = prev
-                    class Dummy:
-                        pass
-                    entry = Dummy()
-                    entry.parents = d.get("parents", [])
-                    entry.description = d.get("description", "")
-                    entry.user_name = d.get("user_name", "")
-                    entry.fmea_effect = d.get("fmea_effect", "")
-                    entry.fmea_cause = d.get("fmea_cause", "")
-                    entry.fmea_severity = d.get("fmea_severity", 1)
-                    entry.fmea_occurrence = d.get("fmea_occurrence", 1)
-                    entry.fmea_detection = d.get("fmea_detection", 1)
-                    entry.safety_requirements = d.get("safety_requirements", [])
-
-                parent = entry.parents[0] if entry.parents else None
-                if parent:
-                    comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
-                    parent_name = comp
+                    entry = entries1[uid]
+                elif uid in entries2 and uid not in entries1:
+                    st = "added"
+                    entry = entries2[uid]
                 else:
-                    comp = getattr(entry, "fmea_component", "") or "N/A"
-                    parent_name = ""
+                    if json.dumps(entries1[uid], sort_keys=True) != json.dumps(entries2[uid], sort_keys=True):
+                        st = "added"
+                        entry = entries2[uid]
+                    else:
+                        st = "existing"
+                        entry = entries2[uid]
+
+                parent = entry.get("parents", [{}])
+                parent = parent[0] if parent else {}
+                comp = parent.get("user_name") or entry.get("fmea_component", "") or "N/A"
+                parent_name = parent.get("user_name", f"Node {parent.get('unique_id')}") if parent else ""
+                rpn = int(entry.get("fmea_severity", 1)) * int(entry.get("fmea_occurrence", 1)) * int(entry.get("fmea_detection", 1))
                 req_ids = "; ".join(
-                    [f"{req['req_type']}:{req['text']}" for req in getattr(entry, 'safety_requirements', [])]
+                    f"{r.get('req_type', '')}:{r.get('text', '')}"
+                    for r in entry.get("safety_requirements", [])
                 )
-                rpn = entry.fmea_severity * entry.fmea_occurrence * entry.fmea_detection
-                failure_mode = entry.description or entry.user_name or f"BE {uid}"
+                failure_mode = entry.get("description") or entry.get("user_name", f"BE {uid}")
                 vals = [
                     comp,
                     parent_name,
                     failure_mode,
-                    entry.fmea_effect,
-                    getattr(entry, "fmea_cause", ""),
-                    entry.fmea_severity,
-                    entry.fmea_occurrence,
-                    entry.fmea_detection,
+                    entry.get("fmea_effect", ""),
+                    entry.get("fmea_cause", ""),
+                    entry.get("fmea_severity", ""),
+                    entry.get("fmea_occurrence", ""),
+                    entry.get("fmea_detection", ""),
                     rpn,
                     req_ids,
                 ]
-                status = "existing"
-                old_entries = old_fmea.get(name, {})
-                old_entry = old_entries.get(entry.unique_id)
-                if not old_entry or json.dumps(old_entry, sort_keys=True) != json.dumps(entry.to_dict(), sort_keys=True):
-                    status = "added"
-                tree.insert("", "end", values=vals, tags=(status,))
+                tree.insert("", "end", values=vals, tags=(st,))
 
             row += 1
 
