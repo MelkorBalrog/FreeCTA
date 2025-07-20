@@ -1701,37 +1701,6 @@ class EditNodeDialog(simpledialog.Dialog):
                 self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
-                ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-                self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
-                self.sg_asil_combo = ttk.Combobox(
-                    master,
-                    textvariable=self.sg_asil_var,
-                    values=ASIL_LEVEL_OPTIONS,
-                    state="readonly",
-                    width=8,
-                )
-                self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
-                row_next += 1
-
-                ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-                self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
-                self.sg_asil_combo = ttk.Combobox(
-                    master,
-                    textvariable=self.sg_asil_var,
-                    values=ASIL_LEVEL_OPTIONS,
-                    state="readonly",
-                    width=8,
-                )
-                self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
-                row_next += 1
-
-                ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-                self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
-                self.sg_asil_combo = ttk.Combobox(master, textvariable=self.sg_asil_var,
-                                                  values=["QM", "A", "B", "C", "D"],
-                                                  state="readonly", width=5)
-                self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
-                row_next += 1
 
         if self.node.node_type.upper() not in ["TOP EVENT", "BASIC EVENT"]:
             self.is_page_var = tk.BooleanVar(value=self.node.is_page)
@@ -4228,9 +4197,6 @@ class FaultTreeApp:
         """Return a list of all basic events across all top-level trees."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]
 
-    def get_all_basic_events(self):
-        """Return a list of all basic events across all top-level trees."""
-        return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]
 
     def get_all_nodes(self, node=None):
         if node is None:
@@ -4880,25 +4846,6 @@ class FaultTreeApp:
             self.app.comment_target = ("fmea", self.node.unique_id)
             self.app.open_review_toolbox()
 
-        def comment_requirement(self):
-            sel = self.req_listbox.curselection()
-            if not sel:
-                messagebox.showwarning("Comment", "Select a requirement")
-                return
-            req = self.node.safety_requirements[sel[0]]
-            self.app.selected_node = self.node
-            self.app.comment_target = ("requirement", self.node.unique_id, req.get("id"))
-            self.app.open_review_toolbox()
-
-        def comment_requirement(self):
-            sel = self.req_listbox.curselection()
-            if not sel:
-                messagebox.showwarning("Comment", "Select a requirement")
-                return
-            req = self.node.safety_requirements[sel[0]]
-            self.app.selected_node = self.node
-            self.app.comment_target = ("requirement", self.node.unique_id, req.get("id"))
-            self.app.open_review_toolbox()
 
         def add_safety_requirement(self):
             global global_requirements
@@ -5318,28 +5265,6 @@ class FaultTreeApp:
                     writer.writerow([sg_text, sg_asil, rid, req.get("asil", ""), req.get("text", "")])
         messagebox.showinfo("Export", "Safety goal requirements exported.")
 
-    def export_safety_goal_requirements(self):
-        """Export requirements traced to safety goals including their ASIL."""
-        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
-        if not path:
-            return
-
-        columns = ["Safety Goal", "SG ASIL", "Requirement ID", "Req ASIL", "Text"]
-        with open(path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(columns)
-            for te in self.top_events:
-                sg_text = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
-                sg_asil = te.safety_goal_asil
-                reqs = self.collect_requirements_recursive(te)
-                seen = set()
-                for req in reqs:
-                    rid = req.get("id")
-                    if rid in seen:
-                        continue
-                    seen.add(rid)
-                    writer.writerow([sg_text, sg_asil, rid, req.get("asil", ""), req.get("text", "")])
-        messagebox.showinfo("Export", "Safety goal requirements exported.")
 
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
