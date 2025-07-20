@@ -651,12 +651,29 @@ class VersionCompareDialog(tk.Toplevel):
         vbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # table for FMEA differences
-        columns = ["FMEA", "Failure Mode", "Status"]
+        # table for FMEA differences - mimic the full FMEA table
+        columns = [
+            "FMEA",
+            "Component",
+            "Parent",
+            "Failure Mode",
+            "Failure Effect",
+            "Cause",
+            "S",
+            "O",
+            "D",
+            "RPN",
+            "Requirements",
+        ]
         self.fmea_tree = ttk.Treeview(self, columns=columns, show="headings")
         for col in columns:
             self.fmea_tree.heading(col, text=col)
-            self.fmea_tree.column(col, width=150, anchor="center")
+            width = 120
+            if col in ["Failure Effect", "Cause", "Requirements"]:
+                width = 180
+            elif col == "Parent":
+                width = 150
+            self.fmea_tree.column(col, width=width, anchor="center")
         self.fmea_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.fmea_tree.tag_configure("added", background="#cce5ff")
         self.fmea_tree.tag_configure("removed", background="#f8d7da")
@@ -680,16 +697,17 @@ class VersionCompareDialog(tk.Toplevel):
 
     def insert_diff(self, old, new):
         """Insert a colorized diff between old and new strings."""
-        diff = difflib.ndiff(list(old), list(new))
-        for token in diff:
-            if token.startswith("- "):
-                self.log_text.insert(tk.END, token[2:], "removed")
-            elif token.startswith("+ "):
-                self.log_text.insert(tk.END, token[2:], "added")
-            elif token.startswith("? "):
-                continue
-            else:
-                self.log_text.insert(tk.END, token[2:])
+        matcher = difflib.SequenceMatcher(None, old, new)
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                self.log_text.insert(tk.END, old[i1:i2])
+            elif tag == "delete":
+                self.log_text.insert(tk.END, old[i1:i2], "removed")
+            elif tag == "insert":
+                self.log_text.insert(tk.END, new[j1:j2], "added")
+            elif tag == "replace":
+                self.log_text.insert(tk.END, old[i1:i2], "removed")
+                self.log_text.insert(tk.END, new[j1:j2], "added")
 
     def draw_small_tree(self, canvas, node):
         def draw_connections(n):
@@ -996,8 +1014,38 @@ class VersionCompareDialog(tk.Toplevel):
                     else:
                         st = "existing"
                         entry = entries2[uid]
+
                 failure = entry.get("description", entry.get("user_name", f"BE {uid}"))
-                self.fmea_tree.insert("", "end", values=[name, failure, st], tags=(st,))
+                parent = entry.get("parents", [{}])
+                parent = parent[0] if parent else {}
+                comp = parent.get("user_name") or entry.get("fmea_component", "") or "N/A"
+                if parent:
+                    parent_name = parent.get("user_name", f"Node {parent.get('unique_id')}")
+                else:
+                    parent_name = ""
+                rpn = (
+                    int(entry.get("fmea_severity", 1))
+                    * int(entry.get("fmea_occurrence", 1))
+                    * int(entry.get("fmea_detection", 1))
+                )
+                reqs = "; ".join(
+                    f"{r.get('req_type', '')}:{r.get('text', '')}"
+                    for r in entry.get("safety_requirements", [])
+                )
+                row = [
+                    name,
+                    comp,
+                    parent_name,
+                    failure,
+                    entry.get("fmea_effect", ""),
+                    entry.get("fmea_cause", ""),
+                    entry.get("fmea_severity", ""),
+                    entry.get("fmea_occurrence", ""),
+                    entry.get("fmea_detection", ""),
+                    rpn,
+                    reqs,
+                ]
+                self.fmea_tree.insert("", "end", values=row, tags=(st,))
                 if st != "existing":
                     if uid in entries1 and uid in entries2 and st == "added":
                         prefix = "Updated"
