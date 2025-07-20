@@ -285,7 +285,15 @@ class ReviewToolbox(tk.Toplevel):
         comment_id = len(self.app.review_data.comments) + 1
         if target and target[0] == "requirement":
             node_id = target[1]
-            c = ReviewComment(comment_id, node_id, text, reviewer, target_type="requirement", req_id=target[2])
+            req_id = target[2] if len(target) > 2 else ""
+            c = ReviewComment(
+                comment_id,
+                node_id,
+                text,
+                reviewer,
+                target_type="requirement",
+                req_id=req_id,
+            )
         elif target and target[0] == "fmea":
             node_id = target[1]
             c = ReviewComment(comment_id, node_id, text, reviewer, target_type="fmea")
@@ -753,6 +761,7 @@ class VersionCompareDialog(tk.Toplevel):
         canvas.config(scrollregion=canvas.bbox("all"))
 
     def compare(self, event=None):
+        import json  # ensure available even if module-level import is altered
         base = self.base_var.get()
         other = self.other_var.get()
         if not base or not other:
@@ -902,8 +911,16 @@ class VersionCompareDialog(tk.Toplevel):
                     )
                     self.insert_diff(n1.get("rationale", ""), n2.get("rationale", ""))
                     self.log_text.insert(tk.END, "\n")
-                req1 = "\n".join(r.get("text", "") for r in n1.get("safety_requirements", []))
-                req2 = "\n".join(r.get("text", "") for r in n2.get("safety_requirements", []))
+                def req_lines(reqs):
+                    lines = []
+                    for r in reqs:
+                        lines.append(
+                            f"[{r.get('id','')}] [{r.get('req_type','')}] [{r.get('asil','')}] {r.get('text','')}"
+                        )
+                    return "\n".join(lines)
+
+                req1 = req_lines(n1.get("safety_requirements", []))
+                req2 = req_lines(n2.get("safety_requirements", []))
                 if req1 != req2:
                     self.log_text.insert(
                         tk.END,
@@ -940,6 +957,23 @@ class VersionCompareDialog(tk.Toplevel):
                     else:
                         prefix = "Added" if st == "added" else "Removed"
                     self.log_text.insert(tk.END, f"{prefix} FMEA entry {failure}\n", st)
+                    if prefix == "Updated":
+                        e1 = entries1[uid]
+                        e2 = entries2[uid]
+                        for fld in [
+                            "description",
+                            "fmea_effect",
+                            "fmea_cause",
+                            "fmea_severity",
+                            "fmea_occurrence",
+                            "fmea_detection",
+                        ]:
+                            v1 = str(e1.get(fld, ""))
+                            v2 = str(e2.get(fld, ""))
+                            if v1 != v2:
+                                self.log_text.insert(tk.END, f"  {fld}: ")
+                                self.insert_diff(v1, v2)
+                                self.log_text.insert(tk.END, "\n")
 
 
 
