@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import simpledialog, messagebox, ttk
 from dataclasses import dataclass, field
 from typing import List
+import difflib
 import sys
 import json
 
@@ -653,6 +654,34 @@ class VersionCompareDialog(tk.Toplevel):
         self.fmea_tree.tag_configure("removed", background="#f8d7da")
         self.fmea_tree.tag_configure("existing", background="#e2e3e5")
 
+        # text box for detailed log of changes
+        log_frame = tk.Frame(self)
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        vbar_log = tk.Scrollbar(log_frame, orient=tk.VERTICAL)
+        self.log_text = tk.Text(
+            log_frame,
+            wrap="word",
+            yscrollcommand=vbar_log.set,
+            height=8,
+        )
+        vbar_log.config(command=self.log_text.yview)
+        vbar_log.pack(side=tk.RIGHT, fill=tk.Y)
+        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.log_text.tag_configure("added", foreground="blue")
+        self.log_text.tag_configure("removed", foreground="red")
+
+    def insert_diff(self, old, new):
+        diff = difflib.ndiff(old.split(), new.split())
+        for token in diff:
+            if token.startswith("- "):
+                self.log_text.insert(tk.END, token[2:] + " ", "removed")
+            elif token.startswith("+ "):
+                self.log_text.insert(tk.END, token[2:] + " ", "added")
+            elif token.startswith("? "):
+                continue
+            else:
+                self.log_text.insert(tk.END, token[2:] + " ")
+
     def draw_small_tree(self, canvas, node):
         def draw_connections(n):
             region_width = 60
@@ -677,19 +706,41 @@ class VersionCompareDialog(tk.Toplevel):
             typ = n.node_type.upper()
             if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
                 if n.gate_type and n.gate_type.upper() == "OR":
-                    self.app.fta_drawing_helper.draw_rotated_or_gate_shape(canvas, eff_x, eff_y, scale=20,
-                                                                          top_text=top_text, bottom_text=bottom_text,
-                                                                          fill=fill, outline_color="dimgray",
-                                                                          line_width=1)
+                    self.app.fta_drawing_helper.draw_rotated_or_gate_shape(
+                        canvas,
+                        eff_x,
+                        eff_y,
+                        scale=40,
+                        top_text=top_text,
+                        bottom_text=bottom_text,
+                        fill=fill,
+                        outline_color="dimgray",
+                        line_width=1,
+                    )
                 else:
-                    self.app.fta_drawing_helper.draw_rotated_and_gate_shape(canvas, eff_x, eff_y, scale=20,
-                                                                           top_text=top_text, bottom_text=bottom_text,
-                                                                           fill=fill, outline_color="dimgray",
-                                                                           line_width=1)
+                    self.app.fta_drawing_helper.draw_rotated_and_gate_shape(
+                        canvas,
+                        eff_x,
+                        eff_y,
+                        scale=40,
+                        top_text=top_text,
+                        bottom_text=bottom_text,
+                        fill=fill,
+                        outline_color="dimgray",
+                        line_width=1,
+                    )
             else:
-                self.app.fta_drawing_helper.draw_circle_event_shape(canvas, eff_x, eff_y, 22,
-                                                                    top_text=top_text, bottom_text=bottom_text,
-                                                                    fill=fill, outline_color="dimgray", line_width=1)
+                self.app.fta_drawing_helper.draw_circle_event_shape(
+                    canvas,
+                    eff_x,
+                    eff_y,
+                    45,
+                    top_text=top_text,
+                    bottom_text=bottom_text,
+                    fill=fill,
+                    outline_color="dimgray",
+                    line_width=1,
+                )
 
         def draw_all(n):
             draw_node_simple(n)
@@ -775,21 +826,39 @@ class VersionCompareDialog(tk.Toplevel):
             if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
                 if n.gate_type and n.gate_type.upper() == "OR":
                     self.app.fta_drawing_helper.draw_rotated_or_gate_shape(
-                        self.tree_canvas, eff_x, eff_y, scale=20,
-                        top_text=top_text, bottom_text=bottom_text,
-                        fill=fill, outline_color=color, line_width=2
+                        self.tree_canvas,
+                        eff_x,
+                        eff_y,
+                        scale=40,
+                        top_text=top_text,
+                        bottom_text=bottom_text,
+                        fill=fill,
+                        outline_color=color,
+                        line_width=2,
                     )
                 else:
                     self.app.fta_drawing_helper.draw_rotated_and_gate_shape(
-                        self.tree_canvas, eff_x, eff_y, scale=20,
-                        top_text=top_text, bottom_text=bottom_text,
-                        fill=fill, outline_color=color, line_width=2
+                        self.tree_canvas,
+                        eff_x,
+                        eff_y,
+                        scale=40,
+                        top_text=top_text,
+                        bottom_text=bottom_text,
+                        fill=fill,
+                        outline_color=color,
+                        line_width=2,
                     )
             else:
                 self.app.fta_drawing_helper.draw_circle_event_shape(
-                    self.tree_canvas, eff_x, eff_y, 22,
-                    top_text=top_text, bottom_text=bottom_text,
-                    fill=fill, outline_color=color, line_width=2
+                    self.tree_canvas,
+                    eff_x,
+                    eff_y,
+                    45,
+                    top_text=top_text,
+                    bottom_text=bottom_text,
+                    fill=fill,
+                    outline_color=color,
+                    line_width=2,
                 )
             for ch in n.children:
                 draw_node(ch)
@@ -802,6 +871,47 @@ class VersionCompareDialog(tk.Toplevel):
 
         # ----- FMEA diff -----
         self.fmea_tree.delete(*self.fmea_tree.get_children())
+        self.log_text.delete("1.0", tk.END)
+
+        # --- log FTA textual changes ---
+        for nid, st in status.items():
+            if st == "added":
+                node = map2[nid]
+                self.log_text.insert(
+                    tk.END, f"Added node {node.get('user_name', nid)}\n", "added"
+                )
+            elif st == "removed":
+                node = map1[nid]
+                self.log_text.insert(
+                    tk.END, f"Removed node {node.get('user_name', nid)}\n", "removed"
+                )
+            else:
+                n1 = map1[nid]
+                n2 = map2[nid]
+                if n1.get("description", "") != n2.get("description", ""):
+                    self.log_text.insert(
+                        tk.END,
+                        f"Description change for {n1.get('user_name', nid)}: ",
+                    )
+                    self.insert_diff(n1.get("description", ""), n2.get("description", ""))
+                    self.log_text.insert(tk.END, "\n")
+                if n1.get("rationale", "") != n2.get("rationale", ""):
+                    self.log_text.insert(
+                        tk.END,
+                        f"Rationale change for {n1.get('user_name', nid)}: ",
+                    )
+                    self.insert_diff(n1.get("rationale", ""), n2.get("rationale", ""))
+                    self.log_text.insert(tk.END, "\n")
+                req1 = "\n".join(r.get("text", "") for r in n1.get("safety_requirements", []))
+                req2 = "\n".join(r.get("text", "") for r in n2.get("safety_requirements", []))
+                if req1 != req2:
+                    self.log_text.insert(
+                        tk.END,
+                        f"Requirements change for {n1.get('user_name', nid)}: ",
+                    )
+                    self.insert_diff(req1, req2)
+                    self.log_text.insert(tk.END, "\n")
+
         fmea1 = {f["name"]: f for f in data1.get("fmeas", [])}
         fmea2 = {f["name"]: f for f in data2.get("fmeas", [])}
         all_names = set(fmea1) | set(fmea2)
@@ -824,6 +934,14 @@ class VersionCompareDialog(tk.Toplevel):
                         entry = entries2[uid]
                 failure = entry.get("description", entry.get("user_name", f"BE {uid}"))
                 self.fmea_tree.insert("", "end", values=[name, failure, st], tags=(st,))
+                if st != "existing":
+                    if uid in entries1 and uid in entries2 and st == "added":
+                        prefix = "Updated"
+                    else:
+                        prefix = "Added" if st == "added" else "Removed"
+                    self.log_text.insert(tk.END, f"{prefix} FMEA entry {failure}\n", st)
+
+
 
     def on_close(self):
         self.app.diff_nodes = []
