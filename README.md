@@ -29,9 +29,9 @@ If you use Gmail with two-factor authentication enabled, create an **app passwor
 and enter it instead of your normal account password. Authentication failures will
 prompt you to re-enter these settings.
 
-Each summary email includes a PNG image for every selected FTA and CSV files
-containing the FMEA tables so reviewers can view the content without opening the
-tool.
+Each summary email embeds PNG images of the selected FTAs so reviewers can view
+the diagrams directly in the message. CSV files containing the FMEA tables are
+attached so they can be opened in Excel or another spreadsheet application.
 
 If sending fails with a connection error, the dialog will prompt again so you
 can correct the server address or port.
