@@ -4763,8 +4763,12 @@ class FaultTreeApp:
             self.comp_combo.grid(row=0, column=1, padx=5, pady=5)
 
             ttk.Label(master, text="Failure Mode:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
-            mode_names = [be.description or (be.user_name or f"BE {be.unique_id}")
-                          for be in basic_events]
+            # Include failure modes from both the FTA and any FMEA specific
+            # entries so the combo box always lists all available modes.
+            mode_names = [
+                be.description or (be.user_name or f"BE {be.unique_id}")
+                for be in basic_events + self.fmea_entries
+            ]
             self.mode_var = tk.StringVar(value=self.node.description or self.node.user_name)
             self.mode_combo = ttk.Combobox(master, textvariable=self.mode_var,
                                           values=mode_names, width=30)
