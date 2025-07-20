@@ -650,13 +650,7 @@ class ReviewDocumentDialog(tk.Toplevel):
         self.dh = getattr(app, 'fta_drawing_helper', None) or fta_drawing_helper
         self.title(f"Review Document - {review.name}")
 
-        self.prev_data = app.versions[-1]["data"] if app.versions else None
-        self.curr_data = app.export_model_data(include_versions=False)
-        if self.prev_data:
-            self.diff_nodes = app.calculate_diff_between(self.prev_data, self.curr_data)
-        else:
-            self.diff_nodes = []
-
+        self.resizable(True, True)
         self.outer = tk.Canvas(self)
         vbar = tk.Scrollbar(self, orient=tk.VERTICAL, command=self.outer.yview)
         self.outer.configure(yscrollcommand=vbar.set)
@@ -778,6 +772,19 @@ class ReviewDocumentDialog(tk.Toplevel):
                 segments.append((old[i1:i2], "red"))
                 segments.append((new[j1:j2], "blue"))
         return segments
+
+    def insert_diff_text(self, widget, old, new):
+        matcher = difflib.SequenceMatcher(None, old, new)
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                widget.insert(tk.END, old[i1:i2])
+            elif tag == "delete":
+                widget.insert(tk.END, old[i1:i2], "removed")
+            elif tag == "insert":
+                widget.insert(tk.END, new[j1:j2], "added")
+            elif tag == "replace":
+                widget.insert(tk.END, old[i1:i2], "removed")
+                widget.insert(tk.END, new[j1:j2], "added")
 
     def draw_segment_text(self, canvas, cx, cy, segments, font_obj):
         lines = [[]]
@@ -1003,6 +1010,39 @@ class ReviewDocumentDialog(tk.Toplevel):
             f["name"]: {e["unique_id"]: e for e in f.get("entries", [])}
             for f in data1.get("fmeas", [])
         }
+        new_fmea = {
+            f["name"]: {e["unique_id"]: e for e in f.get("entries", [])}
+            for f in data2.get("fmeas", [])
+        }
+
+        reqs1 = {}
+        reqs2 = {}
+
+        def collect_reqs(node_dict, target):
+            for r in node_dict.get("safety_requirements", []):
+                rid = r.get("id")
+                if rid and rid not in target:
+                    target[rid] = r
+            for ch in node_dict.get("children", []):
+                collect_reqs(ch, target)
+
+        for nid in self.review.fta_ids:
+            if nid in map1:
+                collect_reqs(map1[nid], reqs1)
+            if nid in map2:
+                collect_reqs(map2[nid], reqs2)
+
+        for name in self.review.fmea_names:
+            for e in old_fmea.get(name, {}).values():
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+            for e in new_fmea.get(name, {}).values():
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
 
         heading_font = ("TkDefaultFont", 10, "bold")
         for nid in self.review.fta_ids:
@@ -1121,6 +1161,44 @@ class ReviewDocumentDialog(tk.Toplevel):
                     req_ids,
                 ]
                 tree.insert("", "end", values=vals, tags=(st,))
+
+        row += 1
+
+        if reqs1 or reqs2:
+            tk.Label(self.inner, text="Requirements", font=heading_font).grid(row=row, column=0, sticky="w", padx=5, pady=5)
+            row += 1
+            frame = tk.Frame(self.inner)
+            frame.grid(row=row, column=0, sticky="nsew", padx=5, pady=5)
+            vbar = tk.Scrollbar(frame, orient="vertical")
+            text = tk.Text(frame, wrap="word", yscrollcommand=vbar.set, height=8)
+            text.tag_configure("added", foreground="blue")
+            text.tag_configure("removed", foreground="red")
+            vbar.config(command=text.yview)
+            text.grid(row=0, column=0, sticky="nsew")
+            vbar.grid(row=0, column=1, sticky="ns")
+            frame.grid_columnconfigure(0, weight=1)
+            frame.grid_rowconfigure(0, weight=1)
+
+            def fmt(r):
+                return f"[{r.get('id','')}] [{r.get('req_type','')}] [{r.get('asil','')}] {r.get('text','')}"
+
+            all_ids = sorted(set(reqs1) | set(reqs2))
+            for rid in all_ids:
+                r1 = reqs1.get(rid)
+                r2 = reqs2.get(rid)
+                if r1 and not r2:
+                    text.insert(tk.END, f"Removed: ")
+                    self.insert_diff_text(text, fmt(r1), "")
+                elif r2 and not r1:
+                    text.insert(tk.END, f"Added: ")
+                    self.insert_diff_text(text, "", fmt(r2))
+                else:
+                    if json.dumps(r1, sort_keys=True) != json.dumps(r2, sort_keys=True):
+                        text.insert(tk.END, f"Updated: ")
+                        self.insert_diff_text(text, fmt(r1), fmt(r2))
+                    else:
+                        text.insert(tk.END, fmt(r2))
+                text.insert(tk.END, "\n")
 
             row += 1
 
