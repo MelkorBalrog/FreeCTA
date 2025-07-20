@@ -6112,6 +6112,65 @@ class FaultTreeApp:
                     server.starttls()
                     server.login(cfg['email'], cfg['password'])
                     server.send_message(msg)
+        except smtplib.SMTPAuthenticationError:
+            messagebox.showerror(
+                "Email",
+                "Login failed. If your account uses two-factor authentication, "
+                "create an app password and use that instead of your normal password."
+            )
+            self.email_config = None
+        except Exception as e:
+            messagebox.showerror("Email", f"Failed to send review email: {e}")
+
+    def send_review_email(self, review):
+        """Send the review summary to all reviewers via configured SMTP."""
+        recipients = [p.email for p in review.participants if p.role == 'reviewer' and p.email]
+        if not recipients:
+            return
+
+        # Determine the current user's email if available
+        current_email = next((p.email for p in review.participants
+                              if p.name == self.current_user), "")
+
+        if not getattr(self, "email_config", None):
+            cfg = EmailConfigDialog(self.root, default_email=current_email).result
+            self.email_config = cfg
+
+        cfg = getattr(self, "email_config", None)
+        if not cfg:
+            return
+
+        subject = f"Review: {review.name}"
+        lines = [f"Review Name: {review.name}", f"Description: {review.description}", ""]
+        if review.fta_ids:
+            lines.append("FTAs:")
+            for tid in review.fta_ids:
+                te = next((t for t in self.top_events if t.unique_id == tid), None)
+                if te:
+                    lines.append(f" - {te.name}")
+            lines.append("")
+        if review.fmea_names:
+            lines.append("FMEAs:")
+            for name in review.fmea_names:
+                lines.append(f" - {name}")
+            lines.append("")
+        content = "\n".join(lines)
+        msg = EmailMessage()
+        msg['Subject'] = subject
+        msg['From'] = cfg['email']
+        msg['To'] = ', '.join(recipients)
+        msg.set_content(content)
+        try:
+            port = cfg.get('port', 465)
+            if port == 465:
+                with smtplib.SMTP_SSL(cfg['server'], port) as server:
+                    server.login(cfg['email'], cfg['password'])
+                    server.send_message(msg)
+            else:
+                with smtplib.SMTP(cfg['server'], port) as server:
+                    server.starttls()
+                    server.login(cfg['email'], cfg['password'])
+                    server.send_message(msg)
         except Exception as e:
             print(f"Failed to send review email: {e}")
 

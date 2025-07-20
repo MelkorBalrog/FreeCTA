@@ -143,6 +143,8 @@ class EmailConfigDialog(simpledialog.Dialog):
         tk.Label(master, text="Password:").grid(row=3, column=0, sticky="w")
         self.pass_entry = tk.Entry(master, show="*")
         self.pass_entry.grid(row=3, column=1, pady=2)
+        tk.Label(master, text="Use an app password for Gmail with 2FA.",
+                 font=(None, 8)).grid(row=4, column=0, columnspan=2, pady=(2,0))
         return self.email_entry
 
     def apply(self):
