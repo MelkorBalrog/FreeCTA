@@ -33,6 +33,9 @@ Each summary email includes a PNG image for every selected FTA and CSV files
 containing the FMEA tables so reviewers can view the content without opening the
 tool.
 
+If sending fails with a connection error, the dialog will prompt again so you
+can correct the server address or port.
+
 ## License
 
 This project is licensed under the GNU General Public License version 3. See the [LICENSE](LICENSE) file for details.
