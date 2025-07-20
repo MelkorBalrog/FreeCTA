@@ -726,6 +726,53 @@ class VersionCompareDialog(tk.Toplevel):
                 self.log_text.insert(tk.END, old[i1:i2], "removed")
                 self.log_text.insert(tk.END, new[j1:j2], "added")
 
+    def diff_segments(self, old, new):
+        """Return [(text, color)] representing the diff between old and new."""
+        matcher = difflib.SequenceMatcher(None, old, new)
+        segments = []
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                segments.append((old[i1:i2], "black"))
+            elif tag == "delete":
+                segments.append((old[i1:i2], "red"))
+            elif tag == "insert":
+                segments.append((new[j1:j2], "blue"))
+            elif tag == "replace":
+                segments.append((old[i1:i2], "red"))
+                segments.append((new[j1:j2], "blue"))
+        return segments
+
+    def draw_segment_text(self, canvas, cx, cy, segments, font_obj):
+        """Draw colored text segments centered on (cx, cy)."""
+        # Split segments into lines
+        lines = [[]]
+        for text, color in segments:
+            parts = text.split("\n")
+            for idx, part in enumerate(parts):
+                if idx > 0:
+                    lines.append([])
+                lines[-1].append((part, color))
+
+        line_height = font_obj.metrics("linespace")
+        total_height = line_height * len(lines)
+        start_y = cy - total_height / 2
+        for line in lines:
+            line_width = sum(font_obj.measure(part) for part, _ in line)
+            start_x = cx - line_width / 2
+            x = start_x
+            for part, color in line:
+                if part:
+                    canvas.create_text(
+                        x,
+                        start_y,
+                        text=part,
+                        anchor="nw",
+                        fill=color,
+                        font=font_obj,
+                    )
+                    x += font_obj.measure(part)
+            start_y += line_height
+
     def draw_small_tree(self, canvas, node):
         def draw_connections(n):
             region_width = 60
@@ -860,6 +907,19 @@ class VersionCompareDialog(tk.Toplevel):
             nd = map1[rid]
             new_roots.append(FaultTreeNodeCls.from_dict(nd))
 
+        # Build lookup of nodes actually drawn so extra connections can be
+        # rendered even when the structure changed.
+        node_objs = {}
+
+        def collect_nodes(n):
+            if n.unique_id not in node_objs:
+                node_objs[n.unique_id] = n
+            for ch in n.children:
+                collect_nodes(ch)
+
+        for r in new_roots:
+            collect_nodes(r)
+
         self.tree_canvas.delete("all")
 
         def draw_connections(n):
@@ -901,19 +961,33 @@ class VersionCompareDialog(tk.Toplevel):
             source = n if getattr(n, "is_primary_instance", True) else getattr(n, "original", n)
             subtype_text = source.input_subtype if source.input_subtype else "N/A"
             display_label = source.display_label
+            old_data = map1.get(n.unique_id)
+            new_data = map2.get(n.unique_id)
 
-            top_text = (
-                f"Type: {source.node_type}\n"
-                f"Subtype: {subtype_text}\n"
-                f"{display_label}\n"
-                f"Desc: {source.description}\n\n"
-                f"Rationale: {source.rationale}"
-            )
+            if old_data and new_data:
+                desc_segments = [("Desc: ", "black")] + self.diff_segments(
+                    old_data.get("description", ""), new_data.get("description", "")
+                )
+                rat_segments = [("Rationale: ", "black")] + self.diff_segments(
+                    old_data.get("rationale", ""), new_data.get("rationale", "")
+                )
+            else:
+                desc_segments = [("Desc: " + source.description, "black")]
+                rat_segments = [("Rationale: " + source.rationale, "black")]
+
+            segments = [
+                (f"Type: {source.node_type}\n", "black"),
+                (f"Subtype: {subtype_text}\n", "black"),
+                (f"{display_label}\n", "black"),
+            ] + desc_segments + [("\n\n", "black")] + rat_segments
+
+            top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
 
             fill = self.app.get_node_fill_color(n)
             eff_x, eff_y = n.x, n.y
             typ = n.node_type.upper()
+            items_before = self.tree_canvas.find_all()
             if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
                 if n.gate_type and n.gate_type.upper() == "OR":
                     self.app.fta_drawing_helper.draw_rotated_or_gate_shape(
@@ -951,12 +1025,55 @@ class VersionCompareDialog(tk.Toplevel):
                     outline_color=color,
                     line_width=2,
                 )
+
+            items_after = self.tree_canvas.find_all()
+            text_id = None
+            for item in items_after:
+                if item in items_before:
+                    continue
+                if self.tree_canvas.type(item) == "text" and self.tree_canvas.itemcget(item, "text") == top_text:
+                    text_id = item
+                    break
+
+            if text_id and any(c in ("red", "blue") for _, c in segments):
+                bbox = self.tree_canvas.bbox(text_id)
+                cx = (bbox[0] + bbox[2]) / 2
+                cy = (bbox[1] + bbox[3]) / 2
+                self.tree_canvas.itemconfigure(text_id, state="hidden")
+                self.draw_segment_text(self.tree_canvas, cx, cy, segments, self.app.diagram_font)
             for ch in n.children:
                 draw_node(ch)
 
         for r in new_roots:
             draw_connections(r)
             draw_node(r)
+
+        # Draw removed links between nodes that still exist in the new
+        # structure. These won't be part of the tree so handle them
+        # separately using the collected node objects.
+        existing_pairs = set()
+        for p in node_objs.values():
+            for ch in p.children:
+                existing_pairs.add((p.unique_id, ch.unique_id))
+
+        for (pid, cid), st in conn_status.items():
+            if st != "removed":
+                continue
+            if (pid, cid) in existing_pairs:
+                continue
+            if pid in node_objs and cid in node_objs:
+                parent = node_objs[pid]
+                child = node_objs[cid]
+                parent_pt = (parent.x, parent.y + 20)
+                child_pt = (child.x, child.y - 25)
+                if self.app.fta_drawing_helper:
+                    self.app.fta_drawing_helper.draw_90_connection(
+                        self.tree_canvas,
+                        parent_pt,
+                        child_pt,
+                        outline_color="red",
+                        line_width=1,
+                    )
 
         self.tree_canvas.config(scrollregion=self.tree_canvas.bbox("all"))
 

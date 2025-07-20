@@ -14,7 +14,9 @@ Launch the review features from the **Review** menu:
 * **Set Current User** – choose who you are when adding comments. The toolbox also provides a drop-down selector.
 * The target selector within the toolbox only lists nodes and FMEA items that were chosen when the review was created, so comments can only be attached to the scoped elements.
 
-Nodes with unresolved comments show a small yellow circle to help locate feedback quickly. Differences between versions are outlined in blue when comparing.
+Nodes with unresolved comments show a small yellow circle to help locate feedback quickly.
+
+When comparing versions, added nodes and connections are drawn in blue while removed ones are drawn in red. Text differences highlight deleted portions in red and new text in blue so changes to descriptions, rationales or FMEA fields stand out. Deleted links between FTA nodes are shown with red connectors.
 
 Comments can be attached to FMEA entries and individual requirements. Resolving a comment prompts for a short explanation which is shown with the original text.
 
