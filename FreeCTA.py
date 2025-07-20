@@ -5633,7 +5633,27 @@ class FaultTreeApp:
         if not path:
             return
         with open(path, "r") as f:
-            data = json.load(f)
+            raw = f.read()
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            import re
+
+            def clean(text: str) -> str:
+                text = re.sub(r"//.*", "", text)
+                text = re.sub(r"#.*", "", text)
+                text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+                text = re.sub(r",\s*(\]|\})", r"\1", text)
+                return text
+
+            try:
+                data = json.loads(clean(raw))
+            except json.JSONDecodeError:
+                messagebox.showerror(
+                    "Load Model",
+                    f"Failed to parse JSON file:\n{exc}",
+                )
+                return
 
         if "top_events" in data:
             self.top_events = [FaultTreeNode.from_dict(e) for e in data["top_events"]]
