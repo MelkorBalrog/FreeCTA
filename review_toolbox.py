@@ -965,6 +965,19 @@ class VersionCompareDialog(tk.Toplevel):
             nd = map1[rid]
             new_roots.append(FaultTreeNodeCls.from_dict(nd))
 
+        # Build lookup of nodes actually drawn so extra connections can be
+        # rendered even when the structure changed.
+        node_objs = {}
+
+        def collect_nodes(n):
+            if n.unique_id not in node_objs:
+                node_objs[n.unique_id] = n
+            for ch in n.children:
+                collect_nodes(ch)
+
+        for r in new_roots:
+            collect_nodes(r)
+
         self.tree_canvas.delete("all")
 
         def draw_connections(n):
@@ -1092,6 +1105,33 @@ class VersionCompareDialog(tk.Toplevel):
         for r in new_roots:
             draw_connections(r)
             draw_node(r)
+
+        # Draw removed links between nodes that still exist in the new
+        # structure. These won't be part of the tree so handle them
+        # separately using the collected node objects.
+        existing_pairs = set()
+        for p in node_objs.values():
+            for ch in p.children:
+                existing_pairs.add((p.unique_id, ch.unique_id))
+
+        for (pid, cid), st in conn_status.items():
+            if st != "removed":
+                continue
+            if (pid, cid) in existing_pairs:
+                continue
+            if pid in node_objs and cid in node_objs:
+                parent = node_objs[pid]
+                child = node_objs[cid]
+                parent_pt = (parent.x, parent.y + 20)
+                child_pt = (child.x, child.y - 25)
+                if self.app.fta_drawing_helper:
+                    self.app.fta_drawing_helper.draw_90_connection(
+                        self.tree_canvas,
+                        parent_pt,
+                        child_pt,
+                        outline_color="red",
+                        line_width=1,
+                    )
 
         self.tree_canvas.config(scrollregion=self.tree_canvas.bbox("all"))
 
