@@ -642,6 +642,13 @@ class ReviewDocumentDialog(tk.Toplevel):
         self.dh = getattr(app, 'fta_drawing_helper', None) or fta_drawing_helper
         self.title(f"Review Document - {review.name}")
 
+        self.prev_data = app.versions[-1]["data"] if app.versions else None
+        self.curr_data = app.export_model_data(include_versions=False)
+        if self.prev_data:
+            self.diff_nodes = app.calculate_diff_between(self.prev_data, self.curr_data)
+        else:
+            self.diff_nodes = []
+
         self.outer = tk.Canvas(self)
         vbar = tk.Scrollbar(self, orient=tk.VERTICAL, command=self.outer.yview)
         self.outer.configure(yscrollcommand=vbar.set)
@@ -683,6 +690,8 @@ class ReviewDocumentDialog(tk.Toplevel):
                 top_text += f"\n{n.description}"
             bottom_text = n.name
             typ = n.node_type.upper()
+            outline = "blue" if n.unique_id in self.diff_nodes else "dimgray"
+            lw = 2 if n.unique_id in self.diff_nodes else 1
             if n.is_page:
                 if self.dh:
                     self.dh.draw_triangle_shape(
@@ -832,9 +841,38 @@ class ReviewDocumentDialog(tk.Toplevel):
             hsb.grid(row=1, column=0, sticky="ew")
             frame.grid_columnconfigure(0, weight=1)
             frame.grid_rowconfigure(0, weight=1)
-
+            tree.tag_configure("added", background="#cce5ff")
+            tree.tag_configure("removed", background="#f8d7da")
             tree.tag_configure("added", background="#cce5ff")
             for entry in fmea["entries"]:
+                prev_entries.setdefault(entry.unique_id, None)
+
+            for uid, prev in list(prev_entries.items()):
+                curr = next((e for e in fmea["entries"] if e.unique_id == uid), None)
+                if curr and prev is not None:
+                    st = "existing"
+                    if json.dumps(prev, sort_keys=True) != json.dumps(curr.to_dict(), sort_keys=True):
+                        st = "added"
+                    entry = curr
+                elif curr and prev is None:
+                    st = "added"
+                    entry = curr
+                else:
+                    st = "removed"
+                    d = prev
+                    class Dummy:
+                        pass
+                    entry = Dummy()
+                    entry.parents = d.get("parents", [])
+                    entry.description = d.get("description", "")
+                    entry.user_name = d.get("user_name", "")
+                    entry.fmea_effect = d.get("fmea_effect", "")
+                    entry.fmea_cause = d.get("fmea_cause", "")
+                    entry.fmea_severity = d.get("fmea_severity", 1)
+                    entry.fmea_occurrence = d.get("fmea_occurrence", 1)
+                    entry.fmea_detection = d.get("fmea_detection", 1)
+                    entry.safety_requirements = d.get("safety_requirements", [])
+
                 parent = entry.parents[0] if entry.parents else None
                 if parent:
                     comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
@@ -846,7 +884,7 @@ class ReviewDocumentDialog(tk.Toplevel):
                     [f"{req['req_type']}:{req['text']}" for req in getattr(entry, 'safety_requirements', [])]
                 )
                 rpn = entry.fmea_severity * entry.fmea_occurrence * entry.fmea_detection
-                failure_mode = entry.description or entry.user_name or f"BE {entry.unique_id}"
+                failure_mode = entry.description or entry.user_name or f"BE {uid}"
                 vals = [
                     comp,
                     parent_name,
