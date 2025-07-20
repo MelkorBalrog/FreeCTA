@@ -285,7 +285,15 @@ class ReviewToolbox(tk.Toplevel):
         comment_id = len(self.app.review_data.comments) + 1
         if target and target[0] == "requirement":
             node_id = target[1]
-            c = ReviewComment(comment_id, node_id, text, reviewer, target_type="requirement", req_id=target[2])
+            req_id = target[2] if len(target) > 2 else ""
+            c = ReviewComment(
+                comment_id,
+                node_id,
+                text,
+                reviewer,
+                target_type="requirement",
+                req_id=req_id,
+            )
         elif target and target[0] == "fmea":
             node_id = target[1]
             c = ReviewComment(comment_id, node_id, text, reviewer, target_type="fmea")
@@ -753,6 +761,7 @@ class VersionCompareDialog(tk.Toplevel):
         canvas.config(scrollregion=canvas.bbox("all"))
 
     def compare(self, event=None):
+        import json  # ensure available even if module-level import is altered
         base = self.base_var.get()
         other = self.other_var.get()
         if not base or not other:
@@ -768,6 +777,27 @@ class VersionCompareDialog(tk.Toplevel):
 
         map1 = self.app.node_map_from_data(data1["top_events"])
         map2 = self.app.node_map_from_data(data2["top_events"])
+
+        def build_conn_set(events):
+            conns = set()
+            def visit(d):
+                for ch in d.get("children", []):
+                    conns.add((d["unique_id"], ch["unique_id"]))
+                    visit(ch)
+            for t in events:
+                visit(t)
+            return conns
+
+        conns1 = build_conn_set(data1["top_events"])
+        conns2 = build_conn_set(data2["top_events"])
+        conn_status = {}
+        for c in conns1 | conns2:
+            if c in conns1 and c not in conns2:
+                conn_status[c] = "removed"
+            elif c in conns2 and c not in conns1:
+                conn_status[c] = "added"
+            else:
+                conn_status[c] = "existing"
 
         status = {}
         for nid in set(map1) | set(map2):
@@ -806,8 +836,20 @@ class VersionCompareDialog(tk.Toplevel):
                 )
                 child_top = (ch.x, ch.y - 25)
                 if self.app.fta_drawing_helper:
+                    edge_st = conn_status.get((n.unique_id, ch.unique_id), "existing")
+                    if status.get(n.unique_id) == "removed" or status.get(ch.unique_id) == "removed":
+                        edge_st = "removed"
+                    color = "gray"
+                    if edge_st == "added":
+                        color = "blue"
+                    elif edge_st == "removed":
+                        color = "red"
                     self.app.fta_drawing_helper.draw_90_connection(
-                        self.tree_canvas, parent_conn, child_top, outline_color="gray", line_width=1
+                        self.tree_canvas,
+                        parent_conn,
+                        child_top,
+                        outline_color=color,
+                        line_width=1,
                     )
                 draw_connections(ch)
 
@@ -902,8 +944,16 @@ class VersionCompareDialog(tk.Toplevel):
                     )
                     self.insert_diff(n1.get("rationale", ""), n2.get("rationale", ""))
                     self.log_text.insert(tk.END, "\n")
-                req1 = "\n".join(r.get("text", "") for r in n1.get("safety_requirements", []))
-                req2 = "\n".join(r.get("text", "") for r in n2.get("safety_requirements", []))
+                def req_lines(reqs):
+                    lines = []
+                    for r in reqs:
+                        lines.append(
+                            f"[{r.get('id','')}] [{r.get('req_type','')}] [{r.get('asil','')}] {r.get('text','')}"
+                        )
+                    return "\n".join(lines)
+
+                req1 = req_lines(n1.get("safety_requirements", []))
+                req2 = req_lines(n2.get("safety_requirements", []))
                 if req1 != req2:
                     self.log_text.insert(
                         tk.END,
@@ -940,6 +990,23 @@ class VersionCompareDialog(tk.Toplevel):
                     else:
                         prefix = "Added" if st == "added" else "Removed"
                     self.log_text.insert(tk.END, f"{prefix} FMEA entry {failure}\n", st)
+                    if prefix == "Updated":
+                        e1 = entries1[uid]
+                        e2 = entries2[uid]
+                        for fld in [
+                            "description",
+                            "fmea_effect",
+                            "fmea_cause",
+                            "fmea_severity",
+                            "fmea_occurrence",
+                            "fmea_detection",
+                        ]:
+                            v1 = str(e1.get(fld, ""))
+                            v2 = str(e2.get(fld, ""))
+                            if v1 != v2:
+                                self.log_text.insert(tk.END, f"  {fld}: ")
+                                self.insert_diff(v1, v2)
+                                self.log_text.insert(tk.END, "\n")
 
 
 
