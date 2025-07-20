@@ -233,6 +233,7 @@ from review_toolbox import (
     ParticipantDialog,
     EmailConfigDialog,
     ReviewScopeDialog,
+    UserSelectDialog,
     ReviewDocumentDialog,
     VersionCompareDialog,
 )
@@ -6335,6 +6336,7 @@ class FaultTreeApp:
             review.due_date = rd.get("due_date", review.due_date)
             review.closed = rd.get("closed", review.closed)
             next_id = len(review.comments) + 1
+            
             for c in comments:
                 review.comments.append(ReviewComment(next_id, c.node_id, c.text, c.reviewer,
                                                      target_type=c.target_type, req_id=c.req_id,
@@ -6377,11 +6379,12 @@ class FaultTreeApp:
         if not self.review_data:
             messagebox.showwarning("User", "Start a review first")
             return
-        allowed = [p.name for p in self.review_data.participants]
-        allowed.extend(m.name for m in self.review_data.moderators)
-        name = simpledialog.askstring("Current User", "Enter your name:", initialvalue=self.current_user)
-        if not name:
+        parts = self.review_data.participants + self.review_data.moderators
+        dlg = UserSelectDialog(self.root, parts, initial_name=self.current_user)
+        if not dlg.result:
             return
+        name, _ = dlg.result
+        allowed = [p.name for p in parts]
         if name not in allowed:
             messagebox.showerror("User", "Name not found in participants")
             return
