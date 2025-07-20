@@ -680,7 +680,7 @@ class VersionCompareDialog(tk.Toplevel):
 
     def insert_diff(self, old, new):
         """Insert a colorized diff between old and new strings."""
-        diff = difflib.ndiff(list(old), list(new))
+        diff = difflib.ndiff(old.splitlines(keepends=True), new.splitlines(keepends=True))
         for token in diff:
             if token.startswith("- "):
                 self.log_text.insert(tk.END, token[2:], "removed")
