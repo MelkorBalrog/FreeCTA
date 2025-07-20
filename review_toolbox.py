@@ -852,17 +852,37 @@ class ReviewDocumentDialog(tk.Toplevel):
             display_label = source.display_label
             old_data = map1.get(n.unique_id)
             new_data = map2.get(n.unique_id)
+            def req_lines(reqs):
+                return "; ".join(
+                    f"[{r.get('id','')}] [{r.get('req_type','')}] {r.get('text','')}"
+                    for r in reqs
+                )
+
             if old_data and new_data:
-                desc_segments = [("Desc: ", "black")] + self.diff_segments(old_data.get("description", ""), new_data.get("description", ""))
-                rat_segments = [("Rationale: ", "black")] + self.diff_segments(old_data.get("rationale", ""), new_data.get("rationale", ""))
+                desc_segments = [("Desc: ", "black")] + self.diff_segments(
+                    old_data.get("description", ""),
+                    new_data.get("description", ""),
+                )
+                rat_segments = [("Rationale: ", "black")] + self.diff_segments(
+                    old_data.get("rationale", ""),
+                    new_data.get("rationale", ""),
+                )
+                req_segments = [("Reqs: ", "black")] + self.diff_segments(
+                    req_lines(old_data.get("safety_requirements", [])),
+                    req_lines(new_data.get("safety_requirements", [])),
+                )
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
+                req_segments = [
+                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
+                ]
+
             segments = [
                 (f"Type: {source.node_type}\n", "black"),
                 (f"Subtype: {subtype_text}\n", "black"),
                 (f"{display_label}\n", "black"),
-            ] + desc_segments + [("\n\n", "black")] + rat_segments
+            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
 
             top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
@@ -1526,6 +1546,11 @@ class VersionCompareDialog(tk.Toplevel):
             old_data = map1.get(n.unique_id)
             new_data = map2.get(n.unique_id)
 
+            def req_lines(reqs):
+                return "; ".join(
+                    f"[{r.get('id','')}] [{r.get('req_type','')}] {r.get('text','')}" for r in reqs
+                )
+
             if old_data and new_data:
                 desc_segments = [("Desc: ", "black")] + self.diff_segments(
                     old_data.get("description", ""), new_data.get("description", "")
@@ -1533,15 +1558,22 @@ class VersionCompareDialog(tk.Toplevel):
                 rat_segments = [("Rationale: ", "black")] + self.diff_segments(
                     old_data.get("rationale", ""), new_data.get("rationale", "")
                 )
+                req_segments = [("Reqs: ", "black")] + self.diff_segments(
+                    req_lines(old_data.get("safety_requirements", [])),
+                    req_lines(new_data.get("safety_requirements", [])),
+                )
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
+                req_segments = [
+                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
+                ]
 
             segments = [
                 (f"Type: {source.node_type}\n", "black"),
                 (f"Subtype: {subtype_text}\n", "black"),
                 (f"{display_label}\n", "black"),
-            ] + desc_segments + [("\n\n", "black")] + rat_segments
+            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
 
             top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
