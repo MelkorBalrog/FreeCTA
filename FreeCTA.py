@@ -2501,6 +2501,132 @@ class FaultTreeApp:
                     lines.append("Updated: " + html_diff(self.format_requirement_with_trace(r1), self.format_requirement_with_trace(r2)))
         return "<br>".join(lines)
 
+    # --- Requirement Traceability Helpers used by reviews and matrix view ---
+    def get_requirement_allocation_names(self, req_id):
+        """Return a list of node or FMEA entry names where the requirement appears."""
+        names = []
+        for n in self.get_all_nodes(self.root_node):
+            if any(r.get("id") == req_id for r in getattr(n, "safety_requirements", [])):
+                names.append(n.user_name or f"Node {n.unique_id}")
+        for fmea in self.fmeas:
+            for e in fmea.get("entries", []):
+                if any(r.get("id") == req_id for r in e.get("safety_requirements", [])):
+                    name = e.get("description") or e.get("user_name", f"BE {e.get('unique_id','')}")
+                    names.append(f"{fmea['name']}:{name}")
+        return names
+
+    def _collect_goal_names(self, node, acc):
+        if node.node_type.upper() == "TOP EVENT":
+            acc.add(node.safety_goal_description or (node.user_name or f"SG {node.unique_id}"))
+        for p in getattr(node, "parents", []):
+            self._collect_goal_names(p, acc)
+
+    def get_requirement_goal_names(self, req_id):
+        """Return a list of safety goal names linked to the requirement."""
+        goals = set()
+        for n in self.get_all_nodes(self.root_node):
+            if any(r.get("id") == req_id for r in getattr(n, "safety_requirements", [])):
+                self._collect_goal_names(n, goals)
+        for fmea in self.fmeas:
+            for e in fmea.get("entries", []):
+                if any(r.get("id") == req_id for r in e.get("safety_requirements", [])):
+                    parent = e.get("parents", [{}])[0]
+                    if isinstance(parent, dict) and "unique_id" in parent:
+                        node = self.find_node_by_id_all(parent["unique_id"])
+                    else:
+                        node = parent if hasattr(parent, "unique_id") else None
+                    if node:
+                        self._collect_goal_names(node, goals)
+        return sorted(goals)
+
+    def format_requirement_with_trace(self, req):
+        """Return requirement text including allocation and safety goal lists."""
+        rid = req.get("id", "")
+        alloc = ", ".join(self.get_requirement_allocation_names(rid))
+        goals = ", ".join(self.get_requirement_goal_names(rid))
+        return (
+            f"[{rid}] [{req.get('req_type','')}] [{req.get('asil','')}] {req.get('text','')}" +
+            f" (Alloc: {alloc}; SGs: {goals})"
+        )
+
+    def build_requirement_diff_html(self, review):
+        """Return HTML highlighting requirement differences for the review."""
+        if not self.versions:
+            return ""
+        base_data = self.versions[-1]["data"]
+        current = self.export_model_data(include_versions=False)
+
+        def filter_data(data):
+            return {
+                "top_events": [t for t in data.get("top_events", []) if t["unique_id"] in review.fta_ids],
+                "fmeas": [f for f in data.get("fmeas", []) if f["name"] in review.fmea_names],
+            }
+
+        data1 = filter_data(base_data)
+        data2 = filter_data(current)
+        map1 = self.node_map_from_data(data1["top_events"])
+        map2 = self.node_map_from_data(data2["top_events"])
+
+        def collect_reqs(node_dict, target):
+            for r in node_dict.get("safety_requirements", []):
+                rid = r.get("id")
+                if rid and rid not in target:
+                    target[rid] = r
+            for ch in node_dict.get("children", []):
+                collect_reqs(ch, target)
+
+        reqs1, reqs2 = {}, {}
+        for nid in review.fta_ids:
+            if nid in map1:
+                collect_reqs(map1[nid], reqs1)
+            if nid in map2:
+                collect_reqs(map2[nid], reqs2)
+
+        fmea1 = {f["name"]: f for f in data1.get("fmeas", [])}
+        fmea2 = {f["name"]: f for f in data2.get("fmeas", [])}
+        for name in review.fmea_names:
+            for e in fmea1.get(name, {}).get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+            for e in fmea2.get(name, {}).get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
+
+        import difflib, html
+
+        def html_diff(a, b):
+            matcher = difflib.SequenceMatcher(None, a, b)
+            parts = []
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag == "equal":
+                    parts.append(html.escape(a[i1:i2]))
+                elif tag == "delete":
+                    parts.append(f"<span style='color:red'>{html.escape(a[i1:i2])}</span>")
+                elif tag == "insert":
+                    parts.append(f"<span style='color:blue'>{html.escape(b[j1:j2])}</span>")
+                elif tag == "replace":
+                    parts.append(f"<span style='color:red'>{html.escape(a[i1:i2])}</span>")
+                    parts.append(f"<span style='color:blue'>{html.escape(b[j1:j2])}</span>")
+            return "".join(parts)
+
+        lines = []
+        all_ids = sorted(set(reqs1) | set(reqs2))
+        for rid in all_ids:
+            r1 = reqs1.get(rid)
+            r2 = reqs2.get(rid)
+            if r1 and not r2:
+                lines.append(f"Removed: {html.escape(self.format_requirement_with_trace(r1))}")
+            elif r2 and not r1:
+                lines.append(f"Added: {html.escape(self.format_requirement_with_trace(r2))}")
+            else:
+                if json.dumps(r1, sort_keys=True) != json.dumps(r2, sort_keys=True):
+                    lines.append("Updated: " + html_diff(self.format_requirement_with_trace(r1), self.format_requirement_with_trace(r2)))
+        return "<br>".join(lines)
+
     def generate_recommendations_for_top_event(self, node):
         # Determine the Prototype Assurance Level (PAL) based on the node’s quantitative score.
         level = AD_RiskAssessment_Helper.discretize_level(node.quant_value) if node.quant_value is not None else 1
@@ -2906,6 +3032,1581 @@ class FaultTreeApp:
                 (f"Subtype: {subtype_text}\n", "black"),
                 (f"{display_label}\n", "black"),
             ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
+
+            top_text = "".join(seg[0] for seg in segments)
+            bottom_text = n.name
+            fill = self.get_node_fill_color(n)
+            eff_x, eff_y = n.x, n.y
+            typ = n.node_type.upper()
+            items_before = canvas.find_all()
+            if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
+                if n.gate_type and n.gate_type.upper() == "OR":
+                    if self.fta_drawing_helper:
+                        self.fta_drawing_helper.draw_rotated_or_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+                else:
+                    if self.fta_drawing_helper:
+                        self.fta_drawing_helper.draw_rotated_and_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+            else:
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_circle_event_shape(canvas, eff_x, eff_y, 45, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+
+            items_after = canvas.find_all()
+            text_id = None
+            for item in items_after:
+                if item in items_before:
+                    continue
+                if canvas.type(item) == "text" and canvas.itemcget(item, "text") == top_text:
+                    text_id = item
+                    break
+
+            if text_id and any(c in ("red", "blue") for _, c in segments):
+                bbox = canvas.bbox(text_id)
+                cx = (bbox[0] + bbox[2]) / 2
+                cy = (bbox[1] + bbox[3]) / 2
+                canvas.itemconfigure(text_id, state="hidden")
+                draw_segment_text(canvas, cx, cy, segments, self.diagram_font)
+            for ch in n.children:
+                draw_node(ch)
+
+        for r in new_roots:
+            draw_connections(r)
+            draw_node(r)
+
+        existing_pairs = set()
+        for p in node_objs.values():
+            for ch in p.children:
+                existing_pairs.add((p.unique_id, ch.unique_id))
+        for (pid, cid), st in conn_status.items():
+            if st != "removed":
+                continue
+            if (pid, cid) in existing_pairs:
+                continue
+            if pid in node_objs and cid in node_objs and pid in allow_ids and cid in allow_ids:
+                parent = node_objs[pid]
+                child = node_objs[cid]
+                parent_pt = (parent.x, parent.y + 20)
+                child_pt = (child.x, child.y - 25)
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_90_connection(canvas, parent_pt, child_pt, outline_color="red", line_width=1)
+
+        canvas.update()
+        bbox = canvas.bbox("all")
+        if not bbox:
+            temp.destroy()
+            return None
+        x, y, x2, y2 = bbox
+        ps = canvas.postscript(colormode="color", x=x, y=y, width=x2 - x, height=y2 - y)
+        ps_bytes = BytesIO(ps.encode("utf-8"))
+        try:
+            img = Image.open(ps_bytes)
+            img.load(scale=3)
+        except Exception:
+            img = None
+        temp.destroy()
+        return img.convert("RGB") if img else None
+
+    def capture_diff_diagram(self, top_event):
+        """Return an image of the FTA with diff colouring versus last version."""
+        if not self.versions:
+            return self.capture_page_diagram(top_event)
+
+        from io import BytesIO
+        from PIL import Image
+        import difflib
+
+        current = self.export_model_data(include_versions=False)
+        base_data = self.versions[-1]["data"]
+
+        def filter_events(data):
+            return [t for t in data.get("top_events", []) if t["unique_id"] == top_event.unique_id]
+
+        data1 = {"top_events": filter_events(base_data)}
+        data2 = {"top_events": filter_events(current)}
+
+        map1 = self.node_map_from_data(data1["top_events"])
+        map2 = self.node_map_from_data(data2["top_events"])
+
+        def build_conn_set(events):
+            conns = set()
+            def visit(d):
+                for ch in d.get("children", []):
+                    conns.add((d["unique_id"], ch["unique_id"]))
+                    visit(ch)
+            for t in events:
+                visit(t)
+            return conns
+
+        conns1 = build_conn_set(data1["top_events"])
+        conns2 = build_conn_set(data2["top_events"])
+
+        conn_status = {}
+        for c in conns1 | conns2:
+            if c in conns1 and c not in conns2:
+                conn_status[c] = "removed"
+            elif c in conns2 and c not in conns1:
+                conn_status[c] = "added"
+            else:
+                conn_status[c] = "existing"
+
+        status = {}
+        for nid in set(map1) | set(map2):
+            if nid in map1 and nid not in map2:
+                status[nid] = "removed"
+            elif nid in map2 and nid not in map1:
+                status[nid] = "added"
+            else:
+                if json.dumps(map1[nid], sort_keys=True) != json.dumps(map2[nid], sort_keys=True):
+                    status[nid] = "added"
+                else:
+                    status[nid] = "existing"
+
+        module = sys.modules.get(self.__class__.__module__)
+        FaultTreeNodeCls = getattr(module, 'FaultTreeNode', None)
+        if not FaultTreeNodeCls and self.top_events:
+            FaultTreeNodeCls = type(self.top_events[0])
+        new_roots = [FaultTreeNodeCls.from_dict(t) for t in data2["top_events"]]
+        removed_ids = [nid for nid, st in status.items() if st == "removed"]
+        for rid in removed_ids:
+            if rid in map1:
+                nd = map1[rid]
+                new_roots.append(FaultTreeNodeCls.from_dict(nd))
+
+        allow_ids = set()
+        def collect_ids(d):
+            allow_ids.add(d["unique_id"])
+            for ch in d.get("children", []):
+                collect_ids(ch)
+        if top_event.unique_id in map1:
+            collect_ids(map1[top_event.unique_id])
+        if top_event.unique_id in map2:
+            collect_ids(map2[top_event.unique_id])
+
+        node_objs = {}
+        def collect_nodes(n):
+            if n.unique_id not in node_objs:
+                node_objs[n.unique_id] = n
+            for ch in n.children:
+                collect_nodes(ch)
+        for r in new_roots:
+            collect_nodes(r)
+
+        def diff_segments(old, new):
+            matcher = difflib.SequenceMatcher(None, old, new)
+            segments = []
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag == "equal":
+                    segments.append((old[i1:i2], "black"))
+                elif tag == "delete":
+                    segments.append((old[i1:i2], "red"))
+                elif tag == "insert":
+                    segments.append((new[j1:j2], "blue"))
+                elif tag == "replace":
+                    segments.append((old[i1:i2], "red"))
+                    segments.append((new[j1:j2], "blue"))
+            return segments
+
+        def draw_segment_text(canvas, cx, cy, segments, font_obj):
+            lines = [[]]
+            for text, color in segments:
+                parts = text.split("\n")
+                for idx, part in enumerate(parts):
+                    if idx > 0:
+                        lines.append([])
+                    lines[-1].append((part, color))
+            line_height = font_obj.metrics("linespace")
+            total_height = line_height * len(lines)
+            start_y = cy - total_height / 2
+            for line in lines:
+                line_width = sum(font_obj.measure(part) for part, _ in line)
+                start_x = cx - line_width / 2
+                x = start_x
+                for part, color in line:
+                    if part:
+                        canvas.create_text(x, start_y, text=part, anchor="nw", fill=color, font=font_obj)
+                        x += font_obj.measure(part)
+                start_y += line_height
+
+        temp = tk.Toplevel(self.root)
+        temp.withdraw()
+        canvas = tk.Canvas(temp, bg="white", width=2000, height=2000)
+        canvas.pack()
+
+        def draw_connections(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_connections(ch)
+                return
+            region_width = 60
+            parent_bottom = (n.x, n.y + 20)
+            for i, ch in enumerate(n.children):
+                if ch.unique_id not in allow_ids:
+                    continue
+                parent_conn = (
+                    n.x - region_width / 2 + (i + 0.5) * (region_width / len(n.children)),
+                    parent_bottom[1],
+                )
+                child_top = (ch.x, ch.y - 25)
+                edge_st = conn_status.get((n.unique_id, ch.unique_id), "existing")
+                if status.get(n.unique_id) == "removed" or status.get(ch.unique_id) == "removed":
+                    edge_st = "removed"
+                color = "gray"
+                if edge_st == "added":
+                    color = "blue"
+                elif edge_st == "removed":
+                    color = "red"
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_90_connection(canvas, parent_conn, child_top, outline_color=color, line_width=1)
+                draw_connections(ch)
+
+        def draw_node(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_node(ch)
+                return
+            st = status.get(n.unique_id, "existing")
+            color = "dimgray"
+            if st == "added":
+                color = "blue"
+            elif st == "removed":
+                color = "red"
+
+            source = n if getattr(n, "is_primary_instance", True) else getattr(n, "original", n)
+            subtype_text = source.input_subtype if source.input_subtype else "N/A"
+            display_label = source.display_label
+            old_data = map1.get(n.unique_id)
+            new_data = map2.get(n.unique_id)
+            def req_lines(reqs):
+                return "; ".join(
+                    self.format_requirement_with_trace(r) for r in reqs
+                )
+
+            if old_data and new_data:
+                desc_segments = [("Desc: ", "black")] + diff_segments(
+                    old_data.get("description", ""), new_data.get("description", "")
+                )
+                rat_segments = [("Rationale: ", "black")] + diff_segments(
+                    old_data.get("rationale", ""), new_data.get("rationale", "")
+                )
+                req_segments = [("Reqs: ", "black")] + diff_segments(
+                    req_lines(old_data.get("safety_requirements", [])),
+                    req_lines(new_data.get("safety_requirements", [])),
+                )
+            else:
+                desc_segments = [("Desc: " + source.description, "black")]
+                rat_segments = [("Rationale: " + source.rationale, "black")]
+                req_segments = [
+                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
+                ]
+
+            segments = [
+                (f"Type: {source.node_type}\n", "black"),
+                (f"Subtype: {subtype_text}\n", "black"),
+                (f"{display_label}\n", "black"),
+            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
+
+            top_text = "".join(seg[0] for seg in segments)
+            bottom_text = n.name
+            fill = self.get_node_fill_color(n)
+            eff_x, eff_y = n.x, n.y
+            typ = n.node_type.upper()
+            items_before = canvas.find_all()
+            if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
+                if n.gate_type and n.gate_type.upper() == "OR":
+                    if self.fta_drawing_helper:
+                        self.fta_drawing_helper.draw_rotated_or_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+                else:
+                    if self.fta_drawing_helper:
+                        self.fta_drawing_helper.draw_rotated_and_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+            else:
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_circle_event_shape(canvas, eff_x, eff_y, 45, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+
+            items_after = canvas.find_all()
+            text_id = None
+            for item in items_after:
+                if item in items_before:
+                    continue
+                if canvas.type(item) == "text" and canvas.itemcget(item, "text") == top_text:
+                    text_id = item
+                    break
+
+            if text_id and any(c in ("red", "blue") for _, c in segments):
+                bbox = canvas.bbox(text_id)
+                cx = (bbox[0] + bbox[2]) / 2
+                cy = (bbox[1] + bbox[3]) / 2
+                canvas.itemconfigure(text_id, state="hidden")
+                draw_segment_text(canvas, cx, cy, segments, self.diagram_font)
+            for ch in n.children:
+                draw_node(ch)
+
+        for r in new_roots:
+            draw_connections(r)
+            draw_node(r)
+
+        existing_pairs = set()
+        for p in node_objs.values():
+            for ch in p.children:
+                existing_pairs.add((p.unique_id, ch.unique_id))
+        for (pid, cid), st in conn_status.items():
+            if st != "removed":
+                continue
+            if (pid, cid) in existing_pairs:
+                continue
+            if pid in node_objs and cid in node_objs and pid in allow_ids and cid in allow_ids:
+                parent = node_objs[pid]
+                child = node_objs[cid]
+                parent_pt = (parent.x, parent.y + 20)
+                child_pt = (child.x, child.y - 25)
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_90_connection(canvas, parent_pt, child_pt, outline_color="red", line_width=1)
+
+        canvas.update()
+        bbox = canvas.bbox("all")
+        if not bbox:
+            temp.destroy()
+            return None
+        x, y, x2, y2 = bbox
+        ps = canvas.postscript(colormode="color", x=x, y=y, width=x2 - x, height=y2 - y)
+        ps_bytes = BytesIO(ps.encode("utf-8"))
+        try:
+            img = Image.open(ps_bytes)
+            img.load(scale=3)
+        except Exception:
+            img = None
+        temp.destroy()
+        return img.convert("RGB") if img else None
+
+    def capture_diff_diagram(self, top_event):
+        """Return an image of the FTA with diff colouring versus last version."""
+        if not self.versions:
+            return self.capture_page_diagram(top_event)
+
+        from io import BytesIO
+        from PIL import Image
+        import difflib
+
+        current = self.export_model_data(include_versions=False)
+        base_data = self.versions[-1]["data"]
+
+        def filter_events(data):
+            return [t for t in data.get("top_events", []) if t["unique_id"] == top_event.unique_id]
+
+        data1 = {"top_events": filter_events(base_data)}
+        data2 = {"top_events": filter_events(current)}
+
+        map1 = self.node_map_from_data(data1["top_events"])
+        map2 = self.node_map_from_data(data2["top_events"])
+
+        def build_conn_set(events):
+            conns = set()
+            def visit(d):
+                for ch in d.get("children", []):
+                    conns.add((d["unique_id"], ch["unique_id"]))
+                    visit(ch)
+            for t in events:
+                visit(t)
+            return conns
+
+        conns1 = build_conn_set(data1["top_events"])
+        conns2 = build_conn_set(data2["top_events"])
+
+        conn_status = {}
+        for c in conns1 | conns2:
+            if c in conns1 and c not in conns2:
+                conn_status[c] = "removed"
+            elif c in conns2 and c not in conns1:
+                conn_status[c] = "added"
+            else:
+                conn_status[c] = "existing"
+
+        status = {}
+        for nid in set(map1) | set(map2):
+            if nid in map1 and nid not in map2:
+                status[nid] = "removed"
+            elif nid in map2 and nid not in map1:
+                status[nid] = "added"
+            else:
+                if json.dumps(map1[nid], sort_keys=True) != json.dumps(map2[nid], sort_keys=True):
+                    status[nid] = "added"
+                else:
+                    status[nid] = "existing"
+
+        module = sys.modules.get(self.__class__.__module__)
+        FaultTreeNodeCls = getattr(module, 'FaultTreeNode', None)
+        if not FaultTreeNodeCls and self.top_events:
+            FaultTreeNodeCls = type(self.top_events[0])
+        new_roots = [FaultTreeNodeCls.from_dict(t) for t in data2["top_events"]]
+        removed_ids = [nid for nid, st in status.items() if st == "removed"]
+        for rid in removed_ids:
+            if rid in map1:
+                nd = map1[rid]
+                new_roots.append(FaultTreeNodeCls.from_dict(nd))
+
+        allow_ids = set()
+        def collect_ids(d):
+            allow_ids.add(d["unique_id"])
+            for ch in d.get("children", []):
+                collect_ids(ch)
+        if top_event.unique_id in map1:
+            collect_ids(map1[top_event.unique_id])
+        if top_event.unique_id in map2:
+            collect_ids(map2[top_event.unique_id])
+
+        node_objs = {}
+        def collect_nodes(n):
+            if n.unique_id not in node_objs:
+                node_objs[n.unique_id] = n
+            for ch in n.children:
+                collect_nodes(ch)
+        for r in new_roots:
+            collect_nodes(r)
+
+        def diff_segments(old, new):
+            matcher = difflib.SequenceMatcher(None, old, new)
+            segments = []
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag == "equal":
+                    segments.append((old[i1:i2], "black"))
+                elif tag == "delete":
+                    segments.append((old[i1:i2], "red"))
+                elif tag == "insert":
+                    segments.append((new[j1:j2], "blue"))
+                elif tag == "replace":
+                    segments.append((old[i1:i2], "red"))
+                    segments.append((new[j1:j2], "blue"))
+            return segments
+
+        def draw_segment_text(canvas, cx, cy, segments, font_obj):
+            lines = [[]]
+            for text, color in segments:
+                parts = text.split("\n")
+                for idx, part in enumerate(parts):
+                    if idx > 0:
+                        lines.append([])
+                    lines[-1].append((part, color))
+            line_height = font_obj.metrics("linespace")
+            total_height = line_height * len(lines)
+            start_y = cy - total_height / 2
+            for line in lines:
+                line_width = sum(font_obj.measure(part) for part, _ in line)
+                start_x = cx - line_width / 2
+                x = start_x
+                for part, color in line:
+                    if part:
+                        canvas.create_text(x, start_y, text=part, anchor="nw", fill=color, font=font_obj)
+                        x += font_obj.measure(part)
+                start_y += line_height
+
+        temp = tk.Toplevel(self.root)
+        temp.withdraw()
+        canvas = tk.Canvas(temp, bg="white", width=2000, height=2000)
+        canvas.pack()
+
+        def draw_connections(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_connections(ch)
+                return
+            region_width = 60
+            parent_bottom = (n.x, n.y + 20)
+            for i, ch in enumerate(n.children):
+                if ch.unique_id not in allow_ids:
+                    continue
+                parent_conn = (
+                    n.x - region_width / 2 + (i + 0.5) * (region_width / len(n.children)),
+                    parent_bottom[1],
+                )
+                child_top = (ch.x, ch.y - 25)
+                edge_st = conn_status.get((n.unique_id, ch.unique_id), "existing")
+                if status.get(n.unique_id) == "removed" or status.get(ch.unique_id) == "removed":
+                    edge_st = "removed"
+                color = "gray"
+                if edge_st == "added":
+                    color = "blue"
+                elif edge_st == "removed":
+                    color = "red"
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_90_connection(canvas, parent_conn, child_top, outline_color=color, line_width=1)
+                draw_connections(ch)
+
+        def draw_node(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_node(ch)
+                return
+            st = status.get(n.unique_id, "existing")
+            color = "dimgray"
+            if st == "added":
+                color = "blue"
+            elif st == "removed":
+                color = "red"
+
+            source = n if getattr(n, "is_primary_instance", True) else getattr(n, "original", n)
+            subtype_text = source.input_subtype if source.input_subtype else "N/A"
+            display_label = source.display_label
+            old_data = map1.get(n.unique_id)
+            new_data = map2.get(n.unique_id)
+            def req_lines(reqs):
+                return "; ".join(
+                    self.format_requirement_with_trace(r) for r in reqs
+                )
+
+            if old_data and new_data:
+                desc_segments = [("Desc: ", "black")] + diff_segments(
+                    old_data.get("description", ""), new_data.get("description", "")
+                )
+                rat_segments = [("Rationale: ", "black")] + diff_segments(
+                    old_data.get("rationale", ""), new_data.get("rationale", "")
+                )
+                req_segments = [("Reqs: ", "black")] + diff_segments(
+                    req_lines(old_data.get("safety_requirements", [])),
+                    req_lines(new_data.get("safety_requirements", [])),
+                )
+            else:
+                desc_segments = [("Desc: " + source.description, "black")]
+                rat_segments = [("Rationale: " + source.rationale, "black")]
+                req_segments = [
+                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
+                ]
+
+            segments = [
+                (f"Type: {source.node_type}\n", "black"),
+                (f"Subtype: {subtype_text}\n", "black"),
+                (f"{display_label}\n", "black"),
+            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
+
+            top_text = "".join(seg[0] for seg in segments)
+            bottom_text = n.name
+            fill = self.get_node_fill_color(n)
+            eff_x, eff_y = n.x, n.y
+            typ = n.node_type.upper()
+            items_before = canvas.find_all()
+            if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
+                if n.gate_type and n.gate_type.upper() == "OR":
+                    if self.fta_drawing_helper:
+                        self.fta_drawing_helper.draw_rotated_or_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+                else:
+                    if self.fta_drawing_helper:
+                        self.fta_drawing_helper.draw_rotated_and_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+            else:
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_circle_event_shape(canvas, eff_x, eff_y, 45, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+
+            items_after = canvas.find_all()
+            text_id = None
+            for item in items_after:
+                if item in items_before:
+                    continue
+                if canvas.type(item) == "text" and canvas.itemcget(item, "text") == top_text:
+                    text_id = item
+                    break
+
+            if text_id and any(c in ("red", "blue") for _, c in segments):
+                bbox = canvas.bbox(text_id)
+                cx = (bbox[0] + bbox[2]) / 2
+                cy = (bbox[1] + bbox[3]) / 2
+                canvas.itemconfigure(text_id, state="hidden")
+                draw_segment_text(canvas, cx, cy, segments, self.diagram_font)
+            for ch in n.children:
+                draw_node(ch)
+
+        for r in new_roots:
+            draw_connections(r)
+            draw_node(r)
+
+        existing_pairs = set()
+        for p in node_objs.values():
+            for ch in p.children:
+                existing_pairs.add((p.unique_id, ch.unique_id))
+        for (pid, cid), st in conn_status.items():
+            if st != "removed":
+                continue
+            if (pid, cid) in existing_pairs:
+                continue
+            if pid in node_objs and cid in node_objs and pid in allow_ids and cid in allow_ids:
+                parent = node_objs[pid]
+                child = node_objs[cid]
+                parent_pt = (parent.x, parent.y + 20)
+                child_pt = (child.x, child.y - 25)
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_90_connection(canvas, parent_pt, child_pt, outline_color="red", line_width=1)
+
+        canvas.update()
+        bbox = canvas.bbox("all")
+        if not bbox:
+            temp.destroy()
+            return None
+        x, y, x2, y2 = bbox
+        ps = canvas.postscript(colormode="color", x=x, y=y, width=x2 - x, height=y2 - y)
+        ps_bytes = BytesIO(ps.encode("utf-8"))
+        try:
+            img = Image.open(ps_bytes)
+            img.load(scale=3)
+        except Exception:
+            img = None
+        temp.destroy()
+        return img.convert("RGB") if img else None
+
+    def capture_diff_diagram(self, top_event):
+        """Return an image of the FTA with diff colouring versus last version."""
+        if not self.versions:
+            return self.capture_page_diagram(top_event)
+
+        from io import BytesIO
+        from PIL import Image
+        import difflib
+
+        current = self.export_model_data(include_versions=False)
+        base_data = self.versions[-1]["data"]
+
+        def filter_events(data):
+            return [t for t in data.get("top_events", []) if t["unique_id"] == top_event.unique_id]
+
+        data1 = {"top_events": filter_events(base_data)}
+        data2 = {"top_events": filter_events(current)}
+
+        map1 = self.node_map_from_data(data1["top_events"])
+        map2 = self.node_map_from_data(data2["top_events"])
+
+        def build_conn_set(events):
+            conns = set()
+            def visit(d):
+                for ch in d.get("children", []):
+                    conns.add((d["unique_id"], ch["unique_id"]))
+                    visit(ch)
+            for t in events:
+                visit(t)
+            return conns
+
+        conns1 = build_conn_set(data1["top_events"])
+        conns2 = build_conn_set(data2["top_events"])
+
+        conn_status = {}
+        for c in conns1 | conns2:
+            if c in conns1 and c not in conns2:
+                conn_status[c] = "removed"
+            elif c in conns2 and c not in conns1:
+                conn_status[c] = "added"
+            else:
+                conn_status[c] = "existing"
+
+        status = {}
+        for nid in set(map1) | set(map2):
+            if nid in map1 and nid not in map2:
+                status[nid] = "removed"
+            elif nid in map2 and nid not in map1:
+                status[nid] = "added"
+            else:
+                if json.dumps(map1[nid], sort_keys=True) != json.dumps(map2[nid], sort_keys=True):
+                    status[nid] = "added"
+                else:
+                    status[nid] = "existing"
+
+        module = sys.modules.get(self.__class__.__module__)
+        FaultTreeNodeCls = getattr(module, 'FaultTreeNode', None)
+        if not FaultTreeNodeCls and self.top_events:
+            FaultTreeNodeCls = type(self.top_events[0])
+        new_roots = [FaultTreeNodeCls.from_dict(t) for t in data2["top_events"]]
+        removed_ids = [nid for nid, st in status.items() if st == "removed"]
+        for rid in removed_ids:
+            if rid in map1:
+                nd = map1[rid]
+                new_roots.append(FaultTreeNodeCls.from_dict(nd))
+
+        allow_ids = set()
+        def collect_ids(d):
+            allow_ids.add(d["unique_id"])
+            for ch in d.get("children", []):
+                collect_ids(ch)
+        if top_event.unique_id in map1:
+            collect_ids(map1[top_event.unique_id])
+        if top_event.unique_id in map2:
+            collect_ids(map2[top_event.unique_id])
+
+        node_objs = {}
+        def collect_nodes(n):
+            if n.unique_id not in node_objs:
+                node_objs[n.unique_id] = n
+            for ch in n.children:
+                collect_nodes(ch)
+        for r in new_roots:
+            collect_nodes(r)
+
+        def diff_segments(old, new):
+            matcher = difflib.SequenceMatcher(None, old, new)
+            segments = []
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag == "equal":
+                    segments.append((old[i1:i2], "black"))
+                elif tag == "delete":
+                    segments.append((old[i1:i2], "red"))
+                elif tag == "insert":
+                    segments.append((new[j1:j2], "blue"))
+                elif tag == "replace":
+                    segments.append((old[i1:i2], "red"))
+                    segments.append((new[j1:j2], "blue"))
+            return segments
+
+        def draw_segment_text(canvas, cx, cy, segments, font_obj):
+            lines = [[]]
+            for text, color in segments:
+                parts = text.split("\n")
+                for idx, part in enumerate(parts):
+                    if idx > 0:
+                        lines.append([])
+                    lines[-1].append((part, color))
+            line_height = font_obj.metrics("linespace")
+            total_height = line_height * len(lines)
+            start_y = cy - total_height / 2
+            for line in lines:
+                line_width = sum(font_obj.measure(part) for part, _ in line)
+                start_x = cx - line_width / 2
+                x = start_x
+                for part, color in line:
+                    if part:
+                        canvas.create_text(x, start_y, text=part, anchor="nw", fill=color, font=font_obj)
+                        x += font_obj.measure(part)
+                start_y += line_height
+
+        temp = tk.Toplevel(self.root)
+        temp.withdraw()
+        canvas = tk.Canvas(temp, bg="white", width=2000, height=2000)
+        canvas.pack()
+
+        def draw_connections(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_connections(ch)
+                return
+            region_width = 60
+            parent_bottom = (n.x, n.y + 20)
+            for i, ch in enumerate(n.children):
+                if ch.unique_id not in allow_ids:
+                    continue
+                parent_conn = (
+                    n.x - region_width / 2 + (i + 0.5) * (region_width / len(n.children)),
+                    parent_bottom[1],
+                )
+                child_top = (ch.x, ch.y - 25)
+                edge_st = conn_status.get((n.unique_id, ch.unique_id), "existing")
+                if status.get(n.unique_id) == "removed" or status.get(ch.unique_id) == "removed":
+                    edge_st = "removed"
+                color = "gray"
+                if edge_st == "added":
+                    color = "blue"
+                elif edge_st == "removed":
+                    color = "red"
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_90_connection(canvas, parent_conn, child_top, outline_color=color, line_width=1)
+                draw_connections(ch)
+
+        def draw_node(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_node(ch)
+                return
+            st = status.get(n.unique_id, "existing")
+            color = "dimgray"
+            if st == "added":
+                color = "blue"
+            elif st == "removed":
+                color = "red"
+
+            source = n if getattr(n, "is_primary_instance", True) else getattr(n, "original", n)
+            subtype_text = source.input_subtype if source.input_subtype else "N/A"
+            display_label = source.display_label
+            old_data = map1.get(n.unique_id)
+            new_data = map2.get(n.unique_id)
+            def req_lines(reqs):
+                return "; ".join(
+                    f"[{r.get('id','')}] [{r.get('req_type','')}] {r.get('text','')}" for r in reqs
+                )
+
+            if old_data and new_data:
+                desc_segments = [("Desc: ", "black")] + diff_segments(
+                    old_data.get("description", ""), new_data.get("description", "")
+                )
+                rat_segments = [("Rationale: ", "black")] + diff_segments(
+                    old_data.get("rationale", ""), new_data.get("rationale", "")
+                )
+                req_segments = [("Reqs: ", "black")] + diff_segments(
+                    req_lines(old_data.get("safety_requirements", [])),
+                    req_lines(new_data.get("safety_requirements", [])),
+                )
+            else:
+                desc_segments = [("Desc: " + source.description, "black")]
+                rat_segments = [("Rationale: " + source.rationale, "black")]
+                req_segments = [
+                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
+                ]
+
+            segments = [
+                (f"Type: {source.node_type}\n", "black"),
+                (f"Subtype: {subtype_text}\n", "black"),
+                (f"{display_label}\n", "black"),
+            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
+
+            top_text = "".join(seg[0] for seg in segments)
+            bottom_text = n.name
+            fill = self.get_node_fill_color(n)
+            eff_x, eff_y = n.x, n.y
+            typ = n.node_type.upper()
+            items_before = canvas.find_all()
+            if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
+                if n.gate_type and n.gate_type.upper() == "OR":
+                    if self.fta_drawing_helper:
+                        self.fta_drawing_helper.draw_rotated_or_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+                else:
+                    if self.fta_drawing_helper:
+                        self.fta_drawing_helper.draw_rotated_and_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+            else:
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_circle_event_shape(canvas, eff_x, eff_y, 45, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+
+            items_after = canvas.find_all()
+            text_id = None
+            for item in items_after:
+                if item in items_before:
+                    continue
+                if canvas.type(item) == "text" and canvas.itemcget(item, "text") == top_text:
+                    text_id = item
+                    break
+
+            if text_id and any(c in ("red", "blue") for _, c in segments):
+                bbox = canvas.bbox(text_id)
+                cx = (bbox[0] + bbox[2]) / 2
+                cy = (bbox[1] + bbox[3]) / 2
+                canvas.itemconfigure(text_id, state="hidden")
+                draw_segment_text(canvas, cx, cy, segments, self.diagram_font)
+            for ch in n.children:
+                draw_node(ch)
+
+        for r in new_roots:
+            draw_connections(r)
+            draw_node(r)
+
+        existing_pairs = set()
+        for p in node_objs.values():
+            for ch in p.children:
+                existing_pairs.add((p.unique_id, ch.unique_id))
+        for (pid, cid), st in conn_status.items():
+            if st != "removed":
+                continue
+            if (pid, cid) in existing_pairs:
+                continue
+            if pid in node_objs and cid in node_objs and pid in allow_ids and cid in allow_ids:
+                parent = node_objs[pid]
+                child = node_objs[cid]
+                parent_pt = (parent.x, parent.y + 20)
+                child_pt = (child.x, child.y - 25)
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_90_connection(canvas, parent_pt, child_pt, outline_color="red", line_width=1)
+
+        canvas.update()
+        bbox = canvas.bbox("all")
+        if not bbox:
+            temp.destroy()
+            return None
+        x, y, x2, y2 = bbox
+        ps = canvas.postscript(colormode="color", x=x, y=y, width=x2 - x, height=y2 - y)
+        ps_bytes = BytesIO(ps.encode("utf-8"))
+        try:
+            img = Image.open(ps_bytes)
+            img.load(scale=3)
+        except Exception:
+            img = None
+        temp.destroy()
+        return img.convert("RGB") if img else None
+
+    def capture_diff_diagram(self, top_event):
+        """Return an image of the FTA with diff colouring versus last version."""
+        if not self.versions:
+            return self.capture_page_diagram(top_event)
+
+        from io import BytesIO
+        from PIL import Image
+        import difflib
+
+        current = self.export_model_data(include_versions=False)
+        base_data = self.versions[-1]["data"]
+
+        def filter_events(data):
+            return [t for t in data.get("top_events", []) if t["unique_id"] == top_event.unique_id]
+
+        data1 = {"top_events": filter_events(base_data)}
+        data2 = {"top_events": filter_events(current)}
+
+        map1 = self.node_map_from_data(data1["top_events"])
+        map2 = self.node_map_from_data(data2["top_events"])
+
+        def build_conn_set(events):
+            conns = set()
+            def visit(d):
+                for ch in d.get("children", []):
+                    conns.add((d["unique_id"], ch["unique_id"]))
+                    visit(ch)
+            for t in events:
+                visit(t)
+            return conns
+
+        conns1 = build_conn_set(data1["top_events"])
+        conns2 = build_conn_set(data2["top_events"])
+
+        conn_status = {}
+        for c in conns1 | conns2:
+            if c in conns1 and c not in conns2:
+                conn_status[c] = "removed"
+            elif c in conns2 and c not in conns1:
+                conn_status[c] = "added"
+            else:
+                conn_status[c] = "existing"
+
+        status = {}
+        for nid in set(map1) | set(map2):
+            if nid in map1 and nid not in map2:
+                status[nid] = "removed"
+            elif nid in map2 and nid not in map1:
+                status[nid] = "added"
+            else:
+                if json.dumps(map1[nid], sort_keys=True) != json.dumps(map2[nid], sort_keys=True):
+                    status[nid] = "added"
+                else:
+                    status[nid] = "existing"
+
+        module = sys.modules.get(self.__class__.__module__)
+        FaultTreeNodeCls = getattr(module, 'FaultTreeNode', None)
+        if not FaultTreeNodeCls and self.top_events:
+            FaultTreeNodeCls = type(self.top_events[0])
+        new_roots = [FaultTreeNodeCls.from_dict(t) for t in data2["top_events"]]
+        removed_ids = [nid for nid, st in status.items() if st == "removed"]
+        for rid in removed_ids:
+            if rid in map1:
+                nd = map1[rid]
+                new_roots.append(FaultTreeNodeCls.from_dict(nd))
+
+        allow_ids = set()
+        def collect_ids(d):
+            allow_ids.add(d["unique_id"])
+            for ch in d.get("children", []):
+                collect_ids(ch)
+        if top_event.unique_id in map1:
+            collect_ids(map1[top_event.unique_id])
+        if top_event.unique_id in map2:
+            collect_ids(map2[top_event.unique_id])
+
+        node_objs = {}
+        def collect_nodes(n):
+            if n.unique_id not in node_objs:
+                node_objs[n.unique_id] = n
+            for ch in n.children:
+                collect_nodes(ch)
+        for r in new_roots:
+            collect_nodes(r)
+
+        def diff_segments(old, new):
+            matcher = difflib.SequenceMatcher(None, old, new)
+            segments = []
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag == "equal":
+                    segments.append((old[i1:i2], "black"))
+                elif tag == "delete":
+                    segments.append((old[i1:i2], "red"))
+                elif tag == "insert":
+                    segments.append((new[j1:j2], "blue"))
+                elif tag == "replace":
+                    segments.append((old[i1:i2], "red"))
+                    segments.append((new[j1:j2], "blue"))
+            return segments
+
+        def draw_segment_text(canvas, cx, cy, segments, font_obj):
+            lines = [[]]
+            for text, color in segments:
+                parts = text.split("\n")
+                for idx, part in enumerate(parts):
+                    if idx > 0:
+                        lines.append([])
+                    lines[-1].append((part, color))
+            line_height = font_obj.metrics("linespace")
+            total_height = line_height * len(lines)
+            start_y = cy - total_height / 2
+            for line in lines:
+                line_width = sum(font_obj.measure(part) for part, _ in line)
+                start_x = cx - line_width / 2
+                x = start_x
+                for part, color in line:
+                    if part:
+                        canvas.create_text(x, start_y, text=part, anchor="nw", fill=color, font=font_obj)
+                        x += font_obj.measure(part)
+                start_y += line_height
+
+        temp = tk.Toplevel(self.root)
+        temp.withdraw()
+        canvas = tk.Canvas(temp, bg="white", width=2000, height=2000)
+        canvas.pack()
+
+        def draw_connections(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_connections(ch)
+                return
+            region_width = 60
+            parent_bottom = (n.x, n.y + 20)
+            for i, ch in enumerate(n.children):
+                if ch.unique_id not in allow_ids:
+                    continue
+                parent_conn = (
+                    n.x - region_width / 2 + (i + 0.5) * (region_width / len(n.children)),
+                    parent_bottom[1],
+                )
+                child_top = (ch.x, ch.y - 25)
+                edge_st = conn_status.get((n.unique_id, ch.unique_id), "existing")
+                if status.get(n.unique_id) == "removed" or status.get(ch.unique_id) == "removed":
+                    edge_st = "removed"
+                color = "gray"
+                if edge_st == "added":
+                    color = "blue"
+                elif edge_st == "removed":
+                    color = "red"
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_90_connection(canvas, parent_conn, child_top, outline_color=color, line_width=1)
+                draw_connections(ch)
+
+        def draw_node(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_node(ch)
+                return
+            st = status.get(n.unique_id, "existing")
+            color = "dimgray"
+            if st == "added":
+                color = "blue"
+            elif st == "removed":
+                color = "red"
+
+            source = n if getattr(n, "is_primary_instance", True) else getattr(n, "original", n)
+            subtype_text = source.input_subtype if source.input_subtype else "N/A"
+            display_label = source.display_label
+            old_data = map1.get(n.unique_id)
+            new_data = map2.get(n.unique_id)
+            if old_data and new_data:
+                desc_segments = [("Desc: ", "black")] + diff_segments(old_data.get("description", ""), new_data.get("description", ""))
+                rat_segments = [("Rationale: ", "black")] + diff_segments(old_data.get("rationale", ""), new_data.get("rationale", ""))
+            else:
+                desc_segments = [("Desc: " + source.description, "black")]
+                rat_segments = [("Rationale: " + source.rationale, "black")]
+            segments = [
+                (f"Type: {source.node_type}\n", "black"),
+                (f"Subtype: {subtype_text}\n", "black"),
+                (f"{display_label}\n", "black"),
+            ] + desc_segments + [("\n\n", "black")] + rat_segments
+
+            top_text = "".join(seg[0] for seg in segments)
+            bottom_text = n.name
+            fill = self.get_node_fill_color(n)
+            eff_x, eff_y = n.x, n.y
+            typ = n.node_type.upper()
+            items_before = canvas.find_all()
+            if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
+                if n.gate_type and n.gate_type.upper() == "OR":
+                    if self.fta_drawing_helper:
+                        self.fta_drawing_helper.draw_rotated_or_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+                else:
+                    if self.fta_drawing_helper:
+                        self.fta_drawing_helper.draw_rotated_and_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+            else:
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_circle_event_shape(canvas, eff_x, eff_y, 45, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+
+            items_after = canvas.find_all()
+            text_id = None
+            for item in items_after:
+                if item in items_before:
+                    continue
+                if canvas.type(item) == "text" and canvas.itemcget(item, "text") == top_text:
+                    text_id = item
+                    break
+
+            if text_id and any(c in ("red", "blue") for _, c in segments):
+                bbox = canvas.bbox(text_id)
+                cx = (bbox[0] + bbox[2]) / 2
+                cy = (bbox[1] + bbox[3]) / 2
+                canvas.itemconfigure(text_id, state="hidden")
+                draw_segment_text(canvas, cx, cy, segments, self.diagram_font)
+            for ch in n.children:
+                draw_node(ch)
+
+        for r in new_roots:
+            draw_connections(r)
+            draw_node(r)
+
+        existing_pairs = set()
+        for p in node_objs.values():
+            for ch in p.children:
+                existing_pairs.add((p.unique_id, ch.unique_id))
+        for (pid, cid), st in conn_status.items():
+            if st != "removed":
+                continue
+            if (pid, cid) in existing_pairs:
+                continue
+            if pid in node_objs and cid in node_objs and pid in allow_ids and cid in allow_ids:
+                parent = node_objs[pid]
+                child = node_objs[cid]
+                parent_pt = (parent.x, parent.y + 20)
+                child_pt = (child.x, child.y - 25)
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_90_connection(canvas, parent_pt, child_pt, outline_color="red", line_width=1)
+
+        canvas.update()
+        bbox = canvas.bbox("all")
+        if not bbox:
+            temp.destroy()
+            return None
+        x, y, x2, y2 = bbox
+        ps = canvas.postscript(colormode="color", x=x, y=y, width=x2 - x, height=y2 - y)
+        ps_bytes = BytesIO(ps.encode("utf-8"))
+        try:
+            img = Image.open(ps_bytes)
+            img.load(scale=3)
+        except Exception:
+            img = None
+        temp.destroy()
+        return img.convert("RGB") if img else None
+
+    def capture_diff_diagram(self, top_event):
+        """Return an image of the FTA with diff colouring versus last version."""
+        if not self.versions:
+            return self.capture_page_diagram(top_event)
+
+        from io import BytesIO
+        from PIL import Image
+        import difflib
+
+        current = self.export_model_data(include_versions=False)
+        base_data = self.versions[-1]["data"]
+
+        def filter_events(data):
+            return [t for t in data.get("top_events", []) if t["unique_id"] == top_event.unique_id]
+
+        data1 = {"top_events": filter_events(base_data)}
+        data2 = {"top_events": filter_events(current)}
+
+        map1 = self.node_map_from_data(data1["top_events"])
+        map2 = self.node_map_from_data(data2["top_events"])
+
+        def build_conn_set(events):
+            conns = set()
+            def visit(d):
+                for ch in d.get("children", []):
+                    conns.add((d["unique_id"], ch["unique_id"]))
+                    visit(ch)
+            for t in events:
+                visit(t)
+            return conns
+
+        conns1 = build_conn_set(data1["top_events"])
+        conns2 = build_conn_set(data2["top_events"])
+
+        conn_status = {}
+        for c in conns1 | conns2:
+            if c in conns1 and c not in conns2:
+                conn_status[c] = "removed"
+            elif c in conns2 and c not in conns1:
+                conn_status[c] = "added"
+            else:
+                conn_status[c] = "existing"
+
+        status = {}
+        for nid in set(map1) | set(map2):
+            if nid in map1 and nid not in map2:
+                status[nid] = "removed"
+            elif nid in map2 and nid not in map1:
+                status[nid] = "added"
+            else:
+                if json.dumps(map1[nid], sort_keys=True) != json.dumps(map2[nid], sort_keys=True):
+                    status[nid] = "added"
+                else:
+                    status[nid] = "existing"
+
+        module = sys.modules.get(self.__class__.__module__)
+        FaultTreeNodeCls = getattr(module, 'FaultTreeNode', None)
+        if not FaultTreeNodeCls and self.top_events:
+            FaultTreeNodeCls = type(self.top_events[0])
+        new_roots = [FaultTreeNodeCls.from_dict(t) for t in data2["top_events"]]
+        removed_ids = [nid for nid, st in status.items() if st == "removed"]
+        for rid in removed_ids:
+            if rid in map1:
+                nd = map1[rid]
+                new_roots.append(FaultTreeNodeCls.from_dict(nd))
+
+        allow_ids = set()
+        def collect_ids(d):
+            allow_ids.add(d["unique_id"])
+            for ch in d.get("children", []):
+                collect_ids(ch)
+        if top_event.unique_id in map1:
+            collect_ids(map1[top_event.unique_id])
+        if top_event.unique_id in map2:
+            collect_ids(map2[top_event.unique_id])
+
+        node_objs = {}
+        def collect_nodes(n):
+            if n.unique_id not in node_objs:
+                node_objs[n.unique_id] = n
+            for ch in n.children:
+                collect_nodes(ch)
+        for r in new_roots:
+            collect_nodes(r)
+
+        def diff_segments(old, new):
+            matcher = difflib.SequenceMatcher(None, old, new)
+            segments = []
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag == "equal":
+                    segments.append((old[i1:i2], "black"))
+                elif tag == "delete":
+                    segments.append((old[i1:i2], "red"))
+                elif tag == "insert":
+                    segments.append((new[j1:j2], "blue"))
+                elif tag == "replace":
+                    segments.append((old[i1:i2], "red"))
+                    segments.append((new[j1:j2], "blue"))
+            return segments
+
+        def draw_segment_text(canvas, cx, cy, segments, font_obj):
+            lines = [[]]
+            for text, color in segments:
+                parts = text.split("\n")
+                for idx, part in enumerate(parts):
+                    if idx > 0:
+                        lines.append([])
+                    lines[-1].append((part, color))
+            line_height = font_obj.metrics("linespace")
+            total_height = line_height * len(lines)
+            start_y = cy - total_height / 2
+            for line in lines:
+                line_width = sum(font_obj.measure(part) for part, _ in line)
+                start_x = cx - line_width / 2
+                x = start_x
+                for part, color in line:
+                    if part:
+                        canvas.create_text(x, start_y, text=part, anchor="nw", fill=color, font=font_obj)
+                        x += font_obj.measure(part)
+                start_y += line_height
+
+        temp = tk.Toplevel(self.root)
+        temp.withdraw()
+        canvas = tk.Canvas(temp, bg="white", width=2000, height=2000)
+        canvas.pack()
+
+        def draw_connections(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_connections(ch)
+                return
+            region_width = 60
+            parent_bottom = (n.x, n.y + 20)
+            for i, ch in enumerate(n.children):
+                if ch.unique_id not in allow_ids:
+                    continue
+                parent_conn = (
+                    n.x - region_width / 2 + (i + 0.5) * (region_width / len(n.children)),
+                    parent_bottom[1],
+                )
+                child_top = (ch.x, ch.y - 25)
+                edge_st = conn_status.get((n.unique_id, ch.unique_id), "existing")
+                if status.get(n.unique_id) == "removed" or status.get(ch.unique_id) == "removed":
+                    edge_st = "removed"
+                color = "gray"
+                if edge_st == "added":
+                    color = "blue"
+                elif edge_st == "removed":
+                    color = "red"
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_90_connection(canvas, parent_conn, child_top, outline_color=color, line_width=1)
+                draw_connections(ch)
+
+        def draw_node(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_node(ch)
+                return
+            st = status.get(n.unique_id, "existing")
+            color = "dimgray"
+            if st == "added":
+                color = "blue"
+            elif st == "removed":
+                color = "red"
+
+            source = n if getattr(n, "is_primary_instance", True) else getattr(n, "original", n)
+            subtype_text = source.input_subtype if source.input_subtype else "N/A"
+            display_label = source.display_label
+            old_data = map1.get(n.unique_id)
+            new_data = map2.get(n.unique_id)
+            if old_data and new_data:
+                desc_segments = [("Desc: ", "black")] + diff_segments(old_data.get("description", ""), new_data.get("description", ""))
+                rat_segments = [("Rationale: ", "black")] + diff_segments(old_data.get("rationale", ""), new_data.get("rationale", ""))
+            else:
+                desc_segments = [("Desc: " + source.description, "black")]
+                rat_segments = [("Rationale: " + source.rationale, "black")]
+            segments = [
+                (f"Type: {source.node_type}\n", "black"),
+                (f"Subtype: {subtype_text}\n", "black"),
+                (f"{display_label}\n", "black"),
+            ] + desc_segments + [("\n\n", "black")] + rat_segments
+
+            top_text = "".join(seg[0] for seg in segments)
+            bottom_text = n.name
+            fill = self.get_node_fill_color(n)
+            eff_x, eff_y = n.x, n.y
+            typ = n.node_type.upper()
+            items_before = canvas.find_all()
+            if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
+                if n.gate_type and n.gate_type.upper() == "OR":
+                    if self.fta_drawing_helper:
+                        self.fta_drawing_helper.draw_rotated_or_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+                else:
+                    if self.fta_drawing_helper:
+                        self.fta_drawing_helper.draw_rotated_and_gate_shape(canvas, eff_x, eff_y, scale=40, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+            else:
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_circle_event_shape(canvas, eff_x, eff_y, 45, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+
+            items_after = canvas.find_all()
+            text_id = None
+            for item in items_after:
+                if item in items_before:
+                    continue
+                if canvas.type(item) == "text" and canvas.itemcget(item, "text") == top_text:
+                    text_id = item
+                    break
+
+            if text_id and any(c in ("red", "blue") for _, c in segments):
+                bbox = canvas.bbox(text_id)
+                cx = (bbox[0] + bbox[2]) / 2
+                cy = (bbox[1] + bbox[3]) / 2
+                canvas.itemconfigure(text_id, state="hidden")
+                draw_segment_text(canvas, cx, cy, segments, self.diagram_font)
+            for ch in n.children:
+                draw_node(ch)
+
+        for r in new_roots:
+            draw_connections(r)
+            draw_node(r)
+
+        existing_pairs = set()
+        for p in node_objs.values():
+            for ch in p.children:
+                existing_pairs.add((p.unique_id, ch.unique_id))
+        for (pid, cid), st in conn_status.items():
+            if st != "removed":
+                continue
+            if (pid, cid) in existing_pairs:
+                continue
+            if pid in node_objs and cid in node_objs and pid in allow_ids and cid in allow_ids:
+                parent = node_objs[pid]
+                child = node_objs[cid]
+                parent_pt = (parent.x, parent.y + 20)
+                child_pt = (child.x, child.y - 25)
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_90_connection(canvas, parent_pt, child_pt, outline_color="red", line_width=1)
+
+        canvas.update()
+        bbox = canvas.bbox("all")
+        if not bbox:
+            temp.destroy()
+            return None
+        x, y, x2, y2 = bbox
+        ps = canvas.postscript(colormode="color", x=x, y=y, width=x2 - x, height=y2 - y)
+        ps_bytes = BytesIO(ps.encode("utf-8"))
+        try:
+            img = Image.open(ps_bytes)
+            img.load(scale=3)
+        except Exception:
+            img = None
+        temp.destroy()
+        return img.convert("RGB") if img else None
+
+    def capture_diff_diagram(self, top_event):
+        """Return an image of the FTA with diff colouring versus last version."""
+        if not self.versions:
+            return self.capture_page_diagram(top_event)
+
+        from io import BytesIO
+        from PIL import Image
+        import difflib
+
+        current = self.export_model_data(include_versions=False)
+        base_data = self.versions[-1]["data"]
+
+        def filter_events(data):
+            return [t for t in data.get("top_events", []) if t["unique_id"] == top_event.unique_id]
+
+        data1 = {"top_events": filter_events(base_data)}
+        data2 = {"top_events": filter_events(current)}
+
+        map1 = self.node_map_from_data(data1["top_events"])
+        map2 = self.node_map_from_data(data2["top_events"])
+
+        def build_conn_set(events):
+            conns = set()
+            def visit(d):
+                for ch in d.get("children", []):
+                    conns.add((d["unique_id"], ch["unique_id"]))
+                    visit(ch)
+            for t in events:
+                visit(t)
+            return conns
+
+        conns1 = build_conn_set(data1["top_events"])
+        conns2 = build_conn_set(data2["top_events"])
+
+        conn_status = {}
+        for c in conns1 | conns2:
+            if c in conns1 and c not in conns2:
+                conn_status[c] = "removed"
+            elif c in conns2 and c not in conns1:
+                conn_status[c] = "added"
+            else:
+                conn_status[c] = "existing"
+
+        status = {}
+        for nid in set(map1) | set(map2):
+            if nid in map1 and nid not in map2:
+                status[nid] = "removed"
+            elif nid in map2 and nid not in map1:
+                status[nid] = "added"
+            else:
+                if json.dumps(map1[nid], sort_keys=True) != json.dumps(map2[nid], sort_keys=True):
+                    status[nid] = "added"
+                else:
+                    status[nid] = "existing"
+
+        module = sys.modules.get(self.__class__.__module__)
+        FaultTreeNodeCls = getattr(module, 'FaultTreeNode', None)
+        if not FaultTreeNodeCls and self.top_events:
+            FaultTreeNodeCls = type(self.top_events[0])
+        new_roots = [FaultTreeNodeCls.from_dict(t) for t in data2["top_events"]]
+        removed_ids = [nid for nid, st in status.items() if st == "removed"]
+        for rid in removed_ids:
+            if rid in map1:
+                nd = map1[rid]
+                new_roots.append(FaultTreeNodeCls.from_dict(nd))
+
+        allow_ids = set()
+        def collect_ids(d):
+            allow_ids.add(d["unique_id"])
+            for ch in d.get("children", []):
+                collect_ids(ch)
+        if top_event.unique_id in map1:
+            collect_ids(map1[top_event.unique_id])
+        if top_event.unique_id in map2:
+            collect_ids(map2[top_event.unique_id])
+
+        node_objs = {}
+        def collect_nodes(n):
+            if n.unique_id not in node_objs:
+                node_objs[n.unique_id] = n
+            for ch in n.children:
+                collect_nodes(ch)
+        for r in new_roots:
+            collect_nodes(r)
+
+        def diff_segments(old, new):
+            matcher = difflib.SequenceMatcher(None, old, new)
+            segments = []
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag == "equal":
+                    segments.append((old[i1:i2], "black"))
+                elif tag == "delete":
+                    segments.append((old[i1:i2], "red"))
+                elif tag == "insert":
+                    segments.append((new[j1:j2], "blue"))
+                elif tag == "replace":
+                    segments.append((old[i1:i2], "red"))
+                    segments.append((new[j1:j2], "blue"))
+            return segments
+
+        def draw_segment_text(canvas, cx, cy, segments, font_obj):
+            lines = [[]]
+            for text, color in segments:
+                parts = text.split("\n")
+                for idx, part in enumerate(parts):
+                    if idx > 0:
+                        lines.append([])
+                    lines[-1].append((part, color))
+            line_height = font_obj.metrics("linespace")
+            total_height = line_height * len(lines)
+            start_y = cy - total_height / 2
+            for line in lines:
+                line_width = sum(font_obj.measure(part) for part, _ in line)
+                start_x = cx - line_width / 2
+                x = start_x
+                for part, color in line:
+                    if part:
+                        canvas.create_text(x, start_y, text=part, anchor="nw", fill=color, font=font_obj)
+                        x += font_obj.measure(part)
+                start_y += line_height
+
+        temp = tk.Toplevel(self.root)
+        temp.withdraw()
+        canvas = tk.Canvas(temp, bg="white", width=2000, height=2000)
+        canvas.pack()
+
+        def draw_connections(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_connections(ch)
+                return
+            region_width = 60
+            parent_bottom = (n.x, n.y + 20)
+            for i, ch in enumerate(n.children):
+                if ch.unique_id not in allow_ids:
+                    continue
+                parent_conn = (
+                    n.x - region_width / 2 + (i + 0.5) * (region_width / len(n.children)),
+                    parent_bottom[1],
+                )
+                child_top = (ch.x, ch.y - 25)
+                edge_st = conn_status.get((n.unique_id, ch.unique_id), "existing")
+                if status.get(n.unique_id) == "removed" or status.get(ch.unique_id) == "removed":
+                    edge_st = "removed"
+                color = "gray"
+                if edge_st == "added":
+                    color = "blue"
+                elif edge_st == "removed":
+                    color = "red"
+                if self.fta_drawing_helper:
+                    self.fta_drawing_helper.draw_90_connection(canvas, parent_conn, child_top, outline_color=color, line_width=1)
+                draw_connections(ch)
+
+        def draw_node(n):
+            if n.unique_id not in allow_ids:
+                for ch in n.children:
+                    draw_node(ch)
+                return
+            st = status.get(n.unique_id, "existing")
+            color = "dimgray"
+            if st == "added":
+                color = "blue"
+            elif st == "removed":
+                color = "red"
+
+            source = n if getattr(n, "is_primary_instance", True) else getattr(n, "original", n)
+            subtype_text = source.input_subtype if source.input_subtype else "N/A"
+            display_label = source.display_label
+            old_data = map1.get(n.unique_id)
+            new_data = map2.get(n.unique_id)
+            if old_data and new_data:
+                desc_segments = [("Desc: ", "black")] + diff_segments(old_data.get("description", ""), new_data.get("description", ""))
+                rat_segments = [("Rationale: ", "black")] + diff_segments(old_data.get("rationale", ""), new_data.get("rationale", ""))
+            else:
+                desc_segments = [("Desc: " + source.description, "black")]
+                rat_segments = [("Rationale: " + source.rationale, "black")]
+            segments = [
+                (f"Type: {source.node_type}\n", "black"),
+                (f"Subtype: {subtype_text}\n", "black"),
+                (f"{display_label}\n", "black"),
+            ] + desc_segments + [("\n\n", "black")] + rat_segments
 
             top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
@@ -5271,6 +6972,36 @@ class FaultTreeApp:
             text.insert(tk.END, f"  Allocated to: {alloc}\n")
             text.insert(tk.END, f"  Safety Goals: {goals}\n\n")
 
+        # --- Traceability list below the table ---
+        frame = tk.Frame(win)
+        frame.pack(fill=tk.BOTH, expand=True)
+        vbar = tk.Scrollbar(frame, orient="vertical")
+        text = tk.Text(frame, wrap="word", yscrollcommand=vbar.set, height=8)
+        vbar.config(command=text.yview)
+        text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vbar.pack(side=tk.RIGHT, fill=tk.Y)
+        for req in reqs:
+            alloc = ", ".join(self.get_requirement_allocation_names(req.get("id")))
+            goals = ", ".join(self.get_requirement_goal_names(req.get("id")))
+            text.insert(tk.END, f"[{req.get('id','')}] {req.get('text','')}\n")
+            text.insert(tk.END, f"  Allocated to: {alloc}\n")
+            text.insert(tk.END, f"  Safety Goals: {goals}\n\n")
+
+        # --- Traceability list below the table ---
+        frame = tk.Frame(win)
+        frame.pack(fill=tk.BOTH, expand=True)
+        vbar = tk.Scrollbar(frame, orient="vertical")
+        text = tk.Text(frame, wrap="word", yscrollcommand=vbar.set, height=8)
+        vbar.config(command=text.yview)
+        text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vbar.pack(side=tk.RIGHT, fill=tk.Y)
+        for req in reqs:
+            alloc = ", ".join(self.get_requirement_allocation_names(req.get("id")))
+            goals = ", ".join(self.get_requirement_goal_names(req.get("id")))
+            text.insert(tk.END, f"[{req.get('id','')}] {req.get('text','')}\n")
+            text.insert(tk.END, f"  Allocated to: {alloc}\n")
+            text.insert(tk.END, f"  Safety Goals: {goals}\n\n")
+
     def show_fmea_list(self):
         win = tk.Toplevel(self.root)
         win.title("FMEA List")
@@ -6463,79 +8194,95 @@ class FaultTreeApp:
         if node.rationale:
             top_text += f"\nRationale: {node.rationale}"
         bottom_text = node.name
+
+        outline_color = "dimgray"
+        line_width = 1
+        if node.unique_id in getattr(self.app, "diff_nodes", []):
+            outline_color = "blue"
+            line_width = 2
+        elif not node.is_primary_instance:
+            outline_color = "red"
         
         # For page elements, assume they use a triangle shape.
         if node.is_page:
-            # If it’s a clone, you might choose to draw with a different outline (e.g. red or dashed)
-            if not node.is_primary_instance:
-                fta_drawing_helper.draw_triangle_shape(canvas, eff_x, eff_y, scale=40,
-                                                       top_text=top_text,
-                                                       bottom_text=bottom_text,
-                                                       fill=fill_color,
-                                                       outline_color="red",  # mark clone with red outline
-                                                       line_width=1,
-                                                       font_obj=self.diagram_font)
-            else:
-                fta_drawing_helper.draw_triangle_shape(canvas, eff_x, eff_y, scale=40,
-                                                       top_text=top_text,
-                                                       bottom_text=bottom_text,
-                                                       fill=fill_color,
-                                                       outline_color="dimgray",
-                                                       line_width=1,
-                                                       font_obj=self.diagram_font)
+            fta_drawing_helper.draw_triangle_shape(
+                canvas,
+                eff_x,
+                eff_y,
+                scale=40,
+                top_text=top_text,
+                bottom_text=bottom_text,
+                fill=fill_color,
+                outline_color=outline_color,
+                line_width=line_width,
+                font_obj=self.diagram_font,
+            )
         else:
             node_type_upper = node.node_type.upper()
             if node_type_upper in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
                 if node.gate_type and node.gate_type.upper() == "OR":
-                    fta_drawing_helper.draw_rotated_or_gate_shape(self.page_canvas, eff_x, eff_y,
-                                               scale=40,
-                                               top_text=top_text,
-                                               bottom_text=bottom_text,
-                                               fill=fill_color,
-                                               outline_color="dimgray",
-                                               line_width=1)
+                    fta_drawing_helper.draw_rotated_or_gate_shape(
+                        self.page_canvas,
+                        eff_x,
+                        eff_y,
+                        scale=40,
+                        top_text=top_text,
+                        bottom_text=bottom_text,
+                        fill=fill_color,
+                        outline_color=outline_color,
+                        line_width=line_width,
+                    )
                 else:
-                    fta_drawing_helper.draw_rotated_and_gate_shape(self.page_canvas, eff_x, eff_y,
-                                                scale=40,
-                                                top_text=top_text,
-                                                bottom_text=bottom_text,
-                                                fill=fill_color,
-                                                outline_color="dimgray",
-                                                line_width=1)
+                    fta_drawing_helper.draw_rotated_and_gate_shape(
+                        self.page_canvas,
+                        eff_x,
+                        eff_y,
+                        scale=40,
+                        top_text=top_text,
+                        bottom_text=bottom_text,
+                        fill=fill_color,
+                        outline_color=outline_color,
+                        line_width=line_width,
+                    )
             elif node_type_upper in ["CONFIDENCE LEVEL", "ROBUSTNESS SCORE"]:
-                fta_drawing_helper.draw_circle_event_shape(self.page_canvas, eff_x, eff_y, 45,
-                                        top_text=top_text,
-                                        bottom_text=bottom_text,
-                                        fill=fill_color,
-                                        outline_color="dimgray",
-                                        line_width=1)
+                fta_drawing_helper.draw_circle_event_shape(
+                    self.page_canvas,
+                    eff_x,
+                    eff_y,
+                    45,
+                    top_text=top_text,
+                    bottom_text=bottom_text,
+                    fill=fill_color,
+                    outline_color=outline_color,
+                    line_width=line_width,
+                )
             else:
-                fta_drawing_helper.draw_circle_event_shape(self.page_canvas, eff_x, eff_y, 45,
-                                        top_text=top_text,
-                                        bottom_text=bottom_text,
-                                        fill=fill_color,
-                                        outline_color="dimgray",
-                                        line_width=1)
+                fta_drawing_helper.draw_circle_event_shape(
+                    self.page_canvas,
+                    eff_x,
+                    eff_y,
+                    45,
+                    top_text=top_text,
+                    bottom_text=bottom_text,
+                    fill=fill_color,
+                    outline_color=outline_color,
+                    line_width=line_width,
+                )
 
         if self.review_data:
-            unresolved = any(c.node_id == node.unique_id and not c.resolved for c in self.review_data.comments)
+            unresolved = any(
+                c.node_id == node.unique_id and not c.resolved
+                for c in self.review_data.comments
+            )
             if unresolved:
-                canvas.create_oval(eff_x + 35, eff_y + 35, eff_x + 45, eff_y + 45, fill='yellow', outline='black')
-
-        if self.review_data:
-            unresolved = any(c.node_id == node.unique_id and not c.resolved for c in self.review_data.comments)
-            if unresolved:
-                canvas.create_oval(eff_x + 35, eff_y + 35, eff_x + 45, eff_y + 45, fill='yellow', outline='black')
-
-        if self.review_data:
-            unresolved = any(c.node_id == node.unique_id and not c.resolved for c in self.review_data.comments)
-            if unresolved:
-                canvas.create_oval(eff_x + 35, eff_y + 35, eff_x + 45, eff_y + 45, fill='yellow', outline='black')
-
-        if self.review_data:
-            unresolved = any(c.node_id == node.unique_id and not c.resolved for c in self.review_data.comments)
-            if unresolved:
-                canvas.create_oval(eff_x + 35, eff_y + 35, eff_x + 45, eff_y + 45, fill='yellow', outline='black')
+                canvas.create_oval(
+                    eff_x + 35,
+                    eff_y + 35,
+                    eff_x + 45,
+                    eff_y + 45,
+                    fill="yellow",
+                    outline="black",
+                )
 
     def on_ctrl_mousewheel_page(self, event):
         if event.delta > 0:
