@@ -5618,7 +5618,7 @@ class FaultTreeApp:
                 self.save_model()
         self.root.destroy()
 
-    def export_model_data(self):
+    def export_model_data(self, include_versions=True):
         reviews = []
         for r in self.reviews:
             reviews.append({
@@ -5631,15 +5631,17 @@ class FaultTreeApp:
                 "comments": [asdict(c) for c in r.comments],
             })
         current_name = self.review_data.name if self.review_data else None
-        return {
+        data = {
             "top_events": [event.to_dict() for event in self.top_events],
             "fmeas": [{"name": f['name'], "file": f['file'], "entries": [e.to_dict() for e in f['entries']]} for f in self.fmeas],
             "project_properties": self.project_properties,
             "global_requirements": global_requirements,
             "reviews": reviews,
             "current_review": current_name,
-            "versions": self.versions,
         }
+        if include_versions:
+            data["versions"] = self.versions
+        return data
 
     def save_model(self):
         path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
@@ -6099,7 +6101,9 @@ class FaultTreeApp:
 
     def add_version(self):
         name = f"v{len(self.versions)+1}"
-        data = self.export_model_data()
+        # Exclude the versions list when capturing a snapshot to avoid
+        # recursively embedding previous versions within each saved state.
+        data = self.export_model_data(include_versions=False)
         self.versions.append({"name": name, "data": data})
 
     def compare_versions(self):
