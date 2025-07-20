@@ -760,7 +760,16 @@ class ReviewDocumentDialog(tk.Toplevel):
         row = 0
         if self.app.versions:
             base_data = self.app.versions[-1]["data"]
-            diff_nodes = set(self.app.calculate_diff_between(base_data, self.app.export_model_data(include_versions=False)))
+            current = self.app.export_model_data(include_versions=False)
+            map1 = self.app.node_map_from_data(base_data["top_events"])
+            map2 = self.app.node_map_from_data(current["top_events"])
+            diff_nodes = {
+                nid
+                for nid in map2
+                if nid not in map1
+                or json.dumps(map1.get(nid, {}), sort_keys=True)
+                != json.dumps(map2[nid], sort_keys=True)
+            }
             old_fmea = {
                 f["name"]: {e["unique_id"]: e for e in f.get("entries", [])}
                 for f in base_data.get("fmeas", [])
@@ -834,13 +843,6 @@ class ReviewDocumentDialog(tk.Toplevel):
             frame.grid_rowconfigure(0, weight=1)
             tree.tag_configure("added", background="#cce5ff")
             tree.tag_configure("removed", background="#f8d7da")
-
-            prev_entries = {}
-            if self.prev_data:
-                pf = next((f for f in self.prev_data.get("fmeas", []) if f["name"] == name), None)
-                if pf:
-                    prev_entries = {e["unique_id"]: e for e in pf.get("entries", [])}
-
             tree.tag_configure("added", background="#cce5ff")
             for entry in fmea["entries"]:
                 prev_entries.setdefault(entry.unique_id, None)

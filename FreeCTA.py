@@ -6336,7 +6336,6 @@ class FaultTreeApp:
             review.due_date = rd.get("due_date", review.due_date)
             review.closed = rd.get("closed", review.closed)
             next_id = len(review.comments) + 1
-            
             for c in comments:
                 review.comments.append(ReviewComment(next_id, c.node_id, c.text, c.reviewer,
                                                      target_type=c.target_type, req_id=c.req_id,
