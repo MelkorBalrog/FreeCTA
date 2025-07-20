@@ -854,8 +854,7 @@ class ReviewDocumentDialog(tk.Toplevel):
             new_data = map2.get(n.unique_id)
             def req_lines(reqs):
                 return "; ".join(
-                    f"[{r.get('id','')}] [{r.get('req_type','')}] {r.get('text','')}"
-                    for r in reqs
+                    self.app.format_requirement_with_trace(r) for r in reqs
                 )
 
             if old_data and new_data:
@@ -1200,7 +1199,7 @@ class ReviewDocumentDialog(tk.Toplevel):
             frame.grid_rowconfigure(0, weight=1)
 
             def fmt(r):
-                return f"[{r.get('id','')}] [{r.get('req_type','')}] [{r.get('asil','')}] {r.get('text','')}"
+                return self.app.format_requirement_with_trace(r)
 
             all_ids = sorted(set(reqs1) | set(reqs2))
             for rid in all_ids:
@@ -1548,7 +1547,7 @@ class VersionCompareDialog(tk.Toplevel):
 
             def req_lines(reqs):
                 return "; ".join(
-                    f"[{r.get('id','')}] [{r.get('req_type','')}] {r.get('text','')}" for r in reqs
+                    self.app.format_requirement_with_trace(r) for r in reqs
                 )
 
             if old_data and new_data:
@@ -1705,11 +1704,7 @@ class VersionCompareDialog(tk.Toplevel):
                     self.insert_diff(n1.get("rationale", ""), n2.get("rationale", ""))
                     self.log_text.insert(tk.END, "\n")
                 def req_lines(reqs):
-                    lines = []
-                    for r in reqs:
-                        lines.append(
-                            f"[{r.get('id','')}] [{r.get('req_type','')}] [{r.get('asil','')}] {r.get('text','')}"
-                        )
+                    lines = [self.app.format_requirement_with_trace(r) for r in reqs]
                     return "\n".join(lines)
 
                 req1 = req_lines(n1.get("safety_requirements", []))

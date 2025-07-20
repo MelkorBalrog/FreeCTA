@@ -18,7 +18,7 @@ Nodes with unresolved comments show a small yellow circle to help locate feedbac
 When a review document is opened it automatically compares the current model to the previous approved version. Added elements appear in blue and removed ones in red just like the **Compare Versions** tool, but only for the FTAs and FMEAs included in that review.
 
 When comparing versions, added nodes and connections are drawn in blue while removed ones are drawn in red. Text differences highlight deleted portions in red and new text in blue so changes to descriptions, rationales or FMEA fields stand out. Deleted links between FTA nodes are shown with red connectors.
-Requirement lists are compared as well so allocation changes show up alongside description and rationale edits.
+Requirement lists are compared as well so allocation changes show up alongside description and rationale edits. The Requirements Matrix window now lists every requirement with the nodes and FMEA items where it is allocated and the safety goals traced to each one.
 
 Comments can be attached to FMEA entries and individual requirements. Resolving a comment prompts for a short explanation which is shown with the original text.
 
@@ -34,7 +34,7 @@ prompt you to re-enter these settings.
 Each summary email embeds PNG images showing the differences between the current
 model and the last approved version for the selected FTAs so reviewers can view
 the diagrams directly in the message. CSV files containing the FMEA tables are
-attached so they can be opened in Excel or another spreadsheet application.
+attached so they can be opened in Excel or another spreadsheet application. Requirement changes with allocations and safety goal traces are listed below the diagrams.
 
 If sending fails with a connection error, the dialog will prompt again so you
 can correct the server address or port.
