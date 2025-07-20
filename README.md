@@ -19,3 +19,7 @@ Nodes with unresolved comments show a small yellow circle to help locate feedbac
 Comments can be attached to FMEA entries and individual requirements. Resolving a comment prompts for a short explanation which is shown with the original text.
 
 Review information (participants, comments, review names, descriptions and approval state) is saved as part of the model file and restored on load.
+
+## License
+
+This project is licensed under the GNU General Public License version 3. See the [LICENSE](LICENSE) file for details.
