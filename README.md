@@ -30,7 +30,8 @@ If you use Gmail with two-factor authentication enabled, create an **app passwor
 and enter it instead of your normal account password. Authentication failures will
 prompt you to re-enter these settings.
 
-Each summary email embeds PNG images of the selected FTAs so reviewers can view
+Each summary email embeds PNG images showing the differences between the current
+model and the last approved version for the selected FTAs so reviewers can view
 the diagrams directly in the message. CSV files containing the FMEA tables are
 attached so they can be opened in Excel or another spreadsheet application.
 

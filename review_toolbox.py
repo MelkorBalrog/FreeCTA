@@ -764,7 +764,43 @@ class ReviewDocumentDialog(tk.Toplevel):
         draw_all(node)
         canvas.config(scrollregion=canvas.bbox("all"))
 
-    def draw_diff_tree(self, canvas, roots, status, conn_status, node_objs, allow_ids):
+    def diff_segments(self, old, new):
+        matcher = difflib.SequenceMatcher(None, old, new)
+        segments = []
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                segments.append((old[i1:i2], "black"))
+            elif tag == "delete":
+                segments.append((old[i1:i2], "red"))
+            elif tag == "insert":
+                segments.append((new[j1:j2], "blue"))
+            elif tag == "replace":
+                segments.append((old[i1:i2], "red"))
+                segments.append((new[j1:j2], "blue"))
+        return segments
+
+    def draw_segment_text(self, canvas, cx, cy, segments, font_obj):
+        lines = [[]]
+        for text, color in segments:
+            parts = text.split("\n")
+            for idx, part in enumerate(parts):
+                if idx > 0:
+                    lines.append([])
+                lines[-1].append((part, color))
+        line_height = font_obj.metrics("linespace")
+        total_height = line_height * len(lines)
+        start_y = cy - total_height / 2
+        for line in lines:
+            line_width = sum(font_obj.measure(part) for part, _ in line)
+            start_x = cx - line_width / 2
+            x = start_x
+            for part, color in line:
+                if part:
+                    canvas.create_text(x, start_y, text=part, anchor="nw", fill=color, font=font_obj)
+                    x += font_obj.measure(part)
+            start_y += line_height
+
+    def draw_diff_tree(self, canvas, roots, status, conn_status, node_objs, allow_ids, map1, map2):
         def draw_connections(n):
             if n.unique_id not in allow_ids:
                 for ch in n.children:
@@ -807,11 +843,26 @@ class ReviewDocumentDialog(tk.Toplevel):
             source = n if getattr(n, "is_primary_instance", True) else getattr(n, "original", n)
             subtype_text = source.input_subtype if source.input_subtype else "N/A"
             display_label = source.display_label
-            top_text = f"Type: {source.node_type}\nSubtype: {subtype_text}\n{display_label}\nDesc: {source.description}\n\nRationale: {source.rationale}"
+            old_data = map1.get(n.unique_id)
+            new_data = map2.get(n.unique_id)
+            if old_data and new_data:
+                desc_segments = [("Desc: ", "black")] + self.diff_segments(old_data.get("description", ""), new_data.get("description", ""))
+                rat_segments = [("Rationale: ", "black")] + self.diff_segments(old_data.get("rationale", ""), new_data.get("rationale", ""))
+            else:
+                desc_segments = [("Desc: " + source.description, "black")]
+                rat_segments = [("Rationale: " + source.rationale, "black")]
+            segments = [
+                (f"Type: {source.node_type}\n", "black"),
+                (f"Subtype: {subtype_text}\n", "black"),
+                (f"{display_label}\n", "black"),
+            ] + desc_segments + [("\n\n", "black")] + rat_segments
+
+            top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
             fill = self.app.get_node_fill_color(n)
             eff_x, eff_y = n.x, n.y
             typ = n.node_type.upper()
+            items_before = canvas.find_all()
             if typ in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
                 if n.gate_type and n.gate_type.upper() == "OR":
                     if self.dh:
@@ -822,6 +873,22 @@ class ReviewDocumentDialog(tk.Toplevel):
             else:
                 if self.dh:
                     self.dh.draw_circle_event_shape(canvas, eff_x, eff_y, 45, top_text=top_text, bottom_text=bottom_text, fill=fill, outline_color=color, line_width=2)
+
+            items_after = canvas.find_all()
+            text_id = None
+            for item in items_after:
+                if item in items_before:
+                    continue
+                if canvas.type(item) == "text" and canvas.itemcget(item, "text") == top_text:
+                    text_id = item
+                    break
+
+            if text_id and any(c in ("red", "blue") for _, c in segments):
+                bbox = canvas.bbox(text_id)
+                cx = (bbox[0] + bbox[2]) / 2
+                cy = (bbox[1] + bbox[3]) / 2
+                canvas.itemconfigure(text_id, state="hidden")
+                self.draw_segment_text(canvas, cx, cy, segments, self.app.diagram_font)
             for ch in n.children:
                 draw_node(ch)
 
@@ -968,7 +1035,7 @@ class ReviewDocumentDialog(tk.Toplevel):
             if nid in map2:
                 collect_ids(map2[nid])
 
-            self.draw_diff_tree(c, new_roots, status, conn_status, node_objs, allow_ids)
+            self.draw_diff_tree(c, new_roots, status, conn_status, node_objs, allow_ids, map1, map2)
             bbox = c.bbox("all")
             if bbox:
                 c.config(scrollregion=bbox)
