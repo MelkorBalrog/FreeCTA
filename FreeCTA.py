@@ -9101,9 +9101,6 @@ class FaultTreeApp:
             self.refresh_tree()
             self.formula_label.config(text=f"Total FIT: {total:.2f}  SPFM: {spf:.2f}  LPFM: {lpf:.2f}")
 
-
-
-
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
             self.clipboard_node = self.selected_node
