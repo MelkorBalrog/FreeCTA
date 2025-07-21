@@ -314,8 +314,6 @@ class ReliabilityComponent:
     attributes: dict = field(default_factory=dict)
     safety_req: str = ""
     fit: float = 0.0
-    spf_fraction: float = 0.0  # ratio of single point failures
-    lpf_fraction: float = 0.0  # ratio of latent point failures
 
 COMPONENT_ATTR_TEMPLATES = {
     "capacitor": {
@@ -9058,19 +9056,10 @@ class FaultTreeApp:
                             ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=5, pady=5)
                         self.vars[k] = var
                         row += 1
-                    ttk.Label(master, text="SPF fraction").grid(row=row, column=0, padx=5, pady=5, sticky="e")
-                    self.spf_var = tk.DoubleVar(value=comp.spf_fraction)
-                    ttk.Entry(master, textvariable=self.spf_var).grid(row=row, column=1, padx=5, pady=5)
-                    row += 1
-                    ttk.Label(master, text="LPF fraction").grid(row=row, column=0, padx=5, pady=5, sticky="e")
-                    self.lpf_var = tk.DoubleVar(value=comp.lpf_fraction)
-                    ttk.Entry(master, textvariable=self.lpf_var).grid(row=row, column=1, padx=5, pady=5)
 
                 def apply(self):
                     for k, v in self.vars.items():
                         comp.attributes[k] = v.get()
-                    comp.spf_fraction = float(self.spf_var.get() or 0.0)
-                    comp.lpf_fraction = float(self.lpf_var.get() or 0.0)
 
             ParamDialog(self)
             self.refresh_tree()
@@ -9083,8 +9072,6 @@ class FaultTreeApp:
                 return
             std = self.standard_var.get()
             total = 0.0
-            spf = 0.0
-            lpf = 0.0
             for comp in self.components:
                 info = RELIABILITY_MODELS.get(std, {}).get(comp.comp_type)
                 if info:
@@ -9092,8 +9079,22 @@ class FaultTreeApp:
                 else:
                     comp.fit = 0.0
                 total += comp.fit * comp.quantity
-                spf += comp.fit * comp.quantity * comp.spf_fraction
-                lpf += comp.fit * comp.quantity * comp.lpf_fraction
+
+            comp_fit = {c.name: c.fit * c.quantity for c in self.components}
+            spf = 0.0
+            lpf = 0.0
+            for be in self.app.fmea_entries:
+                comp_name = (
+                    be.parents[0].user_name if be.parents else getattr(be, "fmea_component", "")
+                )
+                fit = comp_fit.get(comp_name, 0.0)
+                frac = be.fmeda_fault_fraction
+                if frac > 1.0:
+                    frac /= 100.0
+                fit_mode = fit * frac
+                if be.fmeda_fault_type == "permanent":
+                    spf += fit_mode * be.fmeda_spf_frac * (1 - be.fmeda_diag_cov)
+                    lpf += fit_mode * be.fmeda_lpf_frac * (1 - be.fmeda_diag_cov)
             self.app.reliability_components = list(self.components)
             self.app.reliability_total_fit = total
             self.app.spfm = spf
