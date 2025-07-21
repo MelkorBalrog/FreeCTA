@@ -1974,13 +1974,19 @@ class EditNodeDialog(simpledialog.Dialog):
 
     def format_requirement_with_trace(self, req):
         """Return requirement text including allocation and safety goal lists."""
-        rid = req.get("id", "")
+        if isinstance(req, dict):
+            rid = req.get("id", "")
+            rtype = req.get("req_type", "")
+            asil = req.get("asil", "")
+            text = req.get("text", "")
+        else:
+            rid = getattr(req, "id", "")
+            rtype = getattr(req, "req_type", "")
+            asil = getattr(req, "asil", "")
+            text = getattr(req, "text", "")
         alloc = ", ".join(self.get_requirement_allocation_names(rid))
         goals = ", ".join(self.get_requirement_goal_names(rid))
-        return (
-            f"[{rid}] [{req.get('req_type','')}] [{req.get('asil','')}] {req.get('text','')}"
-            f" (Alloc: {alloc}; SGs: {goals})"
-        )
+        return f"[{rid}] [{rtype}] [{asil}] {text} (Alloc: {alloc}; SGs: {goals})"
 
     def build_requirement_diff_html(self, review):
         """Return HTML highlighting requirement differences for the review."""
@@ -2415,13 +2421,19 @@ class FaultTreeApp:
 
     def format_requirement_with_trace(self, req):
         """Return requirement text including allocation and safety goal lists."""
-        rid = req.get("id", "")
+        if isinstance(req, dict):
+            rid = req.get("id", "")
+            rtype = req.get("req_type", "")
+            asil = req.get("asil", "")
+            text = req.get("text", "")
+        else:
+            rid = getattr(req, "id", "")
+            rtype = getattr(req, "req_type", "")
+            asil = getattr(req, "asil", "")
+            text = getattr(req, "text", "")
         alloc = ", ".join(self.get_requirement_allocation_names(rid))
         goals = ", ".join(self.get_requirement_goal_names(rid))
-        return (
-            f"[{rid}] [{req.get('req_type','')}] [{req.get('asil','')}] {req.get('text','')}" +
-            f" (Alloc: {alloc}; SGs: {goals})"
-        )
+        return f"[{rid}] [{rtype}] [{asil}] {text} (Alloc: {alloc}; SGs: {goals})"
 
     def build_requirement_diff_html(self, review):
         """Return HTML highlighting requirement differences for the review."""
@@ -2506,12 +2518,17 @@ class FaultTreeApp:
         """Return a list of node or FMEA entry names where the requirement appears."""
         names = []
         for n in self.get_all_nodes(self.root_node):
-            if any(r.get("id") == req_id for r in getattr(n, "safety_requirements", [])):
+            reqs = getattr(n, "safety_requirements", [])
+            if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
                 names.append(n.user_name or f"Node {n.unique_id}")
         for fmea in self.fmeas:
             for e in fmea.get("entries", []):
-                if any(r.get("id") == req_id for r in e.get("safety_requirements", [])):
-                    name = e.get("description") or e.get("user_name", f"BE {e.get('unique_id','')}")
+                reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
+                if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
+                    if isinstance(e, dict):
+                        name = e.get("description") or e.get("user_name", f"BE {e.get('unique_id','')}")
+                    else:
+                        name = getattr(e, "description", "") or getattr(e, "user_name", f"BE {getattr(e, 'unique_id', '')}")
                     names.append(f"{fmea['name']}:{name}")
         return names
 
@@ -2525,12 +2542,14 @@ class FaultTreeApp:
         """Return a list of safety goal names linked to the requirement."""
         goals = set()
         for n in self.get_all_nodes(self.root_node):
-            if any(r.get("id") == req_id for r in getattr(n, "safety_requirements", [])):
+            reqs = getattr(n, "safety_requirements", [])
+            if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
                 self._collect_goal_names(n, goals)
         for fmea in self.fmeas:
             for e in fmea.get("entries", []):
-                if any(r.get("id") == req_id for r in e.get("safety_requirements", [])):
-                    parent = e.get("parents", [{}])[0]
+                reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
+                if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
+                    parent = e.get("parents", [{}])[0] if isinstance(e, dict) else getattr(e, "parents", [{}])[0]
                     if isinstance(parent, dict) and "unique_id" in parent:
                         node = self.find_node_by_id_all(parent["unique_id"])
                     else:
@@ -2541,13 +2560,19 @@ class FaultTreeApp:
 
     def format_requirement_with_trace(self, req):
         """Return requirement text including allocation and safety goal lists."""
-        rid = req.get("id", "")
+        if isinstance(req, dict):
+            rid = req.get("id", "")
+            rtype = req.get("req_type", "")
+            asil = req.get("asil", "")
+            text = req.get("text", "")
+        else:
+            rid = getattr(req, "id", "")
+            rtype = getattr(req, "req_type", "")
+            asil = getattr(req, "asil", "")
+            text = getattr(req, "text", "")
         alloc = ", ".join(self.get_requirement_allocation_names(rid))
         goals = ", ".join(self.get_requirement_goal_names(rid))
-        return (
-            f"[{rid}] [{req.get('req_type','')}] [{req.get('asil','')}] {req.get('text','')}" +
-            f" (Alloc: {alloc}; SGs: {goals})"
-        )
+        return f"[{rid}] [{rtype}] [{asil}] {text} (Alloc: {alloc}; SGs: {goals})"
 
     def build_requirement_diff_html(self, review):
         """Return HTML highlighting requirement differences for the review."""
