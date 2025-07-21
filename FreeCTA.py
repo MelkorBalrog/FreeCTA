@@ -305,7 +305,6 @@ class MissionProfile:
         """Return the total TAU for backward compatibility."""
         return self.tau_on + self.tau_off
 
-
 @dataclass
 class FMEDAComponent:
     name: str
