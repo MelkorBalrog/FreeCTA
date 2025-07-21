@@ -1744,6 +1744,12 @@ class EditNodeDialog(simpledialog.Dialog):
                 self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
+                ttk.Label(master, text="Safe State:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.safe_state_entry = tk.Entry(master, width=40, font=dialog_font)
+                self.safe_state_entry.insert(0, self.node.safe_state)
+                self.safe_state_entry.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
+                row_next += 1
+
 
         if self.node.node_type.upper() not in ["TOP EVENT", "BASIC EVENT"]:
             self.is_page_var = tk.BooleanVar(value=self.node.is_page)
@@ -2114,6 +2120,7 @@ class EditNodeDialog(simpledialog.Dialog):
                 target_node.is_page = False
                 target_node.safety_goal_description = self.safety_goal_text.get("1.0", "end-1c")
                 target_node.safety_goal_asil = self.sg_asil_var.get().strip()
+                target_node.safe_state = self.safe_state_entry.get().strip()
             else:
                 target_node.is_page = self.is_page_var.get()
 
@@ -2422,6 +2429,22 @@ class FaultTreeApp:
             else:
                 if json.dumps(r1, sort_keys=True) != json.dumps(r2, sort_keys=True):
                     lines.append("Updated: " + html_diff(self.format_requirement_with_trace(r1), self.format_requirement_with_trace(r2)))
+
+        for nid in review.fta_ids:
+            n1 = map1.get(nid, {})
+            n2 = map2.get(nid, {})
+            sg_old = f"{n1.get('safety_goal_description','')} [{n1.get('safety_goal_asil','')}]"
+            sg_new = f"{n2.get('safety_goal_description','')} [{n2.get('safety_goal_asil','')}]"
+            label = n2.get('user_name') or n1.get('user_name') or f"Node {nid}"
+            if sg_old != sg_new:
+                lines.append(
+                    f"Safety Goal for {html.escape(label)}: " + html_diff(sg_old, sg_new)
+                )
+            if n1.get('safe_state','') != n2.get('safe_state',''):
+                lines.append(
+                    f"Safe State for {html.escape(label)}: " + html_diff(n1.get('safe_state',''), n2.get('safe_state',''))
+                )
+
         return "<br>".join(lines)
 
     # --- Requirement Traceability Helpers used by reviews and matrix view ---
@@ -2556,6 +2579,22 @@ class FaultTreeApp:
             else:
                 if json.dumps(r1, sort_keys=True) != json.dumps(r2, sort_keys=True):
                     lines.append("Updated: " + html_diff(self.format_requirement_with_trace(r1), self.format_requirement_with_trace(r2)))
+
+        for nid in review.fta_ids:
+            n1 = map1.get(nid, {})
+            n2 = map2.get(nid, {})
+            sg_old = f"{n1.get('safety_goal_description','')} [{n1.get('safety_goal_asil','')}]"
+            sg_new = f"{n2.get('safety_goal_description','')} [{n2.get('safety_goal_asil','')}]"
+            label = n2.get('user_name') or n1.get('user_name') or f"Node {nid}"
+            if sg_old != sg_new:
+                lines.append(
+                    f"Safety Goal for {html.escape(label)}: " + html_diff(sg_old, sg_new)
+                )
+            if n1.get('safe_state','') != n2.get('safe_state',''):
+                lines.append(
+                    f"Safe State for {html.escape(label)}: " + html_diff(n1.get('safe_state',''), n2.get('safe_state',''))
+                )
+
         return "<br>".join(lines)
 
     # --- Requirement Traceability Helpers used by reviews and matrix view ---
@@ -2696,6 +2735,22 @@ class FaultTreeApp:
             else:
                 if json.dumps(r1, sort_keys=True) != json.dumps(r2, sort_keys=True):
                     lines.append("Updated: " + html_diff(self.format_requirement_with_trace(r1), self.format_requirement_with_trace(r2)))
+
+        for nid in review.fta_ids:
+            n1 = map1.get(nid, {})
+            n2 = map2.get(nid, {})
+            sg_old = f"{n1.get('safety_goal_description','')} [{n1.get('safety_goal_asil','')}]"
+            sg_new = f"{n2.get('safety_goal_description','')} [{n2.get('safety_goal_asil','')}]"
+            label = n2.get('user_name') or n1.get('user_name') or f"Node {nid}"
+            if sg_old != sg_new:
+                lines.append(
+                    f"Safety Goal for {html.escape(label)}: " + html_diff(sg_old, sg_new)
+                )
+            if n1.get('safe_state','') != n2.get('safe_state',''):
+                lines.append(
+                    f"Safe State for {html.escape(label)}: " + html_diff(n1.get('safe_state',''), n2.get('safe_state',''))
+                )
+
         return "<br>".join(lines)
 
     # --- Requirement Traceability Helpers used by reviews and matrix view ---
@@ -8322,20 +8377,24 @@ class FaultTreeApp:
         """Display safety goals and derived requirements in a tree view."""
         win = tk.Toplevel(self.root)
         win.title("Safety Goals Matrix")
-        tree = ttk.Treeview(win, columns=["ID", "ASIL", "Text"], show="tree headings")
+        tree = ttk.Treeview(win, columns=["ID", "ASIL", "SafeState", "Text"], show="tree headings")
         tree.heading("ID", text="Requirement ID")
         tree.heading("ASIL", text="ASIL")
+        tree.heading("SafeState", text="Safe State")
         tree.heading("Text", text="Text")
         tree.column("ID", width=120)
         tree.column("ASIL", width=60)
+        tree.column("SafeState", width=100)
         tree.column("Text", width=300)
         tree.pack(fill=tk.BOTH, expand=True)
 
         for te in self.top_events:
             sg_text = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
             sg_id = te.user_name or f"SG {te.unique_id}"
-            parent_iid = tree.insert("", "end", text=sg_text,
-                                    values=[sg_id, te.safety_goal_asil, sg_text])
+            parent_iid = tree.insert(
+                "", "end", text=sg_text,
+                values=[sg_id, te.safety_goal_asil, te.safe_state, sg_text],
+            )
             reqs = self.collect_requirements_recursive(te)
             seen_ids = set()
             for req in reqs:
@@ -8356,7 +8415,7 @@ class FaultTreeApp:
         if not path:
             return
 
-        columns = ["Safety Goal", "SG ASIL", "Requirement ID", "Req ASIL", "Text"]
+        columns = ["Safety Goal", "SG ASIL", "Safe State", "Requirement ID", "Req ASIL", "Text"]
         with open(path, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(columns)
@@ -8370,7 +8429,7 @@ class FaultTreeApp:
                     if rid in seen:
                         continue
                     seen.add(rid)
-                    writer.writerow([sg_text, sg_asil, rid, req.get("asil", ""), req.get("text", "")])
+                    writer.writerow([sg_text, sg_asil, te.safe_state, rid, req.get("asil", ""), req.get("text", "")])
         messagebox.showinfo("Export", "Safety goal requirements exported.")
 
 
@@ -9560,6 +9619,7 @@ class FaultTreeNode:
         self.original = self
         self.safety_goal_description = ""
         self.safety_goal_asil = ""
+        self.safe_state = ""
         self.vehicle_safety_requirements = []          # List of vehicle safety requirements
         self.operational_safety_requirements = []        # List of operational safety requirements
         # Each requirement is a dict with keys: "id", "req_type" and "text"
@@ -9601,6 +9661,7 @@ class FaultTreeNode:
             "is_primary_instance": self.is_primary_instance,
             "safety_goal_description": self.safety_goal_description,
             "safety_goal_asil": self.safety_goal_asil,
+            "safe_state": self.safe_state,
             "fmea_effect": self.fmea_effect,
             "fmea_cause": self.fmea_cause,
             "fmea_severity": self.fmea_severity,
@@ -9639,6 +9700,7 @@ class FaultTreeNode:
         node.is_primary_instance = boolify(data.get("is_primary_instance", True), True)
         node.safety_goal_description = data.get("safety_goal_description", "")
         node.safety_goal_asil = data.get("safety_goal_asil", "")
+        node.safe_state = data.get("safe_state", "")
         node.fmea_effect = data.get("fmea_effect", "")
         node.fmea_cause = data.get("fmea_cause", "")
         node.fmea_severity = data.get("fmea_severity", 1)
