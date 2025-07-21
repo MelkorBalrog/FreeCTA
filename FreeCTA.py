@@ -2460,7 +2460,8 @@ class FaultTreeApp:
             for e in fmea.get("entries", []):
                 reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
                 if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
-                    parent = e.get("parents", [{}])[0] if isinstance(e, dict) else getattr(e, "parents", [{}])[0]
+                    parent_list = e.get("parents", []) if isinstance(e, dict) else getattr(e, "parents", [])
+                    parent = parent_list[0] if parent_list else None
                     if isinstance(parent, dict) and "unique_id" in parent:
                         node = self.find_node_by_id_all(parent["unique_id"])
                     else:
@@ -2593,7 +2594,8 @@ class FaultTreeApp:
             for e in fmea.get("entries", []):
                 reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
                 if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
-                    parent = e.get("parents", [{}])[0] if isinstance(e, dict) else getattr(e, "parents", [{}])[0]
+                    parent_list = e.get("parents", []) if isinstance(e, dict) else getattr(e, "parents", [])
+                    parent = parent_list[0] if parent_list else None
                     if isinstance(parent, dict) and "unique_id" in parent:
                         node = self.find_node_by_id_all(parent["unique_id"])
                     else:
@@ -2732,7 +2734,8 @@ class FaultTreeApp:
             for e in fmea.get("entries", []):
                 reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
                 if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
-                    parent = e.get("parents", [{}])[0] if isinstance(e, dict) else getattr(e, "parents", [{}])[0]
+                    parent_list = e.get("parents", []) if isinstance(e, dict) else getattr(e, "parents", [])
+                    parent = parent_list[0] if parent_list else None
                     if isinstance(parent, dict) and "unique_id" in parent:
                         node = self.find_node_by_id_all(parent["unique_id"])
                     else:
