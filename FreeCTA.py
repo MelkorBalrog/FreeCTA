@@ -3211,6 +3211,18 @@ class FaultTreeApp:
                 messagebox.showwarning("Project Properties", "PDF Report Name cannot be empty.")
             prop_win.destroy()
 
+        def save_props():
+            new_name = pdf_entry.get().strip()
+            if new_name:
+                self.project_properties["pdf_report_name"] = new_name
+                self.project_properties["pdf_detailed_formulas"] = var_detailed.get()
+                self.project_properties["show_grid"] = var_grid.get()
+                self.project_properties["black_white"] = var_bw.get()
+                messagebox.showinfo("Project Properties", "Project properties updated.")
+            else:
+                messagebox.showwarning("Project Properties", "PDF Report Name cannot be empty.")
+            prop_win.destroy()
+
         save_btn = tk.Button(prop_win, text="Save", command=save_props, font=dialog_font)
         save_btn.grid(row=4, column=0, columnspan=2, pady=10)
         prop_win.transient(self.root)
@@ -8435,6 +8447,9 @@ class FaultTreeApp:
         metrics_lbl = ttk.Label(win, text="")
         metrics_lbl.pack(anchor="w", padx=5, pady=2)
 
+        metrics_lbl = ttk.Label(win, text="")
+        metrics_lbl.pack(anchor="w", padx=5, pady=2)
+
         # alternating row colours and high RPN highlight
         tree.tag_configure("component", background="#e2e2e2", font=("Segoe UI", 10, "bold"))
         tree.tag_configure("evenrow", background="#ffffff")
@@ -8713,6 +8728,354 @@ class FaultTreeApp:
                     seen.add(rid)
                     writer.writerow([sg_text, sg_asil, te.safe_state, rid, req.get("asil", ""), req.get("text", "")])
         messagebox.showinfo("Export", "Safety goal requirements exported.")
+
+    def manage_mission_profiles(self):
+        win = tk.Toplevel(self.root)
+        win.title("Mission Profiles")
+        listbox = tk.Listbox(win, height=8, width=40)
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        btn_frame = ttk.Frame(win)
+        btn_frame.pack(side=tk.RIGHT, fill=tk.Y)
+
+        def refresh():
+            listbox.delete(0, tk.END)
+            for mp in self.mission_profiles:
+                info = f"{mp.name} (on: {mp.tau_on}h, off: {mp.tau_off}h, {mp.environment}, {mp.temperature}\u00b0C)"
+                listbox.insert(tk.END, info)
+
+        class MPDialog(simpledialog.Dialog):
+            def __init__(self, master, mp=None):
+                self.mp = mp
+                super().__init__(master)
+
+            def body(self, master):
+                self.vars = {}
+                fields = [
+                    ("Name", "name"),
+                    ("TAU On (h)", "tau_on"),
+                    ("TAU Off (h)", "tau_off"),
+                    ("Temperature (\u00b0C)", "temperature"),
+                    ("Humidity (%)", "humidity"),
+                    ("Environment", "environment"),
+                    ("Duty Cycle", "duty_cycle"),
+                    ("Notes", "notes"),
+                ]
+                for row, (label, key) in enumerate(fields):
+                    ttk.Label(master, text=label).grid(row=row, column=0, padx=5, pady=5, sticky="e")
+                    var = tk.StringVar()
+                    if self.mp:
+                        var.set(str(getattr(self.mp, key)))
+                    ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=5, pady=5)
+                    self.vars[key] = var
+
+            def apply(self):
+                vals = {k: v.get() for k, v in self.vars.items()}
+                if self.mp is None:
+                    mp = MissionProfile(
+                        vals["name"],
+                        float(vals["tau_on"] or 0.0),
+                        float(vals["tau_off"] or 0.0),
+                        float(vals["temperature"] or 25.0),
+                        float(vals["humidity"] or 50.0),
+                        vals["environment"],
+                        float(vals["duty_cycle"] or 1.0),
+                        vals["notes"],
+                    )
+                    self.result = mp
+                else:
+                    self.mp.name = vals["name"]
+                    self.mp.tau_on = float(vals["tau_on"] or 0.0)
+                    self.mp.tau_off = float(vals["tau_off"] or 0.0)
+                    self.mp.temperature = float(vals["temperature"] or 25.0)
+                    self.mp.humidity = float(vals["humidity"] or 50.0)
+                    self.mp.environment = vals["environment"]
+                    self.mp.duty_cycle = float(vals["duty_cycle"] or 1.0)
+                    self.mp.notes = vals["notes"]
+                    self.result = self.mp
+
+        def add_profile():
+            dlg = MPDialog(win)
+            if hasattr(dlg, "result"):
+                self.mission_profiles.append(dlg.result)
+                refresh()
+
+        def edit_profile():
+            sel = listbox.curselection()
+            if not sel:
+                return
+            mp = self.mission_profiles[sel[0]]
+            dlg = MPDialog(win, mp)
+            if hasattr(dlg, "result"):
+                refresh()
+
+        def delete_profile():
+            sel = listbox.curselection()
+            if not sel:
+                return
+            del self.mission_profiles[sel[0]]
+            refresh()
+
+        ttk.Button(btn_frame, text="Add", command=add_profile).pack(fill=tk.X)
+        ttk.Button(btn_frame, text="Edit", command=edit_profile).pack(fill=tk.X)
+        ttk.Button(btn_frame, text="Delete", command=delete_profile).pack(fill=tk.X)
+
+        refresh()
+
+    def open_reliability_window(self):
+        if hasattr(self, "_rel_window") and self._rel_window.winfo_exists():
+            self._rel_window.lift()
+            return
+        self._rel_window = self.ReliabilityWindow(self)
+
+    def open_fmeda_window(self):
+        self.show_fmea_table(fmea=None, fmeda=True)
+    class ReliabilityWindow(tk.Toplevel):
+        def __init__(self, app):
+            super().__init__(app.root)
+            self.app = app
+            self.title("Reliability Analysis")
+            self.geometry("600x400")
+            self.components = []
+
+            ttk.Label(self, text="Standard:").pack(anchor="w")
+            self.standard_var = tk.StringVar(value="IEC 62380")
+            ttk.Combobox(
+                self,
+                textvariable=self.standard_var,
+                values=["IEC 62380", "SN 29500"],
+                state="readonly",
+            ).pack(anchor="w")
+
+            ttk.Label(self, text="Mission Profile:").pack(anchor="w")
+            self.profile_var = tk.StringVar()
+            self.profile_combo = ttk.Combobox(
+                self,
+                textvariable=self.profile_var,
+                values=[mp.name for mp in app.mission_profiles],
+                state="readonly",
+            )
+            self.profile_combo.pack(anchor="w", fill="x")
+
+            self.tree = ttk.Treeview(
+                self,
+                columns=("name", "type", "qty", "fit", "safety"),
+                show="headings",
+            )
+            for col in ("name", "type", "qty", "fit", "safety"):
+                heading = "Safety" if col == "safety" else col.capitalize()
+                self.tree.heading(col, text=heading)
+                self.tree.column(col, width=120 if col == "safety" else 100)
+            self.tree.pack(fill=tk.BOTH, expand=True)
+            self.tree.bind("<<TreeviewSelect>>", self.show_formula)
+
+            btn_frame = ttk.Frame(self)
+            btn_frame.pack(fill=tk.X)
+            ttk.Button(btn_frame, text="Load CSV", command=self.load_csv).pack(
+                side=tk.LEFT, padx=2, pady=2
+            )
+            ttk.Button(btn_frame, text="Add Component", command=self.add_component).pack(
+                side=tk.LEFT, padx=2, pady=2
+            )
+            ttk.Button(btn_frame, text="Configure Component", command=self.configure_component).pack(
+                side=tk.LEFT, padx=2, pady=2
+            )
+            ttk.Button(btn_frame, text="Calculate FIT", command=self.calculate_fit).pack(
+                side=tk.LEFT, padx=2, pady=2
+            )
+            self.formula_label = ttk.Label(self, text="")
+            self.formula_label.pack(anchor="w", padx=5, pady=5)
+
+        def add_component(self):
+            dialog = tk.Toplevel(self)
+            dialog.title("New Component")
+            ttk.Label(dialog, text="Name").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+            name_var = tk.StringVar()
+            ttk.Entry(dialog, textvariable=name_var).grid(row=0, column=1, padx=5, pady=5)
+            ttk.Label(dialog, text="Type").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+            type_var = tk.StringVar(value="capacitor")
+            ttk.Combobox(dialog, textvariable=type_var, values=list(COMPONENT_ATTR_TEMPLATES.keys()), state="readonly").grid(row=1, column=1, padx=5, pady=5)
+            ttk.Label(dialog, text="Quantity").grid(row=2, column=0, padx=5, pady=5, sticky="e")
+            qty_var = tk.IntVar(value=1)
+            ttk.Entry(dialog, textvariable=qty_var).grid(row=2, column=1, padx=5, pady=5)
+
+            def ok():
+                comp = ReliabilityComponent(name_var.get(), type_var.get(), qty_var.get())
+                template = COMPONENT_ATTR_TEMPLATES.get(comp.comp_type, {})
+                for k, v in template.items():
+                    comp.attributes[k] = v[0] if isinstance(v, list) else v
+                self.components.append(comp)
+                self.refresh_tree()
+                dialog.destroy()
+
+            ttk.Button(dialog, text="Add", command=ok).grid(row=3, column=0, columnspan=2, pady=5)
+            dialog.grab_set()
+            dialog.wait_window()
+
+        def show_formula(self, event=None):
+            sel = self.tree.focus()
+            if not sel:
+                self.formula_label.config(text="")
+                return
+            idx = self.tree.index(sel)
+            if idx >= len(self.components):
+                return
+            comp = self.components[idx]
+            std = self.standard_var.get()
+            info = RELIABILITY_MODELS.get(std, {}).get(comp.comp_type)
+            if info:
+                self.formula_label.config(text=f"Formula: {info['text']}")
+            else:
+                self.formula_label.config(text="Formula: N/A")
+
+        def refresh_tree(self):
+            self.tree.delete(*self.tree.get_children())
+            for comp in self.components:
+                self.tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        comp.name,
+                        comp.comp_type,
+                        comp.quantity,
+                        f"{comp.fit:.2f}",
+                        comp.safety_req,
+                    ),
+                )
+            self.profile_combo.config(values=[mp.name for mp in self.app.mission_profiles])
+
+        def load_csv(self):
+            path = filedialog.askopenfilename(filetypes=[("CSV", "*.csv")])
+            if not path:
+                return
+            self.components.clear()
+            with open(path, newline="") as f:
+                reader = csv.DictReader(f)
+                fields = reader.fieldnames or []
+                mapping = self.ask_mapping(fields)
+                if not mapping:
+                    return
+                for row in reader:
+                    try:
+                        name = row.get(mapping["name"], "")
+                        ctype = row.get(mapping["type"], "")
+                        qty = int(row.get(mapping["qty"], 1) or 1)
+                        safety = row.get(mapping.get("safety"), "") if mapping.get("safety") else ""
+                        comp = ReliabilityComponent(name, ctype, qty, {}, safety)
+                        template = COMPONENT_ATTR_TEMPLATES.get(ctype, {})
+                        for k, v in template.items():
+                            comp.attributes[k] = v[0] if isinstance(v, list) else v
+                        # store any extra columns as attributes
+                        for key, val in row.items():
+                            if key not in mapping.values():
+                                comp.attributes[key] = val
+                        self.components.append(comp)
+                    except Exception:
+                        continue
+            self.refresh_tree()
+
+        def ask_mapping(self, fields):
+            if not fields:
+                return None
+            win = tk.Toplevel(self)
+            win.title("Map Columns")
+            vars = {}
+            targets = ["name", "type", "qty", "safety"]
+            for i, tgt in enumerate(targets):
+                ttk.Label(win, text=tgt.capitalize()).grid(row=i, column=0, padx=5, pady=5, sticky="e")
+                var = tk.StringVar()
+                cb = ttk.Combobox(win, textvariable=var, values=fields, state="readonly")
+                if i < len(fields):
+                    var.set(fields[i])
+                cb.grid(row=i, column=1, padx=5, pady=5)
+                vars[tgt] = var
+
+            result = {}
+
+            def ok():
+                for k, v in vars.items():
+                    result[k] = v.get()
+                win.destroy()
+
+            def cancel():
+                result.clear()
+                win.destroy()
+
+            ttk.Button(win, text="OK", command=ok).grid(row=len(targets), column=0, pady=5)
+            ttk.Button(win, text="Cancel", command=cancel).grid(row=len(targets), column=1, pady=5)
+            win.grab_set()
+            win.wait_window()
+            if not result:
+                return None
+            return result
+
+        def configure_component(self):
+            sel = self.tree.focus()
+            if not sel:
+                messagebox.showwarning("Configure", "Select a component")
+                return
+            idx = self.tree.index(sel)
+            comp = self.components[idx]
+
+            template = COMPONENT_ATTR_TEMPLATES.get(comp.comp_type, {})
+            for k, v in template.items():
+                comp.attributes.setdefault(k, v[0] if isinstance(v, list) else v)
+
+            class ParamDialog(simpledialog.Dialog):
+                def body(self, master):
+                    self.vars = {}
+                    row = 0
+                    for k, v in comp.attributes.items():
+                        ttk.Label(master, text=k).grid(row=row, column=0, padx=5, pady=5, sticky="e")
+                        if isinstance(template.get(k), list):
+                            var = tk.StringVar(value=str(v))
+                            ttk.Combobox(master, textvariable=var, values=template[k], state="readonly").grid(row=row, column=1, padx=5, pady=5)
+                        else:
+                            var = tk.StringVar(value=str(v))
+                            ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=5, pady=5)
+                        self.vars[k] = var
+                        row += 1
+                    ttk.Label(master, text="SPF fraction").grid(row=row, column=0, padx=5, pady=5, sticky="e")
+                    self.spf_var = tk.DoubleVar(value=comp.spf_fraction)
+                    ttk.Entry(master, textvariable=self.spf_var).grid(row=row, column=1, padx=5, pady=5)
+                    row += 1
+                    ttk.Label(master, text="LPF fraction").grid(row=row, column=0, padx=5, pady=5, sticky="e")
+                    self.lpf_var = tk.DoubleVar(value=comp.lpf_fraction)
+                    ttk.Entry(master, textvariable=self.lpf_var).grid(row=row, column=1, padx=5, pady=5)
+
+                def apply(self):
+                    for k, v in self.vars.items():
+                        comp.attributes[k] = v.get()
+                    comp.spf_fraction = float(self.spf_var.get() or 0.0)
+                    comp.lpf_fraction = float(self.lpf_var.get() or 0.0)
+
+            ParamDialog(self)
+            self.refresh_tree()
+
+        def calculate_fit(self):
+            prof_name = self.profile_var.get()
+            mp = next((m for m in self.app.mission_profiles if m.name == prof_name), None)
+            if mp is None:
+                messagebox.showwarning("FIT", "Select a mission profile")
+                return
+            std = self.standard_var.get()
+            total = 0.0
+            spf = 0.0
+            lpf = 0.0
+            for comp in self.components:
+                info = RELIABILITY_MODELS.get(std, {}).get(comp.comp_type)
+                if info:
+                    comp.fit = info["formula"](comp.attributes, mp) * mp.tau
+                else:
+                    comp.fit = 0.0
+                total += comp.fit * comp.quantity
+                spf += comp.fit * comp.quantity * comp.spf_fraction
+                lpf += comp.fit * comp.quantity * comp.lpf_fraction
+            self.app.reliability_total_fit = total
+            self.app.spfm = spf
+            self.app.lpfm = lpf
+            self.refresh_tree()
+            self.formula_label.config(text=f"Total FIT: {total:.2f}  SPFM: {spf:.2f}  LPFM: {lpf:.2f}")
 
         win = tk.Toplevel(self.root)
         win.title("Mission Profiles")
