@@ -2659,211 +2659,6 @@ class FaultTreeApp:
         goals = ", ".join(self.get_requirement_goal_names(rid))
         return f"[{rid}] [{rtype}] [{asil}] {text} (Alloc: {alloc}; SGs: {goals})"
 
-    def build_requirement_diff_segments(self, review, base_data=None, current_data=None):
-        """Return a list of lines, each containing (text, color) segments."""
-        if base_data is None or current_data is None:
-            if not self.versions:
-                return []
-            base_data = self.versions[-1]["data"]
-            current_data = self.export_model_data(include_versions=False)
-        current = current_data
-
-        def filter_data(data):
-            return {
-                "top_events": [
-                    t for t in data.get("top_events", []) if t["unique_id"] in review.fta_ids
-                ],
-                "fmeas": [f for f in data.get("fmeas", []) if f["name"] in review.fmea_names],
-            }
-
-        def allocation_names(data, req_id):
-            names = []
-
-            def traverse(n):
-                if any(r.get("id") == req_id for r in n.get("safety_requirements", [])):
-                    names.append(n.get("user_name") or f"Node {n.get('unique_id')}")
-                for ch in n.get("children", []):
-                    traverse(ch)
-
-            for t in data.get("top_events", []):
-                traverse(t)
-
-            for fmea in data.get("fmeas", []):
-                for e in fmea.get("entries", []):
-                    if any(r.get("id") == req_id for r in e.get("safety_requirements", [])):
-                        name = e.get("description") or e.get("user_name", f"BE {e.get('unique_id','')}")
-                        names.append(f"{fmea['name']}:{name}")
-
-            return ", ".join(names)
-
-        def goal_names(data, req_id):
-            nodes = []
-
-            def gather(n):
-                nodes.append(n)
-                for ch in n.get("children", []):
-                    gather(ch)
-
-            for t in data.get("top_events", []):
-                gather(t)
-
-            id_map = {n["unique_id"]: n for n in nodes}
-
-            def collect_goal_names(nd, acc):
-                if nd.get("node_type", "").upper() == "TOP EVENT":
-                    acc.add(
-                        nd.get("safety_goal_description")
-                        or nd.get("user_name")
-                        or f"SG {nd.get('unique_id')}"
-                    )
-                for p in nd.get("parents", []):
-                    pid = p.get("unique_id")
-                    if pid and pid in id_map:
-                        collect_goal_names(id_map[pid], acc)
-
-            goals = set()
-            for n in nodes:
-                if any(r.get("id") == req_id for r in n.get("safety_requirements", [])):
-                    collect_goal_names(n, goals)
-            for fmea in data.get("fmeas", []):
-                for e in fmea.get("entries", []):
-                    if any(r.get("id") == req_id for r in e.get("safety_requirements", [])):
-                        parents = e.get("parents", [])
-                        if parents:
-                            pid = parents[0].get("unique_id")
-                            if pid and pid in id_map:
-                                collect_goal_names(id_map[pid], goals)
-            return ", ".join(sorted(goals))
-
-        data1 = filter_data(base_data)
-        data2 = filter_data(current)
-        map1 = self.node_map_from_data(data1["top_events"])
-        map2 = self.node_map_from_data(data2["top_events"])
-
-        def collect_reqs(node_dict, target):
-            for r in node_dict.get("safety_requirements", []):
-                rid = r.get("id")
-                if rid and rid not in target:
-                    target[rid] = r
-            for ch in node_dict.get("children", []):
-                collect_reqs(ch, target)
-
-        reqs1, reqs2 = {}, {}
-        for nid in review.fta_ids:
-            if nid in map1:
-                collect_reqs(map1[nid], reqs1)
-            if nid in map2:
-                collect_reqs(map2[nid], reqs2)
-
-        fmea1 = {f["name"]: f for f in data1.get("fmeas", [])}
-        fmea2 = {f["name"]: f for f in data2.get("fmeas", [])}
-        for name in review.fmea_names:
-            for e in fmea1.get(name, {}).get("entries", []):
-                for r in e.get("safety_requirements", []):
-                    rid = r.get("id")
-                    if rid and rid not in reqs1:
-                        reqs1[rid] = r
-            for e in fmea2.get(name, {}).get("entries", []):
-                for r in e.get("safety_requirements", []):
-                    rid = r.get("id")
-                    if rid and rid not in reqs2:
-                        reqs2[rid] = r
-
-        import difflib
-
-        def diff_segments(a, b):
-            matcher = difflib.SequenceMatcher(None, a, b)
-            segs = []
-            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-                if tag == "equal":
-                    segs.append((a[i1:i2], "black"))
-                elif tag == "delete":
-                    segs.append((a[i1:i2], "red"))
-                elif tag == "insert":
-                    segs.append((b[j1:j2], "blue"))
-                elif tag == "replace":
-                    segs.append((a[i1:i2], "red"))
-                    segs.append((b[j1:j2], "blue"))
-            return segs
-
-        def list_diff_segments(old, new):
-            old_items = [s.strip() for s in old.split(',') if s.strip()]
-            new_items = [s.strip() for s in new.split(',') if s.strip()]
-            old_set = set(old_items)
-            new_set = set(new_items)
-            segs = []
-            first = True
-            for item in new_items:
-                if not first:
-                    segs.append((", ", "black"))
-                first = False
-                if item not in old_set:
-                    segs.append((item, "blue"))
-                else:
-                    segs.append((item, "black"))
-            for item in old_items:
-                if item not in new_set:
-                    if not first:
-                        segs.append((", ", "black"))
-                    first = False
-                    segs.append((item, "red"))
-            return segs
-
-        lines = []
-        all_ids = sorted(set(reqs1) | set(reqs2))
-        for rid in all_ids:
-            r1 = reqs1.get(rid)
-            r2 = reqs2.get(rid)
-            main1 = (
-                f"[{rid}] [{r1.get('req_type','')}] [{r1.get('asil','')}] {r1.get('text','')}"
-                if r1 else ""
-            )
-            main2 = (
-                f"[{rid}] [{r2.get('req_type','')}] [{r2.get('asil','')}] {r2.get('text','')}"
-                if r2 else ""
-            )
-            alloc1 = allocation_names(data1, rid)
-            alloc2 = allocation_names(data2, rid)
-            goals1 = goal_names(data1, rid)
-            goals2 = goal_names(data2, rid)
-
-            if r1 and not r2:
-                prefix = "Removed: "
-            elif r2 and not r1:
-                prefix = "Added: "
-            else:
-                changed = (
-                    json.dumps(r1, sort_keys=True) != json.dumps(r2, sort_keys=True)
-                    or alloc1 != alloc2
-                    or goals1 != goals2
-                )
-                prefix = "Updated: " if changed else ""
-
-            if prefix or r1 and not r2 or r2 and not r1:
-                line1 = [(prefix, "black")] + diff_segments(main1, main2)
-                line2 = [("  Allocated to: ", "black")] + list_diff_segments(alloc1, alloc2)
-                line3 = [("  Safety Goals: ", "black")] + diff_segments(goals1, goals2)
-                lines.extend([line1, line2, line3, [("", "black")]])
-            elif prefix == "":
-                # unchanged requirement
-                line1 = diff_segments(main1, main2)
-                line2 = [("  Allocated to: ", "black")] + list_diff_segments(alloc1, alloc2)
-                line3 = [("  Safety Goals: ", "black")] + diff_segments(goals1, goals2)
-                lines.extend([line1, line2, line3, [("", "black")]])
-
-        for nid in review.fta_ids:
-            n1 = map1.get(nid, {})
-            n2 = map2.get(nid, {})
-            sg_old = f"{n1.get('safety_goal_description','')} [{n1.get('safety_goal_asil','')}]"
-            sg_new = f"{n2.get('safety_goal_description','')} [{n2.get('safety_goal_asil','')}]"
-            label = n2.get('user_name') or n1.get('user_name') or f"Node {nid}"
-            if sg_old != sg_new:
-                lines.append([(f"Safety Goal for {label}: ", 'black')] + diff_segments(sg_old, sg_new))
-            if n1.get('safe_state','') != n2.get('safe_state',''):
-                lines.append([(f"Safe State for {label}: ", 'black')] + diff_segments(n1.get('safe_state',''), n2.get('safe_state','')))
-
-        return lines
-
     def build_requirement_diff_html(self, review):
         """Return HTML highlighting requirement differences for the review."""
         if not self.versions:
@@ -3022,22 +2817,80 @@ class FaultTreeApp:
 
     def build_requirement_diff_html(self, review):
         """Return HTML highlighting requirement differences for the review."""
-        segments = self.build_requirement_diff_segments(review)
-        import html
+        if not self.versions:
+            return ""
+        base_data = self.versions[-1]["data"]
+        current = self.export_model_data(include_versions=False)
+
+        def filter_data(data):
+            return {
+                "top_events": [t for t in data.get("top_events", []) if t["unique_id"] in review.fta_ids],
+                "fmeas": [f for f in data.get("fmeas", []) if f["name"] in review.fmea_names],
+            }
+
+        data1 = filter_data(base_data)
+        data2 = filter_data(current)
+        map1 = self.node_map_from_data(data1["top_events"])
+        map2 = self.node_map_from_data(data2["top_events"])
+
+        def collect_reqs(node_dict, target):
+            for r in node_dict.get("safety_requirements", []):
+                rid = r.get("id")
+                if rid and rid not in target:
+                    target[rid] = r
+            for ch in node_dict.get("children", []):
+                collect_reqs(ch, target)
+
+        reqs1, reqs2 = {}, {}
+        for nid in review.fta_ids:
+            if nid in map1:
+                collect_reqs(map1[nid], reqs1)
+            if nid in map2:
+                collect_reqs(map2[nid], reqs2)
+
+        fmea1 = {f["name"]: f for f in data1.get("fmeas", [])}
+        fmea2 = {f["name"]: f for f in data2.get("fmeas", [])}
+        for name in review.fmea_names:
+            for e in fmea1.get(name, {}).get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+            for e in fmea2.get(name, {}).get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
+
+        import difflib, html
+
+        def html_diff(a, b):
+            matcher = difflib.SequenceMatcher(None, a, b)
+            parts = []
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag == "equal":
+                    parts.append(html.escape(a[i1:i2]))
+                elif tag == "delete":
+                    parts.append(f"<span style='color:red'>{html.escape(a[i1:i2])}</span>")
+                elif tag == "insert":
+                    parts.append(f"<span style='color:blue'>{html.escape(b[j1:j2])}</span>")
+                elif tag == "replace":
+                    parts.append(f"<span style='color:red'>{html.escape(a[i1:i2])}</span>")
+                    parts.append(f"<span style='color:blue'>{html.escape(b[j1:j2])}</span>")
+            return "".join(parts)
 
         lines = []
-        for segs in segments:
-            parts = []
-            for text, color in segs:
-                esc = html.escape(text)
-                if color == "blue":
-                    parts.append(f"<span style='color:blue'>{esc}</span>")
-                elif color == "red":
-                    parts.append(f"<span style='color:red'>{esc}</span>")
-                else:
-                    parts.append(esc)
-            lines.append("".join(parts))
-
+        all_ids = sorted(set(reqs1) | set(reqs2))
+        for rid in all_ids:
+            r1 = reqs1.get(rid)
+            r2 = reqs2.get(rid)
+            if r1 and not r2:
+                lines.append(f"Removed: {html.escape(self.format_requirement_with_trace(r1))}")
+            elif r2 and not r1:
+                lines.append(f"Added: {html.escape(self.format_requirement_with_trace(r2))}")
+            else:
+                if json.dumps(r1, sort_keys=True) != json.dumps(r2, sort_keys=True):
+                    lines.append("Updated: " + html_diff(self.format_requirement_with_trace(r1), self.format_requirement_with_trace(r2)))
         return "<br>".join(lines)
 
     def generate_recommendations_for_top_event(self, node):
