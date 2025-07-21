@@ -7794,6 +7794,7 @@ class FaultTreeApp:
             return ", ".join(sorted(goals))
 
         import difflib
+
         def insert_diff(widget, old, new):
             matcher = difflib.SequenceMatcher(None, old, new)
             for tag, i1, i2, j1, j2 in matcher.get_opcodes():
@@ -7807,6 +7808,27 @@ class FaultTreeApp:
                     widget.insert(tk.END, old[i1:i2], "removed")
                     widget.insert(tk.END, new[j1:j2], "added")
 
+        def insert_list_diff(widget, old, new):
+            old_items = [s.strip() for s in old.split(',') if s.strip()]
+            new_items = [s.strip() for s in new.split(',') if s.strip()]
+            old_set = set(old_items)
+            new_set = set(new_items)
+            first = True
+            for item in new_items:
+                if not first:
+                    widget.insert(tk.END, ", ")
+                first = False
+                if item not in old_set:
+                    widget.insert(tk.END, item, "added")
+                else:
+                    widget.insert(tk.END, item)
+            for item in old_items:
+                if item not in new_set:
+                    if not first:
+                        widget.insert(tk.END, ", ")
+                    first = False
+                    widget.insert(tk.END, item, "removed")
+
         for req in reqs:
             rid = req.get("id")
             alloc = ", ".join(self.get_requirement_allocation_names(rid))
@@ -7814,7 +7836,7 @@ class FaultTreeApp:
             text.insert(tk.END, f"[{rid}] {req.get('text','')}\n")
             text.insert(tk.END, "  Allocated to: ")
             if base_data:
-                insert_diff(text, alloc_from_data(rid), alloc)
+                insert_list_diff(text, alloc_from_data(rid), alloc)
             else:
                 text.insert(tk.END, alloc)
             text.insert(tk.END, "\n  Safety Goals: ")
