@@ -875,10 +875,19 @@ class ReviewDocumentDialog(tk.Toplevel):
                 ss_segments = [("Safe State: ", "black")] + self.diff_segments(
                     old_data.get('safe_state', ''), new_data.get('safe_state', '')
                 )
-                req_segments = [("Reqs: ", "black")] + self.diff_segments(
-                    req_lines(old_data.get("safety_requirements", [])),
-                    req_lines(new_data.get("safety_requirements", [])),
+                dummy = type('obj', (), {})()
+                dummy.fta_ids = [n.unique_id]
+                dummy.fmea_names = []
+                seg_lines = self.app.build_requirement_diff_segments(
+                    dummy, base_data=data1, current_data=data2
                 )
+                req_segments = [("Reqs: ", "black")]
+                first = True
+                for seg in seg_lines:
+                    if not first:
+                        req_segments.append(("\n", "black"))
+                    first = False
+                    req_segments.extend(seg)
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
@@ -891,9 +900,19 @@ class ReviewDocumentDialog(tk.Toplevel):
                     "Safe State: " + getattr(source, 'safe_state', ''),
                     "black",
                 )]
-                req_segments = [
-                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
-                ]
+                dummy = type('obj', (), {})()
+                dummy.fta_ids = [n.unique_id]
+                dummy.fmea_names = []
+                seg_lines = self.app.build_requirement_diff_segments(
+                    dummy, base_data=data1, current_data=data2
+                )
+                req_segments = [("Reqs: ", "black")]
+                first = True
+                for seg in seg_lines:
+                    if not first:
+                        req_segments.append(("\n", "black"))
+                    first = False
+                    req_segments.extend(seg)
 
             segments = [
                 (f"Type: {source.node_type}\n", "black"),
@@ -1210,41 +1229,16 @@ class ReviewDocumentDialog(tk.Toplevel):
             frame.grid_columnconfigure(0, weight=1)
             frame.grid_rowconfigure(0, weight=1)
 
-            def fmt(r):
-                return self.app.format_requirement_with_trace(r)
-
-            all_ids = sorted(set(reqs1) | set(reqs2))
-            for rid in all_ids:
-                r1 = reqs1.get(rid)
-                r2 = reqs2.get(rid)
-                if r1 and not r2:
-                    text.insert(tk.END, f"Removed: ")
-                    self.insert_diff_text(text, fmt(r1), "")
-                elif r2 and not r1:
-                    text.insert(tk.END, f"Added: ")
-                    self.insert_diff_text(text, "", fmt(r2))
-                else:
-                    if json.dumps(r1, sort_keys=True) != json.dumps(r2, sort_keys=True):
-                        text.insert(tk.END, f"Updated: ")
-                        self.insert_diff_text(text, fmt(r1), fmt(r2))
+            segments = self.app.build_requirement_diff_segments(self.review)
+            for line in segments:
+                for part, color in line:
+                    if color == "blue":
+                        text.insert(tk.END, part, "added")
+                    elif color == "red":
+                        text.insert(tk.END, part, "removed")
                     else:
-                        text.insert(tk.END, fmt(r2))
+                        text.insert(tk.END, part)
                 text.insert(tk.END, "\n")
-
-            for nid in self.review.fta_ids:
-                n1 = map1.get(nid, {})
-                n2 = map2.get(nid, {})
-                sg_old = f"{n1.get('safety_goal_description','')} [{n1.get('safety_goal_asil','')}]"
-                sg_new = f"{n2.get('safety_goal_description','')} [{n2.get('safety_goal_asil','')}]"
-                label = n2.get('user_name') or n1.get('user_name') or f"Node {nid}"
-                if sg_old != sg_new:
-                    text.insert(tk.END, f"Safety Goal for {label}: ")
-                    self.insert_diff_text(text, sg_old, sg_new)
-                    text.insert(tk.END, "\n")
-                if n1.get('safe_state','') != n2.get('safe_state',''):
-                    text.insert(tk.END, f"Safe State for {label}: ")
-                    self.insert_diff_text(text, n1.get('safe_state',''), n2.get('safe_state',''))
-                    text.insert(tk.END, "\n")
 
             row += 1
 
@@ -1591,10 +1585,19 @@ class VersionCompareDialog(tk.Toplevel):
                 ss_segments = [("Safe State: ", "black")] + self.diff_segments(
                     old_data.get('safe_state', ''), new_data.get('safe_state', '')
                 )
-                req_segments = [("Reqs: ", "black")] + self.diff_segments(
-                    req_lines(old_data.get("safety_requirements", [])),
-                    req_lines(new_data.get("safety_requirements", [])),
+                dummy = type('obj', (), {})()
+                dummy.fta_ids = [n.unique_id]
+                dummy.fmea_names = []
+                seg_lines = self.app.build_requirement_diff_segments(
+                    dummy, base_data=data1, current_data=data2
                 )
+                req_segments = [("Reqs: ", "black")]
+                first = True
+                for seg in seg_lines:
+                    if not first:
+                        req_segments.append(("\n", "black"))
+                    first = False
+                    req_segments.extend(seg)
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
@@ -1606,9 +1609,19 @@ class VersionCompareDialog(tk.Toplevel):
                     "Safe State: " + getattr(source, 'safe_state', ''),
                     "black",
                 )]
-                req_segments = [
-                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
-                ]
+                dummy = type('obj', (), {})()
+                dummy.fta_ids = [n.unique_id]
+                dummy.fmea_names = []
+                seg_lines = self.app.build_requirement_diff_segments(
+                    dummy, base_data=data1, current_data=data2
+                )
+                req_segments = [("Reqs: ", "black")]
+                first = True
+                for seg in seg_lines:
+                    if not first:
+                        req_segments.append(("\n", "black"))
+                    first = False
+                    req_segments.extend(seg)
 
             segments = [
                 (f"Type: {source.node_type}\n", "black"),
@@ -1761,19 +1774,23 @@ class VersionCompareDialog(tk.Toplevel):
                     )
                     self.insert_diff(n1.get('safe_state',''), n2.get('safe_state',''))
                     self.log_text.insert(tk.END, "\n")
-                def req_lines(reqs):
-                    lines = [self.app.format_requirement_with_trace(r) for r in reqs]
-                    return "\n".join(lines)
-
-                req1 = req_lines(n1.get("safety_requirements", []))
-                req2 = req_lines(n2.get("safety_requirements", []))
+                req1 = [self.app.format_requirement_with_trace(r) for r in n1.get("safety_requirements", [])]
+                req2 = [self.app.format_requirement_with_trace(r) for r in n2.get("safety_requirements", [])]
                 if req1 != req2:
-                    self.log_text.insert(
-                        tk.END,
-                        f"Requirements change for {n1.get('user_name', nid)}: ",
-                    )
-                    self.insert_diff(req1, req2)
-                    self.log_text.insert(tk.END, "\n")
+                    self.log_text.insert(tk.END, f"Requirements change for {n1.get('user_name', nid)}:\n")
+                    dummy = type('obj', (), {})()
+                    dummy.fta_ids = [nid]
+                    dummy.fmea_names = []
+                    seg_lines = self.app.build_requirement_diff_segments(dummy, base_data=data1, current_data=data2)
+                    for seg in seg_lines:
+                        for part, color in seg:
+                            if color == "blue":
+                                self.log_text.insert(tk.END, part, "added")
+                            elif color == "red":
+                                self.log_text.insert(tk.END, part, "removed")
+                            else:
+                                self.log_text.insert(tk.END, part)
+                        self.log_text.insert(tk.END, "\n")
 
         fmea1 = {f["name"]: f for f in data1.get("fmeas", [])}
         fmea2 = {f["name"]: f for f in data2.get("fmeas", [])}
