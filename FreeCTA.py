@@ -1921,11 +1921,8 @@ class EditNodeDialog(simpledialog.Dialog):
         return req
         
     def list_all_requirements(self):
-        """Return all requirements formatted as strings."""
-        return [
-            f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}"
-            for req in global_requirements.values()
-        ]
+        # This function returns a list of formatted strings for all requirements
+        return [f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}" for req in global_requirements.values()]
 
     # --- Traceability helpers ---
     def get_requirement_allocation_names(self, req_id):
@@ -1963,7 +1960,10 @@ class EditNodeDialog(simpledialog.Dialog):
             for e in fmea.get("entries", []):
                 reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
                 if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
-                    parent_list = e.get("parents") if isinstance(e, dict) else getattr(e, "parents", None)
+                    if isinstance(e, dict):
+                        parent_list = e.get("parents") or []
+                    else:
+                        parent_list = getattr(e, "parents", []) or []
                     parent = parent_list[0] if parent_list else None
                     if isinstance(parent, dict) and "unique_id" in parent:
                         node = self.find_node_by_id_all(parent["unique_id"])
@@ -1979,88 +1979,9 @@ class EditNodeDialog(simpledialog.Dialog):
         alloc = ", ".join(self.get_requirement_allocation_names(rid))
         goals = ", ".join(self.get_requirement_goal_names(rid))
         return (
-            f"[{rid}] [{req.get('req_type','')}] [{req.get('asil','')}] {req.get('text','')}"
+            f"[{rid}] [{req.get('req_type','')}] [{req.get('asil','')}] {req.get('text','')}" +
             f" (Alloc: {alloc}; SGs: {goals})"
         )
-
-    def build_requirement_diff_html(self, review):
-        """Return HTML highlighting requirement differences for the review."""
-        if not self.versions:
-            return ""
-        base_data = self.versions[-1]["data"]
-        current = self.export_model_data(include_versions=False)
-
-        def filter_data(data):
-            return {
-                "top_events": [t for t in data.get("top_events", []) if t["unique_id"] in review.fta_ids],
-                "fmeas": [f for f in data.get("fmeas", []) if f["name"] in review.fmea_names],
-            }
-
-        data1 = filter_data(base_data)
-        data2 = filter_data(current)
-
-        map1 = self.node_map_from_data(data1["top_events"])
-        map2 = self.node_map_from_data(data2["top_events"])
-
-        def collect_reqs(node_dict, target):
-            for r in node_dict.get("safety_requirements", []):
-                rid = r.get("id")
-                if rid and rid not in target:
-                    target[rid] = r
-            for ch in node_dict.get("children", []):
-                collect_reqs(ch, target)
-
-        reqs1, reqs2 = {}, {}
-        for nid in review.fta_ids:
-            if nid in map1:
-                collect_reqs(map1[nid], reqs1)
-            if nid in map2:
-                collect_reqs(map2[nid], reqs2)
-
-        fmea1 = {f["name"]: f for f in data1.get("fmeas", [])}
-        fmea2 = {f["name"]: f for f in data2.get("fmeas", [])}
-        for name in review.fmea_names:
-            for e in fmea1.get(name, {}).get("entries", []):
-                for r in e.get("safety_requirements", []):
-                    rid = r.get("id")
-                    if rid and rid not in reqs1:
-                        reqs1[rid] = r
-            for e in fmea2.get(name, {}).get("entries", []):
-                for r in e.get("safety_requirements", []):
-                    rid = r.get("id")
-                    if rid and rid not in reqs2:
-                        reqs2[rid] = r
-
-        import difflib, html
-
-        def html_diff(a, b):
-            matcher = difflib.SequenceMatcher(None, a, b)
-            parts = []
-            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-                if tag == "equal":
-                    parts.append(html.escape(a[i1:i2]))
-                elif tag == "delete":
-                    parts.append(f"<span style='color:red'>{html.escape(a[i1:i2])}</span>")
-                elif tag == "insert":
-                    parts.append(f"<span style='color:blue'>{html.escape(b[j1:j2])}</span>")
-                elif tag == "replace":
-                    parts.append(f"<span style='color:red'>{html.escape(a[i1:i2])}</span>")
-                    parts.append(f"<span style='color:blue'>{html.escape(b[j1:j2])}</span>")
-            return "".join(parts)
-
-        lines = []
-        all_ids = sorted(set(reqs1) | set(reqs2))
-        for rid in all_ids:
-            r1 = reqs1.get(rid)
-            r2 = reqs2.get(rid)
-            if r1 and not r2:
-                lines.append(f"Removed: {html.escape(self.format_requirement_with_trace(r1))}")
-            elif r2 and not r1:
-                lines.append(f"Added: {html.escape(self.format_requirement_with_trace(r2))}")
-            else:
-                if json.dumps(r1, sort_keys=True) != json.dumps(r2, sort_keys=True):
-                    lines.append("Updated: " + html_diff(self.format_requirement_with_trace(r1), self.format_requirement_with_trace(r2)))
-        return "<br>".join(lines)
     
     def add_safety_requirement(self):
         """
@@ -7774,6 +7695,7 @@ class FaultTreeApp:
             tree.column(col, width=120 if col not in ["Text"] else 300, anchor="center")
         tree.pack(fill=tk.BOTH, expand=True)
 
+
         for req in reqs:
             row = [
                 req.get("id", ""),
@@ -7785,6 +7707,21 @@ class FaultTreeApp:
                 linked = any(r.get("id") == req.get("id") for r in getattr(be, "safety_requirements", []))
                 row.append("X" if linked else "")
             tree.insert("", "end", values=row)
+
+        # Show allocation and safety goal traceability below the table
+        frame = tk.Frame(win)
+        frame.pack(fill=tk.BOTH, expand=True)
+        vbar = tk.Scrollbar(frame, orient="vertical")
+        text = tk.Text(frame, wrap="word", yscrollcommand=vbar.set, height=8)
+        vbar.config(command=text.yview)
+        text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vbar.pack(side=tk.RIGHT, fill=tk.Y)
+        for req in reqs:
+            alloc = ", ".join(self.get_requirement_allocation_names(req.get("id")))
+            goals = ", ".join(self.get_requirement_goal_names(req.get("id")))
+            text.insert(tk.END, f"[{req.get('id','')}] {req.get('text','')}\n")
+            text.insert(tk.END, f"  Allocated to: {alloc}\n")
+            text.insert(tk.END, f"  Safety Goals: {goals}\n\n")
 
         # --- Traceability list below the table ---
         frame = tk.Frame(win)
