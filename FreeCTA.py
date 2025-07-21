@@ -238,7 +238,7 @@ from review_toolbox import (
     ReviewDocumentDialog,
     VersionCompareDialog,
 )
-from dataclasses import asdict
+from dataclasses import dataclass, asdict, field
 import json
 import csv
 import tkinter.font as tkFont
@@ -288,6 +288,59 @@ VALID_SUBTYPES = {
 unique_node_id_counter = 1
 import math
 import uuid
+
+@dataclass
+class MissionProfile:
+    name: str
+    tau_on: float = 0.0
+    tau_off: float = 0.0
+    temperature: float = 25.0
+    humidity: float = 50.0
+    environment: str = ""
+    duty_cycle: float = 1.0
+    notes: str = ""
+
+    @property
+    def tau(self) -> float:
+        """Return the total TAU for backward compatibility."""
+        return self.tau_on + self.tau_off
+
+
+@dataclass
+class ReliabilityComponent:
+    name: str
+    comp_type: str
+    quantity: int = 1
+    attributes: dict = field(default_factory=dict)
+    safety_req: str = ""
+    fit: float = 0.0
+    spf_fraction: float = 0.0  # ratio of single point failures
+    lpf_fraction: float = 0.0  # ratio of latent point failures
+
+RELIABILITY_MODELS = {
+    "IEC 62380": {
+        "capacitor": {
+            "text": "Base*(1+T/100)*Duty (base=0.02 ceramic, 0.04 electrolytic)",
+            "formula": lambda a, mp: (0.02 if a.get("dielectric", "ceramic") == "ceramic" else 0.04)
+            * (1 + mp.temperature / 100.0)
+            * mp.duty_cycle,
+        },
+        "resistor": {
+            "text": "0.005*(1+T/100)*Duty",
+            "formula": lambda a, mp: 0.005 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+        },
+    },
+    "SN 29500": {
+        "capacitor": {
+            "text": "0.03*(1+T/100)*Duty",
+            "formula": lambda a, mp: 0.03 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+        },
+        "resistor": {
+            "text": "0.006*(1+T/100)*Duty",
+            "formula": lambda a, mp: 0.006 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+        },
+    },
+}
 
 global_requirements = {}
 # ASIL level options including decomposition levels
@@ -2155,7 +2208,17 @@ class FaultTreeApp:
         self.clipboard_node = None
         self.cut_mode = False
         self.page_history = []
-        self.project_properties = {"pdf_report_name": "Autonomous Driving Risk Assessment PDF Report"}
+        self.project_properties = {
+            "pdf_report_name": "Autonomous Driving Risk Assessment PDF Report",
+            "pdf_detailed_formulas": True,
+            "show_grid": True,
+            "black_white": False,
+        }
+        self.mission_profiles = []
+        self.fmeda_components = []
+        self.reliability_total_fit = 0.0
+        self.spfm = 0.0
+        self.lpfm = 0.0
         self.top_events = []
         self.reviews = []
         self.review_data = None
@@ -2224,6 +2287,10 @@ class FaultTreeApp:
         review_menu.add_command(label="Merge Review Comments", command=self.merge_review_comments)
         review_menu.add_command(label="Compare Versions", command=self.compare_versions)
         menubar.add_cascade(label="Review", menu=review_menu)
+        reliability_menu = tk.Menu(menubar, tearoff=0)
+        reliability_menu.add_command(label="Mission Profiles", command=self.manage_mission_profiles)
+        reliability_menu.add_command(label="Reliability Analysis", command=self.open_reliability_window)
+        menubar.add_cascade(label="Reliability", menu=reliability_menu)
         root.config(menu=menubar)
         root.bind("<Control-n>", lambda event: self.new_model())
         root.bind("<Control-s>", lambda event: self.save_model())
@@ -3015,7 +3082,15 @@ class FaultTreeApp:
         # Default to showing detailed formulas.
         var_detailed = tk.BooleanVar(value=self.project_properties.get("pdf_detailed_formulas", True))
         chk = tk.Checkbutton(prop_win, text="Show Detailed Formulas in PDF Report", variable=var_detailed, font=dialog_font)
-        chk.grid(row=1, column=0, columnspan=2, padx=10, pady=10, sticky="w")
+        chk.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky="w")
+
+        var_grid = tk.BooleanVar(value=self.project_properties.get("show_grid", True))
+        chk_grid = tk.Checkbutton(prop_win, text="Show Grid", variable=var_grid, font=dialog_font)
+        chk_grid.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="w")
+
+        var_bw = tk.BooleanVar(value=self.project_properties.get("black_white", False))
+        chk_bw = tk.Checkbutton(prop_win, text="Black and White FTA", variable=var_bw, font=dialog_font)
+        chk_bw.grid(row=3, column=0, columnspan=2, padx=10, pady=5, sticky="w")
 
         def save_props():
             new_name = pdf_entry.get().strip()
@@ -3027,8 +3102,20 @@ class FaultTreeApp:
                 messagebox.showwarning("Project Properties", "PDF Report Name cannot be empty.")
             prop_win.destroy()
 
+        def save_props():
+            new_name = pdf_entry.get().strip()
+            if new_name:
+                self.project_properties["pdf_report_name"] = new_name
+                self.project_properties["pdf_detailed_formulas"] = var_detailed.get()
+                self.project_properties["show_grid"] = var_grid.get()
+                self.project_properties["black_white"] = var_bw.get()
+                messagebox.showinfo("Project Properties", "Project properties updated.")
+            else:
+                messagebox.showwarning("Project Properties", "PDF Report Name cannot be empty.")
+            prop_win.destroy()
+
         save_btn = tk.Button(prop_win, text="Save", command=save_props, font=dialog_font)
-        save_btn.grid(row=2, column=0, columnspan=2, pady=10)
+        save_btn.grid(row=4, column=0, columnspan=2, pady=10)
         prop_win.transient(self.root)
         prop_win.grab_set()
         self.root.wait_window(prop_win)
@@ -7070,6 +7157,8 @@ class FaultTreeApp:
     def get_node_fill_color(self, node):
         # Use the original node's properties for clones.
         base_node = node if node.is_primary_instance else node.original
+        if self.project_properties.get("black_white", False):
+            return "white"
         label = base_node.display_label  # use original's display label
         if "Prototype Assurance Level (PAL)" in label:
             base_type = "Prototype Assurance Level (PAL)"
@@ -7325,6 +7414,8 @@ class FaultTreeApp:
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
 
     def draw_grid(self):
+        if not self.project_properties.get("show_grid", True):
+            return
         spacing = self.grid_size * self.zoom
         width = self.canvas.winfo_width()
         height = self.canvas.winfo_height()
@@ -7687,13 +7778,18 @@ class FaultTreeApp:
         messagebox.showinfo("Calculation", results.strip())
 
     def calculate_pmfh(self):
+        total_fit = getattr(self, "reliability_total_fit", 0.0)
+        if total_fit == 0.0:
+            messagebox.showwarning("PMHF", "Run reliability analysis first")
+            return
+        pmhf = total_fit * 1e-9
         for te in self.top_events:
-            AD_RiskAssessment_Helper.calculate_probability_recursive(te)
+            te.probability = pmhf
         self.update_views()
-        results = ""
-        for te in self.top_events:
-            results += f"Top Event {te.name}: PMHF = {te.probability:.2e}\n"
-        messagebox.showinfo("PMHF Calculation", results.strip())
+        msg = (
+            f"PMHF = {pmhf:.2e}\nSPFM = {self.spfm:.2f}\nLPFM = {self.lpfm:.2f}"
+        )
+        messagebox.showinfo("PMHF Calculation", msg)
 
     def show_requirements_matrix(self):
         """Display a matrix table of requirements vs. basic events."""
@@ -8453,6 +8549,318 @@ class FaultTreeApp:
                     seen.add(rid)
                     writer.writerow([sg_text, sg_asil, te.safe_state, rid, req.get("asil", ""), req.get("text", "")])
         messagebox.showinfo("Export", "Safety goal requirements exported.")
+
+    def manage_mission_profiles(self):
+        win = tk.Toplevel(self.root)
+        win.title("Mission Profiles")
+        listbox = tk.Listbox(win, height=8, width=40)
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        btn_frame = ttk.Frame(win)
+        btn_frame.pack(side=tk.RIGHT, fill=tk.Y)
+
+        def refresh():
+            listbox.delete(0, tk.END)
+            for mp in self.mission_profiles:
+                info = (
+                    f"{mp.name} (on: {mp.tau_on}h, off: {mp.tau_off}h, {mp.environment}, {mp.temperature}\u00b0C)"
+                )
+                listbox.insert(tk.END, info)
+
+        def add_profile():
+            name = simpledialog.askstring("Mission Profile", "Name:")
+            if not name:
+                return
+            tau_on = simpledialog.askfloat("Mission Profile", "TAU On (h):", minvalue=0.0)
+            if tau_on is None:
+                return
+            tau_off = simpledialog.askfloat("Mission Profile", "TAU Off (h):", minvalue=0.0)
+            if tau_off is None:
+                tau_off = 0.0
+            temp = simpledialog.askfloat("Mission Profile", "Temperature (\u00b0C):", initialvalue=25.0)
+            if temp is None:
+                return
+            hum = simpledialog.askfloat("Mission Profile", "Humidity (%):", initialvalue=50.0)
+            if hum is None:
+                return
+            env = simpledialog.askstring("Mission Profile", "Environment:", initialvalue="")
+            if env is None:
+                env = ""
+            duty = simpledialog.askfloat("Mission Profile", "Duty Cycle (0-1):", initialvalue=1.0, minvalue=0.0, maxvalue=1.0)
+            if duty is None:
+                duty = 1.0
+            notes = simpledialog.askstring("Mission Profile", "Notes:", initialvalue="")
+            if notes is None:
+                notes = ""
+            self.mission_profiles.append(
+                MissionProfile(name, tau_on, tau_off, temp, hum, env, duty, notes)
+            )
+            refresh()
+
+        def edit_profile():
+            sel = listbox.curselection()
+            if not sel:
+                return
+            mp = self.mission_profiles[sel[0]]
+            name = simpledialog.askstring("Mission Profile", "Name:", initialvalue=mp.name)
+            if not name:
+                return
+            tau_on = simpledialog.askfloat("Mission Profile", "TAU On (h):", initialvalue=mp.tau_on, minvalue=0.0)
+            if tau_on is None:
+                return
+            tau_off = simpledialog.askfloat("Mission Profile", "TAU Off (h):", initialvalue=mp.tau_off, minvalue=0.0)
+            if tau_off is None:
+                tau_off = mp.tau_off
+            temp = simpledialog.askfloat("Mission Profile", "Temperature (\u00b0C):", initialvalue=mp.temperature)
+            if temp is None:
+                return
+            hum = simpledialog.askfloat("Mission Profile", "Humidity (%):", initialvalue=mp.humidity)
+            if hum is None:
+                return
+            env = simpledialog.askstring("Mission Profile", "Environment:", initialvalue=mp.environment)
+            if env is None:
+                env = ""
+            duty = simpledialog.askfloat("Mission Profile", "Duty Cycle (0-1):", initialvalue=mp.duty_cycle, minvalue=0.0, maxvalue=1.0)
+            if duty is None:
+                duty = mp.duty_cycle
+            notes = simpledialog.askstring("Mission Profile", "Notes:", initialvalue=mp.notes)
+            if notes is None:
+                notes = mp.notes
+            mp.name = name
+            mp.tau_on = tau_on
+            mp.tau_off = tau_off
+            mp.temperature = temp
+            mp.humidity = hum
+            mp.environment = env
+            mp.duty_cycle = duty
+            mp.notes = notes
+            refresh()
+
+        def delete_profile():
+            sel = listbox.curselection()
+            if not sel:
+                return
+            del self.mission_profiles[sel[0]]
+            refresh()
+
+        ttk.Button(btn_frame, text="Add", command=add_profile).pack(fill=tk.X)
+        ttk.Button(btn_frame, text="Edit", command=edit_profile).pack(fill=tk.X)
+        ttk.Button(btn_frame, text="Delete", command=delete_profile).pack(fill=tk.X)
+
+        refresh()
+
+    def open_reliability_window(self):
+        if hasattr(self, "_reliab_window") and self._reliab_window.winfo_exists():
+            self._reliab_window.lift()
+            return
+        self._reliab_window = self.ReliabilityWindow(self)
+
+    class ReliabilityWindow(tk.Toplevel):
+        def __init__(self, app):
+            super().__init__(app.root)
+            self.app = app
+            self.title("Reliability Analysis")
+            self.geometry("600x400")
+            self.components = []
+
+            ttk.Label(self, text="Standard:").pack(anchor="w")
+            self.standard_var = tk.StringVar(value="IEC 62380")
+            ttk.Combobox(
+                self,
+                textvariable=self.standard_var,
+                values=["IEC 62380", "SN 29500"],
+                state="readonly",
+            ).pack(anchor="w")
+
+            ttk.Label(self, text="Mission Profile:").pack(anchor="w")
+            self.profile_var = tk.StringVar()
+            self.profile_combo = ttk.Combobox(
+                self,
+                textvariable=self.profile_var,
+                values=[mp.name for mp in app.mission_profiles],
+                state="readonly",
+            )
+            self.profile_combo.pack(anchor="w", fill="x")
+
+            self.tree = ttk.Treeview(
+                self,
+                columns=("name", "type", "qty", "fit", "safety"),
+                show="headings",
+            )
+            for col in ("name", "type", "qty", "fit", "safety"):
+                heading = "Safety" if col == "safety" else col.capitalize()
+                self.tree.heading(col, text=heading)
+                self.tree.column(col, width=120 if col == "safety" else 100)
+            self.tree.pack(fill=tk.BOTH, expand=True)
+            self.tree.bind("<<TreeviewSelect>>", self.show_formula)
+
+            btn_frame = ttk.Frame(self)
+            btn_frame.pack(fill=tk.X)
+            ttk.Button(btn_frame, text="Load CSV", command=self.load_csv).pack(
+                side=tk.LEFT, padx=2, pady=2
+            )
+            ttk.Button(btn_frame, text="Configure Component", command=self.configure_component).pack(
+                side=tk.LEFT, padx=2, pady=2
+            )
+            ttk.Button(btn_frame, text="Calculate FIT", command=self.calculate_fit).pack(
+                side=tk.LEFT, padx=2, pady=2
+            )
+            self.formula_label = ttk.Label(self, text="")
+            self.formula_label.pack(anchor="w", padx=5, pady=5)
+
+        def show_formula(self, event=None):
+            sel = self.tree.focus()
+            if not sel:
+                self.formula_label.config(text="")
+                return
+            idx = self.tree.index(sel)
+            if idx >= len(self.components):
+                return
+            comp = self.components[idx]
+            std = self.standard_var.get()
+            info = RELIABILITY_MODELS.get(std, {}).get(comp.comp_type)
+            if info:
+                self.formula_label.config(text=f"Formula: {info['text']}")
+            else:
+                self.formula_label.config(text="Formula: N/A")
+
+        def refresh_tree(self):
+            self.tree.delete(*self.tree.get_children())
+            for comp in self.components:
+                self.tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        comp.name,
+                        comp.comp_type,
+                        comp.quantity,
+                        f"{comp.fit:.2f}",
+                        comp.safety_req,
+                    ),
+                )
+            self.profile_combo.config(values=[mp.name for mp in self.app.mission_profiles])
+
+        def load_csv(self):
+            path = filedialog.askopenfilename(filetypes=[("CSV", "*.csv")])
+            if not path:
+                return
+            self.components.clear()
+            with open(path, newline="") as f:
+                reader = csv.DictReader(f)
+                fields = reader.fieldnames or []
+                mapping = self.ask_mapping(fields)
+                if not mapping:
+                    return
+                for row in reader:
+                    try:
+                        name = row.get(mapping["name"], "")
+                        ctype = row.get(mapping["type"], "")
+                        qty = int(row.get(mapping["qty"], 1) or 1)
+                        safety = row.get(mapping.get("safety"), "") if mapping.get("safety") else ""
+                        comp = ReliabilityComponent(name, ctype, qty, {}, safety)
+                        # store any extra columns as attributes
+                        for key, val in row.items():
+                            if key not in mapping.values():
+                                comp.attributes[key] = val
+                        self.components.append(comp)
+                    except Exception:
+                        continue
+            self.refresh_tree()
+
+        def ask_mapping(self, fields):
+            if not fields:
+                return None
+            win = tk.Toplevel(self)
+            win.title("Map Columns")
+            vars = {}
+            targets = ["name", "type", "qty", "safety"]
+            for i, tgt in enumerate(targets):
+                ttk.Label(win, text=tgt.capitalize()).grid(row=i, column=0, padx=5, pady=5, sticky="e")
+                var = tk.StringVar()
+                cb = ttk.Combobox(win, textvariable=var, values=fields, state="readonly")
+                if i < len(fields):
+                    var.set(fields[i])
+                cb.grid(row=i, column=1, padx=5, pady=5)
+                vars[tgt] = var
+
+            result = {}
+
+            def ok():
+                for k, v in vars.items():
+                    result[k] = v.get()
+                win.destroy()
+
+            def cancel():
+                result.clear()
+                win.destroy()
+
+            ttk.Button(win, text="OK", command=ok).grid(row=len(targets), column=0, pady=5)
+            ttk.Button(win, text="Cancel", command=cancel).grid(row=len(targets), column=1, pady=5)
+            win.grab_set()
+            win.wait_window()
+            if not result:
+                return None
+            return result
+
+        def configure_component(self):
+            sel = self.tree.focus()
+            if not sel:
+                messagebox.showwarning("Configure", "Select a component")
+                return
+            idx = self.tree.index(sel)
+            comp = self.components[idx]
+
+            class ParamDialog(simpledialog.Dialog):
+                def body(self, master):
+                    self.vars = {}
+                    row = 0
+                    for k, v in comp.attributes.items():
+                        ttk.Label(master, text=k).grid(row=row, column=0, padx=5, pady=5, sticky="e")
+                        var = tk.StringVar(value=str(v))
+                        ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=5, pady=5)
+                        self.vars[k] = var
+                        row += 1
+                    ttk.Label(master, text="SPF fraction").grid(row=row, column=0, padx=5, pady=5, sticky="e")
+                    self.spf_var = tk.DoubleVar(value=comp.spf_fraction)
+                    ttk.Entry(master, textvariable=self.spf_var).grid(row=row, column=1, padx=5, pady=5)
+                    row += 1
+                    ttk.Label(master, text="LPF fraction").grid(row=row, column=0, padx=5, pady=5, sticky="e")
+                    self.lpf_var = tk.DoubleVar(value=comp.lpf_fraction)
+                    ttk.Entry(master, textvariable=self.lpf_var).grid(row=row, column=1, padx=5, pady=5)
+
+                def apply(self):
+                    for k, v in self.vars.items():
+                        comp.attributes[k] = v.get()
+                    comp.spf_fraction = float(self.spf_var.get() or 0.0)
+                    comp.lpf_fraction = float(self.lpf_var.get() or 0.0)
+
+            ParamDialog(self)
+            self.refresh_tree()
+
+        def calculate_fit(self):
+            prof_name = self.profile_var.get()
+            mp = next((m for m in self.app.mission_profiles if m.name == prof_name), None)
+            if mp is None:
+                messagebox.showwarning("FIT", "Select a mission profile")
+                return
+            std = self.standard_var.get()
+            total = 0.0
+            spf = 0.0
+            lpf = 0.0
+            for comp in self.components:
+                info = RELIABILITY_MODELS.get(std, {}).get(comp.comp_type)
+                if info:
+                    comp.fit = info["formula"](comp.attributes, mp)
+                else:
+                    comp.fit = 0.0
+                total += comp.fit * comp.quantity
+                spf += comp.fit * comp.quantity * comp.spf_fraction
+                lpf += comp.fit * comp.quantity * comp.lpf_fraction
+            self.app.reliability_total_fit = total
+            self.app.spfm = spf
+            self.app.lpfm = lpf
+            self.refresh_tree()
+            self.formula_label.config(text=f"Total FIT: {total:.2f}  SPFM: {spf:.2f}  LPFM: {lpf:.2f}")
 
 
     def copy_node(self):
@@ -9762,6 +10170,8 @@ class PageDiagram:
         self.drag_offset_x = 0
         self.drag_offset_y = 0
         self.rc_dragged = False
+        # Reference project properties for grid and color options
+        self.project_properties = app.project_properties
 
         # Bind events – including right-click release
         self.canvas.bind("<ButtonPress-3>", self.on_right_mouse_press)
@@ -10026,6 +10436,8 @@ class PageDiagram:
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
 
     def draw_grid(self):
+        if not self.project_properties.get("show_grid", True):
+            return
         spacing = self.grid_size * self.zoom
         width = self.canvas.winfo_width()
         height = self.canvas.winfo_height()
