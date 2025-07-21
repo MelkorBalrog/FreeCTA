@@ -868,6 +868,13 @@ class ReviewDocumentDialog(tk.Toplevel):
                     old_data.get("rationale", ""),
                     new_data.get("rationale", ""),
                 )
+                sg_segments = [("SG: ", "black")] + self.diff_segments(
+                    f"{old_data.get('safety_goal_description','')} [{old_data.get('safety_goal_asil','')}]",
+                    f"{new_data.get('safety_goal_description','')} [{new_data.get('safety_goal_asil','')}]",
+                )
+                ss_segments = [("Safe State: ", "black")] + self.diff_segments(
+                    old_data.get('safe_state', ''), new_data.get('safe_state', '')
+                )
                 req_segments = [("Reqs: ", "black")] + self.diff_segments(
                     req_lines(old_data.get("safety_requirements", [])),
                     req_lines(new_data.get("safety_requirements", [])),
@@ -875,6 +882,15 @@ class ReviewDocumentDialog(tk.Toplevel):
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
+                sg_segments = [(
+                    "SG: "
+                    + f"{source.safety_goal_description} [{source.safety_goal_asil}]",
+                    "black",
+                )]
+                ss_segments = [(
+                    "Safe State: " + getattr(source, 'safe_state', ''),
+                    "black",
+                )]
                 req_segments = [
                     ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
                 ]
@@ -883,7 +899,7 @@ class ReviewDocumentDialog(tk.Toplevel):
                 (f"Type: {source.node_type}\n", "black"),
                 (f"Subtype: {subtype_text}\n", "black"),
                 (f"{display_label}\n", "black"),
-            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
+            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + sg_segments + [("\n\n", "black")] + ss_segments + [("\n\n", "black")] + req_segments
 
             top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
@@ -1214,6 +1230,21 @@ class ReviewDocumentDialog(tk.Toplevel):
                     else:
                         text.insert(tk.END, fmt(r2))
                 text.insert(tk.END, "\n")
+
+            for nid in self.review.fta_ids:
+                n1 = map1.get(nid, {})
+                n2 = map2.get(nid, {})
+                sg_old = f"{n1.get('safety_goal_description','')} [{n1.get('safety_goal_asil','')}]"
+                sg_new = f"{n2.get('safety_goal_description','')} [{n2.get('safety_goal_asil','')}]"
+                label = n2.get('user_name') or n1.get('user_name') or f"Node {nid}"
+                if sg_old != sg_new:
+                    text.insert(tk.END, f"Safety Goal for {label}: ")
+                    self.insert_diff_text(text, sg_old, sg_new)
+                    text.insert(tk.END, "\n")
+                if n1.get('safe_state','') != n2.get('safe_state',''):
+                    text.insert(tk.END, f"Safe State for {label}: ")
+                    self.insert_diff_text(text, n1.get('safe_state',''), n2.get('safe_state',''))
+                    text.insert(tk.END, "\n")
 
             row += 1
 
@@ -1553,6 +1584,13 @@ class VersionCompareDialog(tk.Toplevel):
                 rat_segments = [("Rationale: ", "black")] + self.diff_segments(
                     old_data.get("rationale", ""), new_data.get("rationale", "")
                 )
+                sg_segments = [("SG: ", "black")] + self.diff_segments(
+                    f"{old_data.get('safety_goal_description','')} [{old_data.get('safety_goal_asil','')}]",
+                    f"{new_data.get('safety_goal_description','')} [{new_data.get('safety_goal_asil','')}]",
+                )
+                ss_segments = [("Safe State: ", "black")] + self.diff_segments(
+                    old_data.get('safe_state', ''), new_data.get('safe_state', '')
+                )
                 req_segments = [("Reqs: ", "black")] + self.diff_segments(
                     req_lines(old_data.get("safety_requirements", [])),
                     req_lines(new_data.get("safety_requirements", [])),
@@ -1560,6 +1598,14 @@ class VersionCompareDialog(tk.Toplevel):
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
+                sg_segments = [(
+                    "SG: " + f"{source.safety_goal_description} [{source.safety_goal_asil}]",
+                    "black",
+                )]
+                ss_segments = [(
+                    "Safe State: " + getattr(source, 'safe_state', ''),
+                    "black",
+                )]
                 req_segments = [
                     ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
                 ]
@@ -1568,7 +1614,7 @@ class VersionCompareDialog(tk.Toplevel):
                 (f"Type: {source.node_type}\n", "black"),
                 (f"Subtype: {subtype_text}\n", "black"),
                 (f"{display_label}\n", "black"),
-            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
+            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + sg_segments + [("\n\n", "black")] + ss_segments + [("\n\n", "black")] + req_segments
 
             top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
@@ -1698,6 +1744,22 @@ class VersionCompareDialog(tk.Toplevel):
                         f"Rationale change for {n1.get('user_name', nid)}: ",
                     )
                     self.insert_diff(n1.get("rationale", ""), n2.get("rationale", ""))
+                    self.log_text.insert(tk.END, "\n")
+                sg1 = f"{n1.get('safety_goal_description','')} [{n1.get('safety_goal_asil','')}]"
+                sg2 = f"{n2.get('safety_goal_description','')} [{n2.get('safety_goal_asil','')}]"
+                if sg1 != sg2:
+                    self.log_text.insert(
+                        tk.END,
+                        f"Safety Goal change for {n1.get('user_name', nid)}: ",
+                    )
+                    self.insert_diff(sg1, sg2)
+                    self.log_text.insert(tk.END, "\n")
+                if n1.get('safe_state','') != n2.get('safe_state',''):
+                    self.log_text.insert(
+                        tk.END,
+                        f"Safe State change for {n1.get('user_name', nid)}: ",
+                    )
+                    self.insert_diff(n1.get('safe_state',''), n2.get('safe_state',''))
                     self.log_text.insert(tk.END, "\n")
                 def req_lines(reqs):
                     lines = [self.app.format_requirement_with_trace(r) for r in reqs]
