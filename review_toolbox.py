@@ -694,6 +694,8 @@ class ReviewDocumentDialog(tk.Toplevel):
                 top_text += f"\n{n.description}"
             bottom_text = n.name
             typ = n.node_type.upper()
+            outline = "blue" if n.unique_id in self.diff_nodes else "dimgray"
+            lw = 2 if n.unique_id in self.diff_nodes else 1
             if n.is_page:
                 if self.dh:
                     self.dh.draw_triangle_shape(
