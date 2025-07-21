@@ -1974,13 +1974,19 @@ class EditNodeDialog(simpledialog.Dialog):
 
     def format_requirement_with_trace(self, req):
         """Return requirement text including allocation and safety goal lists."""
-        rid = req.get("id", "")
+        if isinstance(req, dict):
+            rid = req.get("id", "")
+            rtype = req.get("req_type", "")
+            asil = req.get("asil", "")
+            text = req.get("text", "")
+        else:
+            rid = getattr(req, "id", "")
+            rtype = getattr(req, "req_type", "")
+            asil = getattr(req, "asil", "")
+            text = getattr(req, "text", "")
         alloc = ", ".join(self.get_requirement_allocation_names(rid))
         goals = ", ".join(self.get_requirement_goal_names(rid))
-        return (
-            f"[{rid}] [{req.get('req_type','')}] [{req.get('asil','')}] {req.get('text','')}"
-            f" (Alloc: {alloc}; SGs: {goals})"
-        )
+        return f"[{rid}] [{rtype}] [{asil}] {text} (Alloc: {alloc}; SGs: {goals})"
 
     def build_requirement_diff_html(self, review):
         """Return HTML highlighting requirement differences for the review."""
@@ -2415,13 +2421,19 @@ class FaultTreeApp:
 
     def format_requirement_with_trace(self, req):
         """Return requirement text including allocation and safety goal lists."""
-        rid = req.get("id", "")
+        if isinstance(req, dict):
+            rid = req.get("id", "")
+            rtype = req.get("req_type", "")
+            asil = req.get("asil", "")
+            text = req.get("text", "")
+        else:
+            rid = getattr(req, "id", "")
+            rtype = getattr(req, "req_type", "")
+            asil = getattr(req, "asil", "")
+            text = getattr(req, "text", "")
         alloc = ", ".join(self.get_requirement_allocation_names(rid))
         goals = ", ".join(self.get_requirement_goal_names(rid))
-        return (
-            f"[{rid}] [{req.get('req_type','')}] [{req.get('asil','')}] {req.get('text','')}" +
-            f" (Alloc: {alloc}; SGs: {goals})"
-        )
+        return f"[{rid}] [{rtype}] [{asil}] {text} (Alloc: {alloc}; SGs: {goals})"
 
     def build_requirement_diff_html(self, review):
         """Return HTML highlighting requirement differences for the review."""
@@ -2548,13 +2560,19 @@ class FaultTreeApp:
 
     def format_requirement_with_trace(self, req):
         """Return requirement text including allocation and safety goal lists."""
-        rid = req.get("id", "")
+        if isinstance(req, dict):
+            rid = req.get("id", "")
+            rtype = req.get("req_type", "")
+            asil = req.get("asil", "")
+            text = req.get("text", "")
+        else:
+            rid = getattr(req, "id", "")
+            rtype = getattr(req, "req_type", "")
+            asil = getattr(req, "asil", "")
+            text = getattr(req, "text", "")
         alloc = ", ".join(self.get_requirement_allocation_names(rid))
         goals = ", ".join(self.get_requirement_goal_names(rid))
-        return (
-            f"[{rid}] [{req.get('req_type','')}] [{req.get('asil','')}] {req.get('text','')}" +
-            f" (Alloc: {alloc}; SGs: {goals})"
-        )
+        return f"[{rid}] [{rtype}] [{asil}] {text} (Alloc: {alloc}; SGs: {goals})"
 
     def build_requirement_diff_html(self, review):
         """Return HTML highlighting requirement differences for the review."""
