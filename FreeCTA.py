@@ -292,8 +292,18 @@ import uuid
 @dataclass
 class MissionProfile:
     name: str
-    tau: float
+    tau_on: float = 0.0
+    tau_off: float = 0.0
+    temperature: float = 25.0
+    humidity: float = 50.0
+    environment: str = ""
+    duty_cycle: float = 1.0
+    notes: str = ""
 
+    @property
+    def tau(self) -> float:
+        """Return the total TAU for backward compatibility."""
+        return self.tau_on + self.tau_off
 
 @dataclass
 class FMEDAComponent:
@@ -301,6 +311,7 @@ class FMEDAComponent:
     comp_type: str
     base_fit: float
     quantity: int
+    safety_req: str = ""
 
 global_requirements = {}
 # ASIL level options including decomposition levels
@@ -8514,16 +8525,40 @@ class FaultTreeApp:
         def refresh():
             listbox.delete(0, tk.END)
             for mp in self.mission_profiles:
-                listbox.insert(tk.END, f"{mp.name} ({mp.tau}h)")
+                info = (
+                    f"{mp.name} (on: {mp.tau_on}h, off: {mp.tau_off}h, {mp.environment}, {mp.temperature}\u00b0C)"
+                )
+                listbox.insert(tk.END, info)
 
         def add_profile():
             name = simpledialog.askstring("Mission Profile", "Name:")
             if not name:
                 return
-            tau = simpledialog.askfloat("Mission Profile", "TAU (h):", minvalue=0.0)
-            if tau is not None:
-                self.mission_profiles.append(MissionProfile(name, tau))
-                refresh()
+            tau_on = simpledialog.askfloat("Mission Profile", "TAU On (h):", minvalue=0.0)
+            if tau_on is None:
+                return
+            tau_off = simpledialog.askfloat("Mission Profile", "TAU Off (h):", minvalue=0.0)
+            if tau_off is None:
+                tau_off = 0.0
+            temp = simpledialog.askfloat("Mission Profile", "Temperature (\u00b0C):", initialvalue=25.0)
+            if temp is None:
+                return
+            hum = simpledialog.askfloat("Mission Profile", "Humidity (%):", initialvalue=50.0)
+            if hum is None:
+                return
+            env = simpledialog.askstring("Mission Profile", "Environment:", initialvalue="")
+            if env is None:
+                env = ""
+            duty = simpledialog.askfloat("Mission Profile", "Duty Cycle (0-1):", initialvalue=1.0, minvalue=0.0, maxvalue=1.0)
+            if duty is None:
+                duty = 1.0
+            notes = simpledialog.askstring("Mission Profile", "Notes:", initialvalue="")
+            if notes is None:
+                notes = ""
+            self.mission_profiles.append(
+                MissionProfile(name, tau_on, tau_off, temp, hum, env, duty, notes)
+            )
+            refresh()
 
         def edit_profile():
             sel = listbox.curselection()
@@ -8533,11 +8568,36 @@ class FaultTreeApp:
             name = simpledialog.askstring("Mission Profile", "Name:", initialvalue=mp.name)
             if not name:
                 return
-            tau = simpledialog.askfloat("Mission Profile", "TAU (h):", initialvalue=mp.tau, minvalue=0.0)
-            if tau is not None:
-                mp.name = name
-                mp.tau = tau
-                refresh()
+            tau_on = simpledialog.askfloat("Mission Profile", "TAU On (h):", initialvalue=mp.tau_on, minvalue=0.0)
+            if tau_on is None:
+                return
+            tau_off = simpledialog.askfloat("Mission Profile", "TAU Off (h):", initialvalue=mp.tau_off, minvalue=0.0)
+            if tau_off is None:
+                tau_off = mp.tau_off
+            temp = simpledialog.askfloat("Mission Profile", "Temperature (\u00b0C):", initialvalue=mp.temperature)
+            if temp is None:
+                return
+            hum = simpledialog.askfloat("Mission Profile", "Humidity (%):", initialvalue=mp.humidity)
+            if hum is None:
+                return
+            env = simpledialog.askstring("Mission Profile", "Environment:", initialvalue=mp.environment)
+            if env is None:
+                env = ""
+            duty = simpledialog.askfloat("Mission Profile", "Duty Cycle (0-1):", initialvalue=mp.duty_cycle, minvalue=0.0, maxvalue=1.0)
+            if duty is None:
+                duty = mp.duty_cycle
+            notes = simpledialog.askstring("Mission Profile", "Notes:", initialvalue=mp.notes)
+            if notes is None:
+                notes = mp.notes
+            mp.name = name
+            mp.tau_on = tau_on
+            mp.tau_off = tau_off
+            mp.temperature = temp
+            mp.humidity = hum
+            mp.environment = env
+            mp.duty_cycle = duty
+            mp.notes = notes
+            refresh()
 
         def delete_profile():
             sel = listbox.curselection()
@@ -8587,12 +8647,13 @@ class FaultTreeApp:
 
             self.tree = ttk.Treeview(
                 self,
-                columns=("name", "type", "fit", "qty"),
+                columns=("name", "type", "fit", "qty", "safety"),
                 show="headings",
             )
-            for col in ("name", "type", "fit", "qty"):
-                self.tree.heading(col, text=col.capitalize())
-                self.tree.column(col, width=100)
+            for col in ("name", "type", "fit", "qty", "safety"):
+                heading = "Safety" if col == "safety" else col.capitalize()
+                self.tree.heading(col, text=heading)
+                self.tree.column(col, width=120 if col == "safety" else 100)
             self.tree.pack(fill=tk.BOTH, expand=True)
 
             btn_frame = ttk.Frame(self)
@@ -8615,7 +8676,13 @@ class FaultTreeApp:
                 self.tree.insert(
                     "",
                     "end",
-                    values=(comp.name, comp.comp_type, comp.base_fit, comp.quantity),
+                    values=(
+                        comp.name,
+                        comp.comp_type,
+                        comp.base_fit,
+                        comp.quantity,
+                        comp.safety_req,
+                    ),
                 )
             self.profile_combo.config(values=[mp.name for mp in self.app.mission_profiles])
 
@@ -8626,16 +8693,58 @@ class FaultTreeApp:
             self.components.clear()
             with open(path, newline="") as f:
                 reader = csv.DictReader(f)
+                fields = reader.fieldnames or []
+                mapping = self.ask_mapping(fields)
+                if not mapping:
+                    return
                 for row in reader:
                     try:
-                        name = row.get("Name") or row.get("name") or ""
-                        ctype = row.get("Type") or row.get("type") or ""
-                        base = float(row.get("BaseFIT") or row.get("base_fit") or 0)
-                        qty = int(row.get("Quantity") or row.get("qty") or 1)
-                        self.components.append(FMEDAComponent(name, ctype, base, qty))
+                        name = row.get(mapping["name"], "")
+                        ctype = row.get(mapping["type"], "")
+                        base = float(row.get(mapping["fit"], 0) or 0)
+                        qty = int(row.get(mapping["qty"], 1) or 1)
+                        safety = row.get(mapping.get("safety"), "") if mapping.get("safety") else ""
+                        self.components.append(
+                            FMEDAComponent(name, ctype, base, qty, safety)
+                        )
                     except Exception:
                         continue
             self.refresh_tree()
+
+        def ask_mapping(self, fields):
+            if not fields:
+                return None
+            win = tk.Toplevel(self)
+            win.title("Map Columns")
+            vars = {}
+            targets = ["name", "type", "fit", "qty", "safety"]
+            for i, tgt in enumerate(targets):
+                ttk.Label(win, text=tgt.capitalize()).grid(row=i, column=0, padx=5, pady=5, sticky="e")
+                var = tk.StringVar()
+                cb = ttk.Combobox(win, textvariable=var, values=fields, state="readonly")
+                if i < len(fields):
+                    var.set(fields[i])
+                cb.grid(row=i, column=1, padx=5, pady=5)
+                vars[tgt] = var
+
+            result = {}
+
+            def ok():
+                for k, v in vars.items():
+                    result[k] = v.get()
+                win.destroy()
+
+            def cancel():
+                result.clear()
+                win.destroy()
+
+            ttk.Button(win, text="OK", command=ok).grid(row=len(targets), column=0, pady=5)
+            ttk.Button(win, text="Cancel", command=cancel).grid(row=len(targets), column=1, pady=5)
+            win.grab_set()
+            win.wait_window()
+            if not result:
+                return None
+            return result
 
         def configure_formulas(self):
             types = sorted({c.comp_type for c in self.components})
@@ -9982,6 +10091,8 @@ class PageDiagram:
         self.drag_offset_x = 0
         self.drag_offset_y = 0
         self.rc_dragged = False
+        # Reference project properties for grid and color options
+        self.project_properties = app.project_properties
 
         # Bind events – including right-click release
         self.canvas.bind("<ButtonPress-3>", self.on_right_mouse_press)
