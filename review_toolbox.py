@@ -23,6 +23,7 @@ import difflib
 import sys
 import json
 import re
+from PIL import ImageTk
 
 EMAIL_REGEX = re.compile(r"[^@]+@[^@]+\.[^@]+")
 
@@ -662,6 +663,7 @@ class ReviewDocumentDialog(tk.Toplevel):
             "<Configure>",
             lambda e: self.outer.configure(scrollregion=self.outer.bbox("all")),
         )
+        self.images = []
         self.populate()
 
     def draw_tree(self, canvas, node, diff_nodes=None):
@@ -1084,20 +1086,13 @@ class ReviewDocumentDialog(tk.Toplevel):
             c.bind("<ButtonPress-1>", lambda e, cv=c: cv.scan_mark(e.x, e.y))
             c.bind("<B1-Motion>", lambda e, cv=c: cv.scan_dragto(e.x, e.y, gain=1))
 
-            allow_ids = set()
-            def collect_ids(d):
-                allow_ids.add(d["unique_id"])
-                for ch in d.get("children", []):
-                    collect_ids(ch)
-            if nid in map1:
-                collect_ids(map1[nid])
-            if nid in map2:
-                collect_ids(map2[nid])
-
-            self.draw_diff_tree(c, new_roots, status, conn_status, node_objs, allow_ids, map1, map2)
-            bbox = c.bbox("all")
-            if bbox:
-                c.config(scrollregion=bbox)
+            img = self.app.capture_diff_diagram(node)
+            if img:
+                from PIL import ImageTk
+                photo = ImageTk.PhotoImage(img)
+                self.images.append(photo)
+                c.create_image(0, 0, image=photo, anchor="nw")
+                c.config(scrollregion=(0, 0, img.width, img.height))
             row += 1
         for name in self.review.fmea_names:
             cur_fmea = next((f for f in data2.get("fmeas", []) if f["name"] == name), None)
