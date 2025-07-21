@@ -9103,10 +9103,8 @@ class FaultTreeApp:
 
 
     def open_fmeda_window(self):
-        if hasattr(self, "_fmeda_window") and self._fmeda_window.winfo_exists():
-            self._fmeda_window.lift()
-            return
-        self._fmeda_window = self.FMEDAWindow(self)
+        """Open the FMEDA view using the FMEA table with extra columns."""
+        self.show_fmea_table(fmea=None, fmeda=True)
 
     class FMEDAWindow(tk.Toplevel):
         def __init__(self, app):
