@@ -9056,7 +9056,6 @@ class FaultTreeApp:
                             ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=5, pady=5)
                         self.vars[k] = var
                         row += 1
-                    
 
                 def apply(self):
                     for k, v in self.vars.items():
@@ -9102,9 +9101,6 @@ class FaultTreeApp:
             self.app.lpfm = lpf
             self.refresh_tree()
             self.formula_label.config(text=f"Total FIT: {total:.2f}  SPFM: {spf:.2f}  LPFM: {lpf:.2f}")
-
-
-
 
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
