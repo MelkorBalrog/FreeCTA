@@ -23,7 +23,7 @@ import difflib
 import sys
 import json
 import re
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
 EMAIL_REGEX = re.compile(r"[^@]+@[^@]+\.[^@]+")
 
@@ -1089,6 +1089,7 @@ class ReviewDocumentDialog(tk.Toplevel):
             img = self.app.capture_diff_diagram(node)
             if img:
                 from PIL import ImageTk
+                img = img.resize((img.width // 2, img.height // 2), Image.LANCZOS)
                 photo = ImageTk.PhotoImage(img)
                 self.images.append(photo)
                 c.create_image(0, 0, image=photo, anchor="nw")
