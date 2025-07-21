@@ -345,6 +345,7 @@ class ReviewToolbox(tk.Toplevel):
         self.resolve_btn.pack(side=tk.LEFT)
         tk.Button(btn_frame, text="Mark Done", command=self.mark_done).pack(side=tk.LEFT)
         tk.Button(btn_frame, text="Open Document", command=self.open_document).pack(side=tk.LEFT)
+        tk.Button(btn_frame, text="Req Matrix", command=self.show_requirements_matrix).pack(side=tk.LEFT)
         self.approve_btn = tk.Button(btn_frame, text="Approve", command=self.approve)
         self.approve_btn.pack(side=tk.LEFT)
         self.edit_btn = tk.Button(btn_frame, text="Edit Review", command=self.edit_review)
@@ -356,6 +357,10 @@ class ReviewToolbox(tk.Toplevel):
         self.refresh_targets()
         self.refresh_comments()
         self.update_buttons()
+
+        # automatically open the document view to show FTA and FMEA data
+        if self.app.review_data:
+            self.open_document()
 
     def on_close(self):
         self.app.review_window = None
@@ -572,6 +577,11 @@ class ReviewToolbox(tk.Toplevel):
             messagebox.showwarning("Document", "No review selected")
             return
         ReviewDocumentDialog(self, self.app, self.app.review_data)
+
+    def show_requirements_matrix(self):
+        """Open the same requirements matrix window as the main application."""
+        if hasattr(self.app, "show_requirements_matrix"):
+            self.app.show_requirements_matrix()
 
     def open_comment(self, event):
         selection = self.comment_list.curselection()
