@@ -899,7 +899,7 @@ class ReviewDocumentDialog(tk.Toplevel):
                 (f"Type: {source.node_type}\n", "black"),
                 (f"Subtype: {subtype_text}\n", "black"),
                 (f"{display_label}\n", "black"),
-            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + sg_segments + [("\n\n", "black")] + ss_segments + [("\n\n", "black")] + req_segments
+            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + sg_segments + [("\n\n", "black")] + ss_segments
 
             top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
@@ -1304,6 +1304,23 @@ class VersionCompareDialog(tk.Toplevel):
         self.fmea_tree.tag_configure("removed", background="#f8d7da")
         self.fmea_tree.tag_configure("existing", background="#e2e3e5")
 
+        # box for requirement changes similar to ReviewDocument
+        req_frame = tk.Frame(self)
+        req_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        tk.Label(req_frame, text="Requirements").pack(anchor="w")
+        vbar_req = tk.Scrollbar(req_frame, orient=tk.VERTICAL)
+        self.req_text = tk.Text(
+            req_frame,
+            wrap="word",
+            yscrollcommand=vbar_req.set,
+            height=8,
+        )
+        vbar_req.config(command=self.req_text.yview)
+        vbar_req.pack(side=tk.RIGHT, fill=tk.Y)
+        self.req_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.req_text.tag_configure("added", foreground="blue")
+        self.req_text.tag_configure("removed", foreground="red")
+
         # text box for detailed log of changes
         log_frame = tk.Frame(self)
         log_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -1591,10 +1608,8 @@ class VersionCompareDialog(tk.Toplevel):
                 ss_segments = [("Safe State: ", "black")] + self.diff_segments(
                     old_data.get('safe_state', ''), new_data.get('safe_state', '')
                 )
-                req_segments = [("Reqs: ", "black")] + self.diff_segments(
-                    req_lines(old_data.get("safety_requirements", [])),
-                    req_lines(new_data.get("safety_requirements", [])),
-                )
+                # requirements shown in separate box
+                req_segments = []
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
@@ -1606,15 +1621,14 @@ class VersionCompareDialog(tk.Toplevel):
                     "Safe State: " + getattr(source, 'safe_state', ''),
                     "black",
                 )]
-                req_segments = [
-                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
-                ]
+                # requirements shown in separate box
+                req_segments = []
 
             segments = [
                 (f"Type: {source.node_type}\n", "black"),
                 (f"Subtype: {subtype_text}\n", "black"),
                 (f"{display_label}\n", "black"),
-            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + sg_segments + [("\n\n", "black")] + ss_segments + [("\n\n", "black")] + req_segments
+            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + sg_segments + [("\n\n", "black")] + ss_segments
 
             top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
@@ -1714,7 +1728,72 @@ class VersionCompareDialog(tk.Toplevel):
 
         # ----- FMEA diff -----
         self.fmea_tree.delete(*self.fmea_tree.get_children())
+        self.req_text.delete("1.0", tk.END)
         self.log_text.delete("1.0", tk.END)
+
+        # collect requirement sets for both versions
+        reqs1, reqs2 = {}, {}
+
+        def collect_reqs(node_dict, target):
+            for r in node_dict.get("safety_requirements", []):
+                rid = r.get("id")
+                if rid and rid not in target:
+                    target[rid] = r
+            for ch in node_dict.get("children", []):
+                collect_reqs(ch, target)
+
+        for t in data1["top_events"]:
+            collect_reqs(t, reqs1)
+        for t in data2["top_events"]:
+            collect_reqs(t, reqs2)
+        for f in data1.get("fmeas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+        for f in data2.get("fmeas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
+
+        def fmt(r):
+            return self.app.format_requirement_with_trace(r)
+
+        all_ids = sorted(set(reqs1) | set(reqs2))
+        for rid in all_ids:
+            r1 = reqs1.get(rid)
+            r2 = reqs2.get(rid)
+            if r1 and not r2:
+                self.req_text.insert(tk.END, "Removed: ")
+                self.insert_diff_text(self.req_text, fmt(r1), "")
+            elif r2 and not r1:
+                self.req_text.insert(tk.END, "Added: ")
+                self.insert_diff_text(self.req_text, "", fmt(r2))
+            else:
+                if json.dumps(r1, sort_keys=True) != json.dumps(r2, sort_keys=True):
+                    self.req_text.insert(tk.END, "Updated: ")
+                    self.insert_diff_text(self.req_text, fmt(r1), fmt(r2))
+                else:
+                    self.req_text.insert(tk.END, fmt(r2))
+            self.req_text.insert(tk.END, "\n")
+
+        for nid in set(map1) | set(map2):
+            n1 = map1.get(nid, {})
+            n2 = map2.get(nid, {})
+            sg_old = f"{n1.get('safety_goal_description','')} [{n1.get('safety_goal_asil','')}]"
+            sg_new = f"{n2.get('safety_goal_description','')} [{n2.get('safety_goal_asil','')}]"
+            label = n2.get('user_name') or n1.get('user_name') or f"Node {nid}"
+            if sg_old != sg_new:
+                self.req_text.insert(tk.END, f"Safety Goal for {label}: ")
+                self.insert_diff_text(self.req_text, sg_old, sg_new)
+                self.req_text.insert(tk.END, "\n")
+            if n1.get('safe_state','') != n2.get('safe_state',''):
+                self.req_text.insert(tk.END, f"Safe State for {label}: ")
+                self.insert_diff_text(self.req_text, n1.get('safe_state',''), n2.get('safe_state',''))
+                self.req_text.insert(tk.END, "\n")
 
         # --- log FTA textual changes ---
         for nid, st in status.items():
