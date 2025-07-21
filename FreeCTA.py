@@ -1920,6 +1920,65 @@ class EditNodeDialog(simpledialog.Dialog):
     def list_all_requirements(self):
         # This function returns a list of formatted strings for all requirements
         return [f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}" for req in global_requirements.values()]
+
+    # --- Traceability helpers ---
+    def get_requirement_allocation_names(self, req_id):
+        """Return a list of node or FMEA entry names where the requirement appears."""
+        names = []
+        for n in self.get_all_nodes(self.root_node):
+            reqs = getattr(n, "safety_requirements", [])
+            if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
+                names.append(n.user_name or f"Node {n.unique_id}")
+        for fmea in self.fmeas:
+            for e in fmea.get("entries", []):
+                reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
+                if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
+                    if isinstance(e, dict):
+                        name = e.get("description") or e.get("user_name", f"BE {e.get('unique_id','')}")
+                    else:
+                        name = getattr(e, "description", "") or getattr(e, "user_name", f"BE {getattr(e, 'unique_id', '')}")
+                    names.append(f"{fmea['name']}:{name}")
+        return names
+
+    def _collect_goal_names(self, node, acc):
+        if node.node_type.upper() == "TOP EVENT":
+            acc.add(node.safety_goal_description or (node.user_name or f"SG {node.unique_id}"))
+        for p in getattr(node, "parents", []):
+            self._collect_goal_names(p, acc)
+
+    def get_requirement_goal_names(self, req_id):
+        """Return a list of safety goal names linked to the requirement."""
+        goals = set()
+        for n in self.get_all_nodes(self.root_node):
+            reqs = getattr(n, "safety_requirements", [])
+            if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
+                self._collect_goal_names(n, goals)
+        for fmea in self.fmeas:
+            for e in fmea.get("entries", []):
+                reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
+                if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
+                    if isinstance(e, dict):
+                        parent_list = e.get("parents") or []
+                    else:
+                        parent_list = getattr(e, "parents", []) or []
+                    parent = parent_list[0] if parent_list else None
+                    if isinstance(parent, dict) and "unique_id" in parent:
+                        node = self.find_node_by_id_all(parent["unique_id"])
+                    else:
+                        node = parent if hasattr(parent, "unique_id") else None
+                    if node:
+                        self._collect_goal_names(node, goals)
+        return sorted(goals)
+
+    def format_requirement_with_trace(self, req):
+        """Return requirement text including allocation and safety goal lists."""
+        rid = req.get("id", "")
+        alloc = ", ".join(self.get_requirement_allocation_names(rid))
+        goals = ", ".join(self.get_requirement_goal_names(rid))
+        return (
+            f"[{rid}] [{req.get('req_type','')}] [{req.get('asil','')}] {req.get('text','')}" +
+            f" (Alloc: {alloc}; SGs: {goals})"
+        )
     
     def add_safety_requirement(self):
         """
@@ -4695,12 +4754,33 @@ class FaultTreeApp:
             tree.column(col, width=120 if col not in ["Text"] else 300, anchor="center")
         tree.pack(fill=tk.BOTH, expand=True)
 
+
         for req in reqs:
-            row = [req.get("id", ""), req.get("asil", ""), req.get("req_type", ""), req.get("text", "")]
+            row = [
+                req.get("id", ""),
+                req.get("asil", ""),
+                req.get("req_type", ""),
+                req.get("text", ""),
+            ]
             for be in basic_events:
                 linked = any(r.get("id") == req.get("id") for r in getattr(be, "safety_requirements", []))
                 row.append("X" if linked else "")
             tree.insert("", "end", values=row)
+
+        # Show allocation and safety goal traceability below the table
+        frame = tk.Frame(win)
+        frame.pack(fill=tk.BOTH, expand=True)
+        vbar = tk.Scrollbar(frame, orient="vertical")
+        text = tk.Text(frame, wrap="word", yscrollcommand=vbar.set, height=8)
+        vbar.config(command=text.yview)
+        text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vbar.pack(side=tk.RIGHT, fill=tk.Y)
+        for req in reqs:
+            alloc = ", ".join(self.get_requirement_allocation_names(req.get("id")))
+            goals = ", ".join(self.get_requirement_goal_names(req.get("id")))
+            text.insert(tk.END, f"[{req.get('id','')}] {req.get('text','')}\n")
+            text.insert(tk.END, f"  Allocated to: {alloc}\n")
+            text.insert(tk.END, f"  Safety Goals: {goals}\n\n")
 
     def show_fmea_list(self):
         win = tk.Toplevel(self.root)
