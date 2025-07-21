@@ -2460,7 +2460,8 @@ class FaultTreeApp:
             for e in fmea.get("entries", []):
                 reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
                 if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
-                    parent = e.get("parents", [{}])[0] if isinstance(e, dict) else getattr(e, "parents", [{}])[0]
+                    parent_list = e.get("parents", []) if isinstance(e, dict) else getattr(e, "parents", [])
+                    parent = parent_list[0] if parent_list else None
                     if isinstance(parent, dict) and "unique_id" in parent:
                         node = self.find_node_by_id_all(parent["unique_id"])
                     else:
@@ -2593,7 +2594,8 @@ class FaultTreeApp:
             for e in fmea.get("entries", []):
                 reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
                 if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
-                    parent = e.get("parents", [{}])[0] if isinstance(e, dict) else getattr(e, "parents", [{}])[0]
+                    parent_list = e.get("parents", []) if isinstance(e, dict) else getattr(e, "parents", [])
+                    parent = parent_list[0] if parent_list else None
                     if isinstance(parent, dict) and "unique_id" in parent:
                         node = self.find_node_by_id_all(parent["unique_id"])
                     else:
@@ -2732,7 +2734,8 @@ class FaultTreeApp:
             for e in fmea.get("entries", []):
                 reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
                 if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
-                    parent = e.get("parents", [{}])[0] if isinstance(e, dict) else getattr(e, "parents", [{}])[0]
+                    parent_list = e.get("parents", []) if isinstance(e, dict) else getattr(e, "parents", [])
+                    parent = parent_list[0] if parent_list else None
                     if isinstance(parent, dict) and "unique_id" in parent:
                         node = self.find_node_by_id_all(parent["unique_id"])
                     else:
@@ -3224,22 +3227,16 @@ class FaultTreeApp:
                 rat_segments = [("Rationale: ", "black")] + diff_segments(
                     old_data.get("rationale", ""), new_data.get("rationale", "")
                 )
-                req_segments = [("Reqs: ", "black")] + diff_segments(
-                    req_lines(old_data.get("safety_requirements", [])),
-                    req_lines(new_data.get("safety_requirements", [])),
-                )
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
-                req_segments = [
-                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
-                ]
+            req_segments = []
 
             segments = [
                 (f"Type: {source.node_type}\n", "black"),
                 (f"Subtype: {subtype_text}\n", "black"),
                 (f"{display_label}\n", "black"),
-            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
+            ] + desc_segments + [("\n\n", "black")] + rat_segments
 
             top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
@@ -3495,22 +3492,16 @@ class FaultTreeApp:
                 rat_segments = [("Rationale: ", "black")] + diff_segments(
                     old_data.get("rationale", ""), new_data.get("rationale", "")
                 )
-                req_segments = [("Reqs: ", "black")] + diff_segments(
-                    req_lines(old_data.get("safety_requirements", [])),
-                    req_lines(new_data.get("safety_requirements", [])),
-                )
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
-                req_segments = [
-                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
-                ]
+            req_segments = []
 
             segments = [
                 (f"Type: {source.node_type}\n", "black"),
                 (f"Subtype: {subtype_text}\n", "black"),
                 (f"{display_label}\n", "black"),
-            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
+            ] + desc_segments + [("\n\n", "black")] + rat_segments
 
             top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
@@ -3766,22 +3757,16 @@ class FaultTreeApp:
                 rat_segments = [("Rationale: ", "black")] + diff_segments(
                     old_data.get("rationale", ""), new_data.get("rationale", "")
                 )
-                req_segments = [("Reqs: ", "black")] + diff_segments(
-                    req_lines(old_data.get("safety_requirements", [])),
-                    req_lines(new_data.get("safety_requirements", [])),
-                )
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
-                req_segments = [
-                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
-                ]
+            req_segments = []
 
             segments = [
                 (f"Type: {source.node_type}\n", "black"),
                 (f"Subtype: {subtype_text}\n", "black"),
                 (f"{display_label}\n", "black"),
-            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
+            ] + desc_segments + [("\n\n", "black")] + rat_segments
 
             top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
@@ -4037,22 +4022,16 @@ class FaultTreeApp:
                 rat_segments = [("Rationale: ", "black")] + diff_segments(
                     old_data.get("rationale", ""), new_data.get("rationale", "")
                 )
-                req_segments = [("Reqs: ", "black")] + diff_segments(
-                    req_lines(old_data.get("safety_requirements", [])),
-                    req_lines(new_data.get("safety_requirements", [])),
-                )
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
-                req_segments = [
-                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
-                ]
+            req_segments = []
 
             segments = [
                 (f"Type: {source.node_type}\n", "black"),
                 (f"Subtype: {subtype_text}\n", "black"),
                 (f"{display_label}\n", "black"),
-            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
+            ] + desc_segments + [("\n\n", "black")] + rat_segments
 
             top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
@@ -4308,22 +4287,16 @@ class FaultTreeApp:
                 rat_segments = [("Rationale: ", "black")] + diff_segments(
                     old_data.get("rationale", ""), new_data.get("rationale", "")
                 )
-                req_segments = [("Reqs: ", "black")] + diff_segments(
-                    req_lines(old_data.get("safety_requirements", [])),
-                    req_lines(new_data.get("safety_requirements", [])),
-                )
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
-                req_segments = [
-                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
-                ]
+            req_segments = []
 
             segments = [
                 (f"Type: {source.node_type}\n", "black"),
                 (f"Subtype: {subtype_text}\n", "black"),
                 (f"{display_label}\n", "black"),
-            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
+            ] + desc_segments + [("\n\n", "black")] + rat_segments
 
             top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
@@ -5341,22 +5314,16 @@ class FaultTreeApp:
                 rat_segments = [("Rationale: ", "black")] + diff_segments(
                     old_data.get("rationale", ""), new_data.get("rationale", "")
                 )
-                req_segments = [("Reqs: ", "black")] + diff_segments(
-                    req_lines(old_data.get("safety_requirements", [])),
-                    req_lines(new_data.get("safety_requirements", [])),
-                )
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
-                req_segments = [
-                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
-                ]
+            req_segments = []
 
             segments = [
                 (f"Type: {source.node_type}\n", "black"),
                 (f"Subtype: {subtype_text}\n", "black"),
                 (f"{display_label}\n", "black"),
-            ] + desc_segments + [("\n\n", "black")] + rat_segments + [("\n\n", "black")] + req_segments
+            ] + desc_segments + [("\n\n", "black")] + rat_segments
 
             top_text = "".join(seg[0] for seg in segments)
             bottom_text = n.name
@@ -7713,90 +7680,95 @@ class FaultTreeApp:
         frame.pack(fill=tk.BOTH, expand=True)
         vbar = tk.Scrollbar(frame, orient="vertical")
         text = tk.Text(frame, wrap="word", yscrollcommand=vbar.set, height=8)
+        text.tag_configure("added", foreground="blue")
+        text.tag_configure("removed", foreground="red")
         vbar.config(command=text.yview)
         text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vbar.pack(side=tk.RIGHT, fill=tk.Y)
-        for req in reqs:
-            alloc = ", ".join(self.get_requirement_allocation_names(req.get("id")))
-            goals = ", ".join(self.get_requirement_goal_names(req.get("id")))
-            text.insert(tk.END, f"[{req.get('id','')}] {req.get('text','')}\n")
-            text.insert(tk.END, f"  Allocated to: {alloc}\n")
-            text.insert(tk.END, f"  Safety Goals: {goals}\n\n")
 
-        # --- Traceability list below the table ---
-        frame = tk.Frame(win)
-        frame.pack(fill=tk.BOTH, expand=True)
-        vbar = tk.Scrollbar(frame, orient="vertical")
-        text = tk.Text(frame, wrap="word", yscrollcommand=vbar.set, height=8)
-        vbar.config(command=text.yview)
-        text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        vbar.pack(side=tk.RIGHT, fill=tk.Y)
-        for req in reqs:
-            alloc = ", ".join(self.get_requirement_allocation_names(req.get("id")))
-            goals = ", ".join(self.get_requirement_goal_names(req.get("id")))
-            text.insert(tk.END, f"[{req.get('id','')}] {req.get('text','')}\n")
-            text.insert(tk.END, f"  Allocated to: {alloc}\n")
-            text.insert(tk.END, f"  Safety Goals: {goals}\n\n")
+        base_data = self.versions[-1]["data"] if self.versions else None
 
-        # --- Traceability list below the table ---
-        frame = tk.Frame(win)
-        frame.pack(fill=tk.BOTH, expand=True)
-        vbar = tk.Scrollbar(frame, orient="vertical")
-        text = tk.Text(frame, wrap="word", yscrollcommand=vbar.set, height=8)
-        vbar.config(command=text.yview)
-        text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        vbar.pack(side=tk.RIGHT, fill=tk.Y)
-        for req in reqs:
-            alloc = ", ".join(self.get_requirement_allocation_names(req.get("id")))
-            goals = ", ".join(self.get_requirement_goal_names(req.get("id")))
-            text.insert(tk.END, f"[{req.get('id','')}] {req.get('text','')}\n")
-            text.insert(tk.END, f"  Allocated to: {alloc}\n")
-            text.insert(tk.END, f"  Safety Goals: {goals}\n\n")
+        def alloc_from_data(req_id):
+            if not base_data:
+                return ""
+            names = []
+            def traverse(d):
+                if any(r.get("id") == req_id for r in d.get("safety_requirements", [])):
+                    names.append(d.get("user_name") or f"Node {d.get('unique_id')}")
+                for ch in d.get("children", []):
+                    traverse(ch)
+            for t in base_data.get("top_events", []):
+                traverse(t)
+            for fmea in base_data.get("fmeas", []):
+                for e in fmea.get("entries", []):
+                    if any(r.get("id") == req_id for r in e.get("safety_requirements", [])):
+                        name = e.get("description") or e.get("user_name", f"BE {e.get('unique_id','')}")
+                        names.append(f"{fmea['name']}:{name}")
+            return ", ".join(names)
 
-        # --- Traceability list below the table ---
-        frame = tk.Frame(win)
-        frame.pack(fill=tk.BOTH, expand=True)
-        vbar = tk.Scrollbar(frame, orient="vertical")
-        text = tk.Text(frame, wrap="word", yscrollcommand=vbar.set, height=8)
-        vbar.config(command=text.yview)
-        text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        vbar.pack(side=tk.RIGHT, fill=tk.Y)
-        for req in reqs:
-            alloc = ", ".join(self.get_requirement_allocation_names(req.get("id")))
-            goals = ", ".join(self.get_requirement_goal_names(req.get("id")))
-            text.insert(tk.END, f"[{req.get('id','')}] {req.get('text','')}\n")
-            text.insert(tk.END, f"  Allocated to: {alloc}\n")
-            text.insert(tk.END, f"  Safety Goals: {goals}\n\n")
+        def goals_from_data(req_id):
+            if not base_data:
+                return ""
+            nodes = []
+            def gather(n):
+                nodes.append(n)
+                for ch in n.get("children", []):
+                    gather(ch)
+            for t in base_data.get("top_events", []):
+                gather(t)
+            id_map = {n["unique_id"]: n for n in nodes}
+            def collect_goal_names(nd, acc):
+                if nd.get("node_type", "").upper() == "TOP EVENT":
+                    acc.add(nd.get("safety_goal_description") or nd.get("user_name") or f"SG {nd.get('unique_id')}")
+                for p in nd.get("parents", []):
+                    pid = p.get("unique_id")
+                    if pid and pid in id_map:
+                        collect_goal_names(id_map[pid], acc)
+            goals = set()
+            for n in nodes:
+                if any(r.get("id") == req_id for r in n.get("safety_requirements", [])):
+                    collect_goal_names(n, goals)
+            for fmea in base_data.get("fmeas", []):
+                for e in fmea.get("entries", []):
+                    if any(r.get("id") == req_id for r in e.get("safety_requirements", [])):
+                        parents = e.get("parents", [])
+                        if parents:
+                            pid = parents[0].get("unique_id")
+                            if pid and pid in id_map:
+                                collect_goal_names(id_map[pid], goals)
+            return ", ".join(sorted(goals))
 
-        # --- Traceability list below the table ---
-        frame = tk.Frame(win)
-        frame.pack(fill=tk.BOTH, expand=True)
-        vbar = tk.Scrollbar(frame, orient="vertical")
-        text = tk.Text(frame, wrap="word", yscrollcommand=vbar.set, height=8)
-        vbar.config(command=text.yview)
-        text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        vbar.pack(side=tk.RIGHT, fill=tk.Y)
-        for req in reqs:
-            alloc = ", ".join(self.get_requirement_allocation_names(req.get("id")))
-            goals = ", ".join(self.get_requirement_goal_names(req.get("id")))
-            text.insert(tk.END, f"[{req.get('id','')}] {req.get('text','')}\n")
-            text.insert(tk.END, f"  Allocated to: {alloc}\n")
-            text.insert(tk.END, f"  Safety Goals: {goals}\n\n")
+        import difflib
+        def insert_diff(widget, old, new):
+            matcher = difflib.SequenceMatcher(None, old, new)
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag == "equal":
+                    widget.insert(tk.END, new[j1:j2])
+                elif tag == "delete":
+                    widget.insert(tk.END, old[i1:i2], "removed")
+                elif tag == "insert":
+                    widget.insert(tk.END, new[j1:j2], "added")
+                elif tag == "replace":
+                    widget.insert(tk.END, old[i1:i2], "removed")
+                    widget.insert(tk.END, new[j1:j2], "added")
 
-        # --- Traceability list below the table ---
-        frame = tk.Frame(win)
-        frame.pack(fill=tk.BOTH, expand=True)
-        vbar = tk.Scrollbar(frame, orient="vertical")
-        text = tk.Text(frame, wrap="word", yscrollcommand=vbar.set, height=8)
-        vbar.config(command=text.yview)
-        text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        vbar.pack(side=tk.RIGHT, fill=tk.Y)
         for req in reqs:
-            alloc = ", ".join(self.get_requirement_allocation_names(req.get("id")))
-            goals = ", ".join(self.get_requirement_goal_names(req.get("id")))
-            text.insert(tk.END, f"[{req.get('id','')}] {req.get('text','')}\n")
-            text.insert(tk.END, f"  Allocated to: {alloc}\n")
-            text.insert(tk.END, f"  Safety Goals: {goals}\n\n")
+            rid = req.get("id")
+            alloc = ", ".join(self.get_requirement_allocation_names(rid))
+            goals = ", ".join(self.get_requirement_goal_names(rid))
+            text.insert(tk.END, f"[{rid}] {req.get('text','')}\n")
+            text.insert(tk.END, "  Allocated to: ")
+            if base_data:
+                insert_diff(text, alloc_from_data(rid), alloc)
+            else:
+                text.insert(tk.END, alloc)
+            text.insert(tk.END, "\n  Safety Goals: ")
+            if base_data:
+                insert_diff(text, goals_from_data(rid), goals)
+            else:
+                text.insert(tk.END, goals)
+            text.insert(tk.END, "\n\n")
+
 
     def show_fmea_list(self):
         win = tk.Toplevel(self.root)
