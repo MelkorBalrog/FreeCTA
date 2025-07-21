@@ -1102,14 +1102,35 @@ class ReviewDocumentDialog(tk.Toplevel):
             c.bind("<ButtonPress-1>", lambda e, cv=c: cv.scan_mark(e.x, e.y))
             c.bind("<B1-Motion>", lambda e, cv=c: cv.scan_dragto(e.x, e.y, gain=1))
 
-            img = self.app.capture_diff_diagram(node)
-            if img:
-                from PIL import ImageTk
-                img = img.resize((img.width // 2, img.height // 2), Image.LANCZOS)
-                photo = ImageTk.PhotoImage(img)
-                self.images.append(photo)
-                c.create_image(0, 0, image=photo, anchor="nw")
-                c.config(scrollregion=(0, 0, img.width, img.height))
+            # Draw directly using the same logic as the review document so the
+            # toolbox view matches the generated document exactly.
+            allow_ids = set()
+
+            def collect_ids(d):
+                allow_ids.add(d["unique_id"])
+                for ch in d.get("children", []):
+                    collect_ids(ch)
+
+            if nid in map1:
+                collect_ids(map1[nid])
+            if nid in map2:
+                collect_ids(map2[nid])
+
+            roots = [r for r in new_roots if r.unique_id in allow_ids]
+            if not roots:
+                roots = [FaultTreeNodeCls.from_dict(map1[nid])] if nid in map1 else []
+
+            self.draw_diff_tree(
+                c,
+                roots,
+                status,
+                conn_status,
+                node_objs,
+                allow_ids,
+                map1,
+                map2,
+            )
+            c.config(scrollregion=c.bbox("all"))
             row += 1
         for name in self.review.fmea_names:
             cur_fmea = next((f for f in data2.get("fmeas", []) if f["name"] == name), None)
