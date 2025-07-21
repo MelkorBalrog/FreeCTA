@@ -875,10 +875,19 @@ class ReviewDocumentDialog(tk.Toplevel):
                 ss_segments = [("Safe State: ", "black")] + self.diff_segments(
                     old_data.get('safe_state', ''), new_data.get('safe_state', '')
                 )
-                req_segments = [("Reqs: ", "black")] + self.diff_segments(
-                    req_lines(old_data.get("safety_requirements", [])),
-                    req_lines(new_data.get("safety_requirements", [])),
+                dummy = type('obj', (), {})()
+                dummy.fta_ids = [n.unique_id]
+                dummy.fmea_names = []
+                seg_lines = self.app.build_requirement_diff_segments(
+                    dummy, base_data=data1, current_data=data2
                 )
+                req_segments = [("Reqs: ", "black")]
+                first = True
+                for seg in seg_lines:
+                    if not first:
+                        req_segments.append(("\n", "black"))
+                    first = False
+                    req_segments.extend(seg)
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
@@ -891,9 +900,19 @@ class ReviewDocumentDialog(tk.Toplevel):
                     "Safe State: " + getattr(source, 'safe_state', ''),
                     "black",
                 )]
-                req_segments = [
-                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
-                ]
+                dummy = type('obj', (), {})()
+                dummy.fta_ids = [n.unique_id]
+                dummy.fmea_names = []
+                seg_lines = self.app.build_requirement_diff_segments(
+                    dummy, base_data=data1, current_data=data2
+                )
+                req_segments = [("Reqs: ", "black")]
+                first = True
+                for seg in seg_lines:
+                    if not first:
+                        req_segments.append(("\n", "black"))
+                    first = False
+                    req_segments.extend(seg)
 
             segments = [
                 (f"Type: {source.node_type}\n", "black"),
@@ -1566,10 +1585,19 @@ class VersionCompareDialog(tk.Toplevel):
                 ss_segments = [("Safe State: ", "black")] + self.diff_segments(
                     old_data.get('safe_state', ''), new_data.get('safe_state', '')
                 )
-                req_segments = [("Reqs: ", "black")] + self.diff_segments(
-                    req_lines(old_data.get("safety_requirements", [])),
-                    req_lines(new_data.get("safety_requirements", [])),
+                dummy = type('obj', (), {})()
+                dummy.fta_ids = [n.unique_id]
+                dummy.fmea_names = []
+                seg_lines = self.app.build_requirement_diff_segments(
+                    dummy, base_data=data1, current_data=data2
                 )
+                req_segments = [("Reqs: ", "black")]
+                first = True
+                for seg in seg_lines:
+                    if not first:
+                        req_segments.append(("\n", "black"))
+                    first = False
+                    req_segments.extend(seg)
             else:
                 desc_segments = [("Desc: " + source.description, "black")]
                 rat_segments = [("Rationale: " + source.rationale, "black")]
@@ -1581,9 +1609,19 @@ class VersionCompareDialog(tk.Toplevel):
                     "Safe State: " + getattr(source, 'safe_state', ''),
                     "black",
                 )]
-                req_segments = [
-                    ("Reqs: " + req_lines(getattr(source, "safety_requirements", [])), "black")
-                ]
+                dummy = type('obj', (), {})()
+                dummy.fta_ids = [n.unique_id]
+                dummy.fmea_names = []
+                seg_lines = self.app.build_requirement_diff_segments(
+                    dummy, base_data=data1, current_data=data2
+                )
+                req_segments = [("Reqs: ", "black")]
+                first = True
+                for seg in seg_lines:
+                    if not first:
+                        req_segments.append(("\n", "black"))
+                    first = False
+                    req_segments.extend(seg)
 
             segments = [
                 (f"Type: {source.node_type}\n", "black"),
