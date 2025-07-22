@@ -295,11 +295,24 @@ class MissionProfile:
     name: str
     tau_on: float = 0.0
     tau_off: float = 0.0
-    temperature: float = 25.0
+    board_temp: float = 25.0
+    board_temp_min: float = 25.0
+    board_temp_max: float = 25.0
+    ambient_temp: float = 25.0
+    ambient_temp_min: float = 25.0
+    ambient_temp_max: float = 25.0
     humidity: float = 50.0
-    environment: str = ""
     duty_cycle: float = 1.0
     notes: str = ""
+
+    @property
+    def temperature(self) -> float:
+        """Alias for backward compatibility (returns board temperature)."""
+        return self.board_temp
+
+    @temperature.setter
+    def temperature(self, value: float) -> None:
+        self.board_temp = value
 
     @property
     def tau(self) -> float:
@@ -334,104 +347,175 @@ COMPONENT_ATTR_TEMPLATES = {
         "dielectric": ["ceramic", "electrolytic", "tantalum"],
         "capacitance_uF": "",
         "voltage_V": "",
+        "esr_ohm": "",
+        "tolerance_pct": "",
     },
-    "resistor": {"resistance_ohm": "", "power_W": ""},
-    "inductor": {"inductance_H": "", "current_A": ""},
-    "diode": {"type": ["standard", "zener", "schottky"], "reverse_V": ""},
-    "transistor": {"transistor_type": ["BJT", "MOSFET"], "pins": ""},
-    "ic": {"type": ["digital", "analog", "mcu"], "pins": ""},
+    "resistor": {
+        "resistance_ohm": "",
+        "power_W": "",
+        "tolerance_pct": "",
+    },
+    "inductor": {
+        "inductance_H": "",
+        "current_A": "",
+        "saturation_A": "",
+    },
+    "diode": {
+        "type": ["standard", "zener", "schottky"],
+        "reverse_V": "",
+        "forward_current_A": "",
+    },
+    "transistor": {
+        "transistor_type": ["BJT", "MOSFET"],
+        "pins": "",
+        "voltage_V": "",
+        "current_A": "",
+    },
+    "ic": {
+        "type": ["digital", "analog", "mcu"],
+        "pins": "",
+        "transistors": "",
+    },
     "connector": {"pins": ""},
-    "relay": {"cycles": "", "current_A": ""},
-    "switch": {"cycles": "", "current_A": ""},
+    "relay": {"cycles": "", "current_A": "", "voltage_V": ""},
+    "switch": {"cycles": "", "current_A": "", "voltage_V": ""},
 }
 
 RELIABILITY_MODELS = {
     "IEC 62380": {
         "capacitor": {
-            "text": "Base*(1+T/100)*Duty (base=0.02 ceramic, 0.04 electrolytic)",
+            "text": "Base*(1+T/100)*Duty*(1+V/100)",
             "formula": lambda a, mp: (0.02 if a.get("dielectric", "ceramic") == "ceramic" else 0.04)
-            * (1 + mp.temperature / 100.0)
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("voltage_V", 0)) / 100.0)
             * mp.duty_cycle,
         },
         "resistor": {
-            "text": "0.005*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.005 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.005*(1+T/100)*Duty*(1+P/10)",
+            "formula": lambda a, mp: 0.005
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("power_W", 0)) / 10.0)
+            * mp.duty_cycle,
         },
         "inductor": {
-            "text": "0.004*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.004 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.004*(1+T/100)*Duty*(1+I/10)",
+            "formula": lambda a, mp: 0.004
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("current_A", 0)) / 10.0)
+            * mp.duty_cycle,
         },
         "diode": {
-            "text": "0.008*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.008 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.008*(1+T/100)*Duty*(1+VR/100)",
+            "formula": lambda a, mp: 0.008
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("reverse_V", 0)) / 100.0)
+            * mp.duty_cycle,
         },
         "transistor": {
-            "text": "Base*(1+T/100)*Duty (base=0.01 BJT, 0.012 MOSFET)",
+            "text": "Base*(1+T/100)*Duty*(1+I/10) (base=0.01 BJT, 0.012 MOSFET)",
             "formula": lambda a, mp: (0.01 if a.get("transistor_type", "BJT") == "BJT" else 0.012)
-            * (1 + mp.temperature / 100.0)
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("current_A", 0)) / 10.0)
             * mp.duty_cycle,
         },
         "ic": {
-            "text": "Base*(1+T/100)*Duty*(1+pins/1000) (base=0.04 analog, 0.03 digital, 0.05 MCU)",
+            "text": "Base*(1+T/100)*Duty*(1+pins/1000)*(1+trans/1e6) (base=0.04 analog, 0.03 digital, 0.05 MCU)",
             "formula": lambda a, mp: (0.04 if a.get("type", "digital") == "analog" else 0.05 if a.get("type") == "mcu" else 0.03)
-            * (1 + mp.temperature / 100.0)
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
             * mp.duty_cycle
-            * (1 + float(a.get("pins", 0)) / 1000.0),
+            * (1 + float(a.get("pins", 0)) / 1000.0)
+            * (1 + float(a.get("transistors", 0)) / 1_000_000.0),
         },
         "connector": {
-            "text": "0.002*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.002 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.002*(1+T/100)*Duty*(1+pins/100)",
+            "formula": lambda a, mp: 0.002
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("pins", 0)) / 100.0)
+            * mp.duty_cycle,
         },
         "relay": {
-            "text": "0.03*(1+T/100)*Duty*(cycles/1e6)",
-            "formula": lambda a, mp: 0.03 * (1 + mp.temperature / 100.0) * mp.duty_cycle * (float(a.get("cycles", 1e6)) / 1e6),
+            "text": "0.03*(1+T/100)*Duty*(cycles/1e6)*(1+I/10)",
+            "formula": lambda a, mp: 0.03
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * mp.duty_cycle
+            * (float(a.get("cycles", 1e6)) / 1e6)
+            * (1 + float(a.get("current_A", 0)) / 10.0),
         },
         "switch": {
-            "text": "0.02*(1+T/100)*Duty*(cycles/1e6)",
-            "formula": lambda a, mp: 0.02 * (1 + mp.temperature / 100.0) * mp.duty_cycle * (float(a.get("cycles", 1e6)) / 1e6),
+            "text": "0.02*(1+T/100)*Duty*(cycles/1e6)*(1+I/10)",
+            "formula": lambda a, mp: 0.02
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * mp.duty_cycle
+            * (float(a.get("cycles", 1e6)) / 1e6)
+            * (1 + float(a.get("current_A", 0)) / 10.0),
         },
     },
     "SN 29500": {
         "capacitor": {
-            "text": "0.03*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.03 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.03*(1+T/100)*Duty*(1+V/100)",
+            "formula": lambda a, mp: 0.03
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("voltage_V", 0)) / 100.0)
+            * mp.duty_cycle,
         },
         "resistor": {
-            "text": "0.006*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.006 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.006*(1+T/100)*Duty*(1+P/10)",
+            "formula": lambda a, mp: 0.006
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("power_W", 0)) / 10.0)
+            * mp.duty_cycle,
         },
         "inductor": {
-            "text": "0.005*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.005 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.005*(1+T/100)*Duty*(1+I/10)",
+            "formula": lambda a, mp: 0.005
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("current_A", 0)) / 10.0)
+            * mp.duty_cycle,
         },
         "diode": {
-            "text": "0.009*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.009 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.009*(1+T/100)*Duty*(1+VR/100)",
+            "formula": lambda a, mp: 0.009
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("reverse_V", 0)) / 100.0)
+            * mp.duty_cycle,
         },
         "transistor": {
-            "text": "Base*(1+T/100)*Duty (base=0.012 BJT, 0.014 MOSFET)",
+            "text": "Base*(1+T/100)*Duty*(1+I/10) (base=0.012 BJT, 0.014 MOSFET)",
             "formula": lambda a, mp: (0.012 if a.get("transistor_type", "BJT") == "BJT" else 0.014)
-            * (1 + mp.temperature / 100.0)
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("current_A", 0)) / 10.0)
             * mp.duty_cycle,
         },
         "ic": {
-            "text": "Base*(1+T/100)*Duty*(1+pins/1000) (base=0.05 analog, 0.04 digital, 0.06 MCU)",
+            "text": "Base*(1+T/100)*Duty*(1+pins/1000)*(1+trans/1e6) (base=0.05 analog, 0.04 digital, 0.06 MCU)",
             "formula": lambda a, mp: (0.05 if a.get("type", "digital") == "analog" else 0.06 if a.get("type") == "mcu" else 0.04)
-            * (1 + mp.temperature / 100.0)
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
             * mp.duty_cycle
-            * (1 + float(a.get("pins", 0)) / 1000.0),
+            * (1 + float(a.get("pins", 0)) / 1000.0)
+            * (1 + float(a.get("transistors", 0)) / 1_000_000.0),
         },
         "connector": {
-            "text": "0.003*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.003 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.003*(1+T/100)*Duty*(1+pins/100)",
+            "formula": lambda a, mp: 0.003
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("pins", 0)) / 100.0)
+            * mp.duty_cycle,
         },
         "relay": {
-            "text": "0.035*(1+T/100)*Duty*(cycles/1e6)",
-            "formula": lambda a, mp: 0.035 * (1 + mp.temperature / 100.0) * mp.duty_cycle * (float(a.get("cycles", 1e6)) / 1e6),
+            "text": "0.035*(1+T/100)*Duty*(cycles/1e6)*(1+I/10)",
+            "formula": lambda a, mp: 0.035
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * mp.duty_cycle
+            * (float(a.get("cycles", 1e6)) / 1e6)
+            * (1 + float(a.get("current_A", 0)) / 10.0),
         },
         "switch": {
-            "text": "0.025*(1+T/100)*Duty*(cycles/1e6)",
-            "formula": lambda a, mp: 0.025 * (1 + mp.temperature / 100.0) * mp.duty_cycle * (float(a.get("cycles", 1e6)) / 1e6),
+            "text": "0.025*(1+T/100)*Duty*(cycles/1e6)*(1+I/10)",
+            "formula": lambda a, mp: 0.025
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * mp.duty_cycle
+            * (float(a.get("cycles", 1e6)) / 1e6)
+            * (1 + float(a.get("current_A", 0)) / 10.0),
         },
     },
 }
@@ -8826,7 +8910,10 @@ class FaultTreeApp:
         def refresh():
             listbox.delete(0, tk.END)
             for mp in self.mission_profiles:
-                info = f"{mp.name} (on: {mp.tau_on}h, off: {mp.tau_off}h, {mp.environment}, {mp.temperature}\u00b0C)"
+                info = (
+                    f"{mp.name} (on: {mp.tau_on}h, off: {mp.tau_off}h, "
+                    f"board: {mp.board_temp}\u00b0C, ambient: {mp.ambient_temp}\u00b0C)"
+                )
                 listbox.insert(tk.END, info)
 
         class MPDialog(simpledialog.Dialog):
@@ -8840,9 +8927,13 @@ class FaultTreeApp:
                     ("Name", "name"),
                     ("TAU On (h)", "tau_on"),
                     ("TAU Off (h)", "tau_off"),
-                    ("Temperature (\u00b0C)", "temperature"),
+                    ("Board Temp (\u00b0C)", "board_temp"),
+                    ("Board Temp Min (\u00b0C)", "board_temp_min"),
+                    ("Board Temp Max (\u00b0C)", "board_temp_max"),
+                    ("Ambient Temp (\u00b0C)", "ambient_temp"),
+                    ("Ambient Temp Min (\u00b0C)", "ambient_temp_min"),
+                    ("Ambient Temp Max (\u00b0C)", "ambient_temp_max"),
                     ("Humidity (%)", "humidity"),
-                    ("Environment", "environment"),
                     ("Duty Cycle", "duty_cycle"),
                     ("Notes", "notes"),
                 ]
@@ -8861,9 +8952,13 @@ class FaultTreeApp:
                         vals["name"],
                         float(vals["tau_on"] or 0.0),
                         float(vals["tau_off"] or 0.0),
-                        float(vals["temperature"] or 25.0),
+                        float(vals["board_temp"] or 25.0),
+                        float(vals["board_temp_min"] or 25.0),
+                        float(vals["board_temp_max"] or 25.0),
+                        float(vals["ambient_temp"] or 25.0),
+                        float(vals["ambient_temp_min"] or 25.0),
+                        float(vals["ambient_temp_max"] or 25.0),
                         float(vals["humidity"] or 50.0),
-                        vals["environment"],
                         float(vals["duty_cycle"] or 1.0),
                         vals["notes"],
                     )
@@ -8872,9 +8967,13 @@ class FaultTreeApp:
                     self.mp.name = vals["name"]
                     self.mp.tau_on = float(vals["tau_on"] or 0.0)
                     self.mp.tau_off = float(vals["tau_off"] or 0.0)
-                    self.mp.temperature = float(vals["temperature"] or 25.0)
+                    self.mp.board_temp = float(vals["board_temp"] or 25.0)
+                    self.mp.board_temp_min = float(vals["board_temp_min"] or 25.0)
+                    self.mp.board_temp_max = float(vals["board_temp_max"] or 25.0)
+                    self.mp.ambient_temp = float(vals["ambient_temp"] or 25.0)
+                    self.mp.ambient_temp_min = float(vals["ambient_temp_min"] or 25.0)
+                    self.mp.ambient_temp_max = float(vals["ambient_temp_max"] or 25.0)
                     self.mp.humidity = float(vals["humidity"] or 50.0)
-                    self.mp.environment = vals["environment"]
                     self.mp.duty_cycle = float(vals["duty_cycle"] or 1.0)
                     self.mp.notes = vals["notes"]
                     self.result = self.mp
