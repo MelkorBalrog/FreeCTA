@@ -9351,8 +9351,7 @@ class FaultTreeApp:
                             ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=5, pady=5)
                         self.vars[k] = var
                         row += 1
-                    
-
+                        
                 def apply(self):
                     for k, v in self.vars.items():
                         comp.attributes[k] = v.get()
@@ -9453,9 +9452,6 @@ class FaultTreeApp:
                     text=f"Total FIT: {ra.total_fit:.2f}  DC: {ra.dc:.2f}  SPFM: {ra.spfm:.2f}  LPFM: {ra.lpfm:.2f}"
                 )
             ttk.Button(win, text="Load", command=do_load).pack(side=tk.RIGHT, padx=5, pady=5)
-
-
-
 
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
