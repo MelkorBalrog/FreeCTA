@@ -367,11 +367,31 @@ class MechanismLibrary:
 
 # Complete list of diagnostic mechanisms from ISO 26262-5:2018 Annex D
 ANNEX_D_MECHANISMS = [
-    DiagnosticMechanism("CRC", 0.99, "Cyclic redundancy check"),
-    DiagnosticMechanism("Watchdog", 0.9, "Execution supervision"),
-    DiagnosticMechanism("Parity", 0.8, "Parity checks"),
-    DiagnosticMechanism("Heartbeat", 0.85, "Temporal monitoring"),
-    DiagnosticMechanism("Range check", 0.9, "Range/limit check"),
+    DiagnosticMechanism(
+        "CRC",
+        0.99,
+        "Information redundancy using cyclic redundancy codes to detect data corruption during communication.",
+    ),
+    DiagnosticMechanism(
+        "Watchdog",
+        0.9,
+        "Independent timer supervising program flow and triggering a safe state if not refreshed as expected.",
+    ),
+    DiagnosticMechanism(
+        "Parity",
+        0.8,
+        "Single-bit hardware redundancy to detect odd-bit errors in a data stream.",
+    ),
+    DiagnosticMechanism(
+        "Heartbeat",
+        0.85,
+        "Regular status message used to ensure communication peers are alive and responsive.",
+    ),
+    DiagnosticMechanism(
+        "Range check",
+        0.9,
+        "Verification that signal values stay within predefined valid limits.",
+    ),
     DiagnosticMechanism(
         "Failure detection by on-line monitoring",
         0.6,
@@ -2154,6 +2174,13 @@ class EditNodeDialog(simpledialog.Dialog):
             self.prob_entry.grid(row=row_next, column=1, padx=5, pady=5)
             row_next += 1
 
+            ttk.Label(master, text="Probability Formula:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+            self.formula_var = tk.StringVar(value=getattr(self.node, 'prob_formula', 'linear'))
+            ttk.Combobox(master, textvariable=self.formula_var,
+                         values=['linear', 'exponential', 'constant'],
+                         state='readonly', width=12).grid(row=row_next, column=1, padx=5, pady=5, sticky='w')
+            row_next += 1
+
             if not hasattr(self.node, "safety_requirements"):
                 self.node.safety_requirements = []
             ttk.Label(master, text="Safety Requirements:").grid(row=row_next, column=0, padx=5, pady=5, sticky="ne")
@@ -2571,6 +2598,7 @@ class EditNodeDialog(simpledialog.Dialog):
                 if prob < 0:
                     raise ValueError
                 target_node.failure_prob = prob
+                target_node.prob_formula = self.formula_var.get()
             except ValueError:
                 messagebox.showerror("Invalid Input", "Enter a valid probability")
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
@@ -2714,6 +2742,8 @@ class FaultTreeApp:
         view_menu.add_command(label="Requirements Matrix", command=self.show_requirements_matrix)
         view_menu.add_command(label="FTA-FMEA Traceability", command=self.show_traceability_matrix)
         view_menu.add_command(label="Safety Goals Matrix", command=self.show_safety_goals_matrix)
+        view_menu.add_command(label="FTA Cut Sets", command=self.show_cut_sets)
+        view_menu.add_command(label="Common Cause Toolbox", command=self.show_common_cause_view)
         menubar.add_cascade(label="View", menu=view_menu)
         review_menu = tk.Menu(menubar, tearoff=0)
         review_menu.add_command(label="Start Peer Review", command=self.start_peer_review)
@@ -7838,6 +7868,24 @@ class FaultTreeApp:
             else:
                 self.canvas.delete("all")
 
+    def update_basic_event_probabilities(self):
+        if not self.mission_profiles:
+            return
+        mp = self.mission_profiles[0]
+        t = mp.tau
+        for be in self.get_all_basic_events():
+            fit = getattr(be, "fmeda_fit", 0.0)
+            if fit <= 0:
+                continue
+            lam = fit / 1e9
+            formula = getattr(be, "prob_formula", "linear")
+            if formula == "exponential":
+                be.failure_prob = 1 - math.exp(-lam * t)
+            elif formula == "constant":
+                be.failure_prob = lam
+            else:
+                be.failure_prob = lam * t
+
     def insert_node_in_tree(self, parent_item, node):
         # If the node has no parent (i.e. it's a top-level event), display it.
         if not node.parents or node.node_type.upper() == "TOP EVENT" or node.is_page:
@@ -8235,7 +8283,8 @@ class FaultTreeApp:
         if total_fit == 0.0:
             messagebox.showwarning("PMHF", "Run reliability analysis first")
             return
-        pmhf = total_fit * 1e-9
+        self.update_basic_event_probabilities()
+        pmhf = (self.spfm + self.lpfm) * 1e-9
         for te in self.top_events:
             te.probability = pmhf
         self.update_views()
@@ -9369,6 +9418,93 @@ class FaultTreeApp:
                     seen.add(rid)
                     writer.writerow([sg_text, sg_asil, te.safe_state, rid, req.get("asil", ""), req.get("text", "")])
         messagebox.showinfo("Export", "Safety goal requirements exported.")
+
+    def show_cut_sets(self):
+        if not self.top_events:
+            return
+        te = self.top_events[0]
+        cut_sets = self.calculate_cut_sets(te)
+        win = tk.Toplevel(self.root)
+        win.title("FTA Cut Sets")
+        tree = ttk.Treeview(win, columns=["Cut Set"], show="headings")
+        tree.heading("Cut Set", text="Basic Events")
+        tree.pack(fill=tk.BOTH, expand=True)
+        for cs in cut_sets:
+            names = ", ".join(str(uid) for uid in sorted(cs))
+            tree.insert("", "end", values=[names])
+
+        def export_csv():
+            path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+            if not path:
+                return
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["Cut Set"])
+                for cs in cut_sets:
+                    writer.writerow([", ".join(str(uid) for uid in sorted(cs))])
+            messagebox.showinfo("Export", "Cut sets exported")
+
+        ttk.Button(win, text="Export CSV", command=export_csv).pack(pady=5)
+
+    def show_common_cause_view(self):
+        win = tk.Toplevel(self.root)
+        win.title("Common Cause Toolbox")
+        var_fmea = tk.BooleanVar(value=True)
+        var_fmeda = tk.BooleanVar(value=True)
+        var_fta = tk.BooleanVar(value=True)
+        chk_frame = ttk.Frame(win)
+        chk_frame.pack(anchor="w")
+        ttk.Checkbutton(chk_frame, text="FMEA", variable=var_fmea).pack(side=tk.LEFT)
+        ttk.Checkbutton(chk_frame, text="FMEDA", variable=var_fmeda).pack(side=tk.LEFT)
+        ttk.Checkbutton(chk_frame, text="FTA", variable=var_fta).pack(side=tk.LEFT)
+        tree = ttk.Treeview(win, columns=["Fault", "Count", "Sources"], show="headings")
+        for c in ["Fault", "Count", "Sources"]:
+            tree.heading(c, text=c)
+            tree.column(c, width=150)
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        def refresh():
+            tree.delete(*tree.get_children())
+            counts = {}
+            srcs = {}
+            if var_fmea.get():
+                for fmea in self.fmeas:
+                    for be in fmea["entries"]:
+                        key = be.description
+                        counts[key] = counts.get(key, 0) + 1
+                        srcs.setdefault(key, set()).add("FMEA")
+            if var_fmeda.get():
+                for fmeda in self.fmedas:
+                    for be in fmeda["entries"]:
+                        key = be.description
+                        counts[key] = counts.get(key, 0) + 1
+                        srcs.setdefault(key, set()).add("FMEDA")
+            if var_fta.get():
+                for be in self.get_all_basic_events():
+                    key = be.description or be.user_name
+                    counts[key] = counts.get(key, 0) + 1
+                    srcs.setdefault(key, set()).add("FTA")
+            for k, cnt in counts.items():
+                if cnt > 1:
+                    tree.insert("", "end", values=[k, cnt, ", ".join(sorted(srcs[k]))])
+
+        refresh()
+
+        def export_csv():
+            path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+            if not path:
+                return
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["Fault", "Count", "Sources"])
+                for iid in tree.get_children():
+                    writer.writerow(tree.item(iid, "values"))
+            messagebox.showinfo("Export", "Common cause data exported")
+
+        btn_frame = ttk.Frame(win)
+        btn_frame.pack()
+        ttk.Button(btn_frame, text="Refresh", command=refresh).pack(side=tk.LEFT, padx=5, pady=5)
+        ttk.Button(btn_frame, text="Export CSV", command=export_csv).pack(side=tk.LEFT, padx=5, pady=5)
 
     def manage_mission_profiles(self):
         win = tk.Toplevel(self.root)
@@ -11525,6 +11661,8 @@ class FaultTreeNode:
         # Probability values for classical FTA calculations
         self.failure_prob = 0.0
         self.probability = 0.0
+        # Formula used to derive probability from FIT rate
+        self.prob_formula = "linear"  # linear, exponential, or constant
 
     @property
     def name(self):
@@ -11571,6 +11709,7 @@ class FaultTreeNode:
             "safety_requirements": self.safety_requirements,
             "failure_prob": self.failure_prob,
             "probability": self.probability,
+            "prob_formula": self.prob_formula,
             "children": [child.to_dict() for child in self.children]
         }
         if not self.is_primary_instance and self.original and (self.original.unique_id != self.unique_id):
@@ -11618,6 +11757,7 @@ class FaultTreeNode:
         node.safety_requirements = data.get("safety_requirements", [])
         node.failure_prob = data.get("failure_prob", 0.0)
         node.probability = data.get("probability", 0.0)
+        node.prob_formula = data.get("prob_formula", "linear")
         node.display_label = ""
         node.equation = ""
         node.detailed_equation = ""
