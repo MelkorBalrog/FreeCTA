@@ -8747,16 +8747,20 @@ class FaultTreeApp:
                 be.failure_prob = lam * t
 
     def update_basic_event_probabilities(self):
+        """Update failure probability for each basic event from its FIT rate."""
         if not self.mission_profiles:
             return
         mp = self.mission_profiles[0]
         t = mp.tau
         for be in self.get_all_basic_events():
-            fit = getattr(be, "fmeda_fit", 0.0)
+            fm = self.get_failure_mode_node(be)
+            fit = getattr(be, "fmeda_fit", None)
+            if fit is None or fit == 0.0:
+                fit = getattr(fm, "fmeda_fit", 0.0)
             if fit <= 0:
                 continue
             lam = fit / 1e9
-            formula = getattr(be, "prob_formula", "linear")
+            formula = getattr(be, "prob_formula", getattr(fm, "prob_formula", "linear"))
             if formula == "exponential":
                 be.failure_prob = 1 - math.exp(-lam * t)
             elif formula == "constant":
@@ -9281,8 +9285,11 @@ class FaultTreeApp:
         spf = 0.0
         lpf = 0.0
         for be in self.get_all_basic_events():
-            fit = getattr(be, "fmeda_fit", 0.0)
-            dc = getattr(be, "fmeda_diag_cov", 0.0)
+            fm = self.get_failure_mode_node(be)
+            fit = getattr(be, "fmeda_fit", None)
+            if fit is None or fit == 0.0:
+                fit = getattr(fm, "fmeda_fit", 0.0)
+            dc = getattr(be, "fmeda_diag_cov", getattr(fm, "fmeda_diag_cov", 0.0))
             if be.fmeda_fault_type == "permanent":
                 spf += fit * (1 - dc)
             else:
