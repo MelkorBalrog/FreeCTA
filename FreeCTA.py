@@ -365,6 +365,245 @@ class MechanismLibrary:
     name: str
     mechanisms: list = field(default_factory=list)
 
+# Complete list of diagnostic mechanisms from ISO 26262-5:2018 Annex D
+ANNEX_D_MECHANISMS = [
+    DiagnosticMechanism(
+        "CRC",
+        0.99,
+        "Information redundancy using cyclic redundancy codes to detect data corruption during communication.",
+    ),
+    DiagnosticMechanism(
+        "Watchdog",
+        0.9,
+        "Independent timer supervising program flow and triggering a safe state if not refreshed as expected.",
+    ),
+    DiagnosticMechanism(
+        "Parity",
+        0.8,
+        "Single-bit hardware redundancy to detect odd-bit errors in a data stream.",
+    ),
+    DiagnosticMechanism(
+        "Heartbeat",
+        0.85,
+        "Regular status message used to ensure communication peers are alive and responsive.",
+    ),
+    DiagnosticMechanism(
+        "Range check",
+        0.9,
+        "Verification that signal values stay within predefined valid limits.",
+    ),
+    DiagnosticMechanism(
+        "Failure detection by on-line monitoring",
+        0.6,
+        "D.2.1.1 Detect failures by monitoring system behaviour during operation.",
+    ),
+    DiagnosticMechanism(
+        "Comparator",
+        0.9,
+        "D.2.1.2 Compare outputs of independent channels to detect discrepancies.",
+    ),
+    DiagnosticMechanism(
+        "Majority voter",
+        0.9,
+        "D.2.1.3 Use majority voting to mask and detect channel failures.",
+    ),
+    DiagnosticMechanism(
+        "Dynamic principles",
+        0.75,
+        "D.2.2.1 Force change of static signals to detect failures.",
+    ),
+    DiagnosticMechanism(
+        "Analogue monitoring of digital signals",
+        0.6,
+        "D.2.2.2 Evaluate digital signals on an analogue level to detect illegal values.",
+    ),
+    DiagnosticMechanism(
+        "Self-test by software cross exchange",
+        0.75,
+        "D.2.3.3 Independent units perform self-tests and exchange results.",
+    ),
+    DiagnosticMechanism(
+        "Failure detection by on-line monitoring (electrical)",
+        0.9,
+        "Table D.3 Monitor electrical elements during operation.",
+    ),
+    DiagnosticMechanism(
+        "Self-test by software (limited patterns)",
+        0.75,
+        "D.2.3.1 Software self-test using limited patterns.",
+    ),
+    DiagnosticMechanism(
+        "Self-test supported by hardware",
+        0.75,
+        "D.2.3.2 Hardware assisted self-test for processing units.",
+    ),
+    DiagnosticMechanism(
+        "Software diversified redundancy",
+        0.9,
+        "D.2.3.4 Two diverse software implementations in one channel.",
+    ),
+    DiagnosticMechanism(
+        "Reciprocal comparison by software",
+        0.9,
+        "D.2.3.5 Two units exchange and compare results.",
+    ),
+    DiagnosticMechanism(
+        "HW redundancy",
+        0.9,
+        "D.2.3.6 Redundant hardware such as dual core lockstep.",
+    ),
+    DiagnosticMechanism(
+        "Configuration register test",
+        0.9,
+        "D.2.3.7 Verify configuration registers against expected values.",
+    ),
+    DiagnosticMechanism(
+        "Stack over/under flow detection",
+        0.6,
+        "D.2.3.8 Detect violations of stack boundaries.",
+    ),
+    DiagnosticMechanism(
+        "Integrated hardware consistency monitoring",
+        0.9,
+        "D.2.3.9 Use processor hardware exceptions to detect illegal conditions.",
+    ),
+    DiagnosticMechanism(
+        "Failure detection by on-line monitoring (I/O)",
+        0.6,
+        "Table D.5 Monitor digital I/O during operation.",
+    ),
+    DiagnosticMechanism(
+        "Test pattern",
+        0.9,
+        "D.2.4.1 Cyclical test of I/O or sensors using known patterns.",
+    ),
+    DiagnosticMechanism(
+        "Code protection for digital I/O",
+        0.75,
+        "D.2.4.2 Use information or time redundancy on I/O signals.",
+    ),
+    DiagnosticMechanism(
+        "Multi-channel parallel output",
+        0.9,
+        "D.2.4.3 Independent outputs compared externally.",
+    ),
+    DiagnosticMechanism(
+        "Monitored outputs",
+        0.9,
+        "D.2.4.4 Compare outputs with independent inputs within a tolerance range.",
+    ),
+    DiagnosticMechanism(
+        "Input comparison/voting",
+        0.9,
+        "D.2.4.5 Compare redundant inputs (1oo2, 2oo3, etc.).",
+    ),
+    DiagnosticMechanism(
+        "One-bit hardware redundancy",
+        0.6,
+        "D.2.5.1 Parity bit to detect odd-bit failures on a bus.",
+    ),
+    DiagnosticMechanism(
+        "Multi-bit hardware redundancy",
+        0.75,
+        "D.2.5.2 Block codes such as CRC or Hamming.",
+    ),
+    DiagnosticMechanism(
+        "Read back of sent message",
+        0.75,
+        "D.2.5.9 Transmitter reads message from bus for comparison.",
+    ),
+    DiagnosticMechanism(
+        "Complete hardware redundancy",
+        0.9,
+        "D.2.5.3 Duplicate bus channels for comparison.",
+    ),
+    DiagnosticMechanism(
+        "Inspection using test patterns",
+        0.9,
+        "D.2.5.4 Cyclical test of data paths with predefined patterns.",
+    ),
+    DiagnosticMechanism(
+        "Transmission redundancy",
+        0.75,
+        "D.2.5.5 Send information several times in sequence.",
+    ),
+    DiagnosticMechanism(
+        "Information redundancy",
+        0.75,
+        "D.2.5.6 Attach checksum or CRC to transmitted data.",
+    ),
+    DiagnosticMechanism(
+        "Frame counter",
+        0.75,
+        "D.2.5.7 Counter in each frame to detect loss or non-refreshment.",
+    ),
+    DiagnosticMechanism(
+        "Timeout monitoring",
+        0.75,
+        "D.2.5.8 Monitor time between received messages.",
+    ),
+    DiagnosticMechanism(
+        "Combined comm. monitoring",
+        0.9,
+        "Combination of information redundancy, frame counter and timeout monitoring (D.2.5.6-8).",
+    ),
+    DiagnosticMechanism(
+        "Voltage or current control (input)",
+        0.6,
+        "D.2.6.1 Monitor input voltage or current values.",
+    ),
+    DiagnosticMechanism(
+        "Voltage or current control (output)",
+        0.9,
+        "D.2.6.2 Monitor output voltage or current values.",
+    ),
+    DiagnosticMechanism(
+        "Watchdog without time-window",
+        0.6,
+        "D.2.7.1 External watchdog triggered periodically.",
+    ),
+    DiagnosticMechanism(
+        "Watchdog with time-window",
+        0.75,
+        "D.2.7.2 Watchdog with lower and upper triggering limits.",
+    ),
+    DiagnosticMechanism(
+        "Logical programme sequence monitoring",
+        0.75,
+        "D.2.7.3 Monitor correct sequence of programme sections.",
+    ),
+    DiagnosticMechanism(
+        "Temporal and logical monitoring",
+        0.9,
+        "D.2.7.4 Combine temporal facilities with logical checks.",
+    ),
+    DiagnosticMechanism(
+        "Temporal, logical monitoring with time dependency",
+        0.9,
+        "D.2.7.5 Programme flow monitoring with relative time windows.",
+    ),
+    DiagnosticMechanism(
+        "Sensor valid range",
+        0.6,
+        "D.2.8.1 Detect sensor shorts or opens using out-of-range values.",
+    ),
+    DiagnosticMechanism(
+        "Sensor correlation",
+        0.9,
+        "D.2.8.2 Compare redundant sensors for drift or offsets.",
+    ),
+    DiagnosticMechanism(
+        "Sensor rationality check",
+        0.75,
+        "D.2.8.3 Compare diverse sensors using a model.",
+    ),
+    DiagnosticMechanism(
+        "Actuator monitoring",
+        0.9,
+        "D.2.9.1 Monitor actuator operation or feedback for coherence.",
+    ),
+]
+
 COMPONENT_ATTR_TEMPLATES = {
     "capacitor": {
         "dielectric": ["ceramic", "electrolytic", "tantalum"],
@@ -549,6 +788,15 @@ ASIL_LEVEL_OPTIONS = [
     "QM", "QM(A)", "QM(B)", "QM(C)", "QM(D)",
     "A", "A(B)", "B", "B(C)", "C", "C(D)", "D"
 ]
+
+ASIL_ORDER = {"QM":0, "A":1, "B":2, "C":3, "D":4}
+ASIL_TARGETS = {
+    "D": {"spfm":0.99, "lpfm":0.90, "dc":0.99},
+    "C": {"spfm":0.97, "lpfm":0.90, "dc":0.97},
+    "B": {"spfm":0.90, "lpfm":0.60, "dc":0.90},
+    "A": {"spfm":0.0, "lpfm":0.0, "dc":0.0},
+    "QM": {"spfm":0.0, "lpfm":0.0, "dc":0.0},
+}
 dynamic_recommendations = {
     1: {
         "Testing Requirements": (
@@ -1935,6 +2183,13 @@ class EditNodeDialog(simpledialog.Dialog):
             self.prob_entry.grid(row=row_next, column=1, padx=5, pady=5)
             row_next += 1
 
+            ttk.Label(master, text="Probability Formula:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+            self.formula_var = tk.StringVar(value=getattr(self.node, 'prob_formula', 'linear'))
+            ttk.Combobox(master, textvariable=self.formula_var,
+                         values=['linear', 'exponential', 'constant'],
+                         state='readonly', width=12).grid(row=row_next, column=1, padx=5, pady=5, sticky='w')
+            row_next += 1
+
             if not hasattr(self.node, "safety_requirements"):
                 self.node.safety_requirements = []
             ttk.Label(master, text="Safety Requirements:").grid(row=row_next, column=0, padx=5, pady=5, sticky="ne")
@@ -2242,6 +2497,12 @@ class EditNodeDialog(simpledialog.Dialog):
             f"[{rid}] [{req.get('req_type','')}] [{req.get('asil','')}] {req.get('text','')}" +
             f" (Alloc: {alloc}; SGs: {goals})"
         )
+
+    def get_safety_goal_asil(self, sg_name):
+        for te in self.top_events:
+            if sg_name and (sg_name == te.user_name or sg_name == te.safety_goal_description):
+                return te.safety_goal_asil or "QM"
+        return "QM"
     
     def add_safety_requirement(self):
         """
@@ -2352,6 +2613,7 @@ class EditNodeDialog(simpledialog.Dialog):
                 if prob < 0:
                     raise ValueError
                 target_node.failure_prob = prob
+                target_node.prob_formula = self.formula_var.get()
             except ValueError:
                 messagebox.showerror("Invalid Input", "Enter a valid probability")
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
@@ -2466,6 +2728,7 @@ class FaultTreeApp:
         edit_menu.add_command(label="Add Robustness", command=lambda: self.add_node_of_type("Robustness Score"), accelerator="Ctrl+Shift+R")
         edit_menu.add_command(label="Add Gate", command=lambda: self.add_node_of_type("GATE"), accelerator="Ctrl+Shift+G")
         edit_menu.add_command(label="Add Basic Event", command=lambda: self.add_node_of_type("Basic Event"), accelerator="Ctrl+Shift+B")
+        edit_menu.add_command(label="Add FMEA/FMEDA Event", command=self.add_basic_event_from_fmea)
         edit_menu.add_command(label="Edit Selected", command=self.edit_selected)
         edit_menu.add_command(label="Remove Connection", command=lambda: self.remove_connection(self.selected_node) if self.selected_node else None)
         edit_menu.add_command(label="Delete Node", command=lambda: self.delete_node_and_subtree(self.selected_node) if self.selected_node else None)
@@ -2495,6 +2758,8 @@ class FaultTreeApp:
         view_menu.add_command(label="Requirements Matrix", command=self.show_requirements_matrix)
         view_menu.add_command(label="FTA-FMEA Traceability", command=self.show_traceability_matrix)
         view_menu.add_command(label="Safety Goals Matrix", command=self.show_safety_goals_matrix)
+        view_menu.add_command(label="FTA Cut Sets", command=self.show_cut_sets)
+        view_menu.add_command(label="Common Cause Toolbox", command=self.show_common_cause_view)
         menubar.add_cascade(label="View", menu=view_menu)
         review_menu = tk.Menu(menubar, tearoff=0)
         review_menu.add_command(label="Start Peer Review", command=self.start_peer_review)
@@ -7619,6 +7884,24 @@ class FaultTreeApp:
             else:
                 self.canvas.delete("all")
 
+    def update_basic_event_probabilities(self):
+        if not self.mission_profiles:
+            return
+        mp = self.mission_profiles[0]
+        t = mp.tau
+        for be in self.get_all_basic_events():
+            fit = getattr(be, "fmeda_fit", 0.0)
+            if fit <= 0:
+                continue
+            lam = fit / 1e9
+            formula = getattr(be, "prob_formula", "linear")
+            if formula == "exponential":
+                be.failure_prob = 1 - math.exp(-lam * t)
+            elif formula == "constant":
+                be.failure_prob = lam
+            else:
+                be.failure_prob = lam * t
+
     def insert_node_in_tree(self, parent_item, node):
         # If the node has no parent (i.e. it's a top-level event), display it.
         if not node.parents or node.node_type.upper() == "TOP EVENT" or node.is_page:
@@ -7949,6 +8232,46 @@ class FaultTreeApp:
         new_node.parents.append(parent_node)
         self.update_views()
 
+    def add_basic_event_from_fmea(self):
+        events = list(self.fmea_entries)
+        for doc in self.fmeas:
+            events.extend(doc.get("entries", []))
+        for doc in self.fmedas:
+            events.extend(doc.get("entries", []))
+        if not events:
+            messagebox.showinfo("No Failure Modes", "No FMEA or FMEDA failure modes available.")
+            return
+        dialog = self.SelectBaseEventDialog(self.root, events)
+        selected = dialog.selected
+        if not selected:
+            return
+        if self.selected_node:
+            parent_node = self.selected_node
+            if not parent_node.is_primary_instance:
+                messagebox.showwarning("Invalid Operation", "Cannot add to a clone node. Select the original.")
+                return
+        else:
+            sel = self.treeview.selection()
+            if not sel:
+                messagebox.showwarning("No selection", "Select a parent node to paste into.")
+                return
+            try:
+                node_id = int(self.treeview.item(sel[0], "tags")[0])
+            except (IndexError, ValueError):
+                messagebox.showwarning("No selection", "Select a parent node from the tree.")
+                return
+            parent_node = self.find_node_by_id_all(node_id)
+        if parent_node.node_type.upper() in ["CONFIDENCE LEVEL", "ROBUSTNESS SCORE", "BASIC EVENT"]:
+            messagebox.showwarning("Invalid", "Base events cannot have children.")
+            return
+        data = selected.to_dict()
+        data.pop("unique_id", None)
+        data["children"] = []
+        new_node = FaultTreeNode.from_dict(data, parent_node)
+        parent_node.children.append(new_node)
+        new_node.parents.append(parent_node)
+        self.update_views()
+
 
     def remove_node(self):
         sel = self.treeview.selection()
@@ -8012,17 +8335,23 @@ class FaultTreeApp:
         messagebox.showinfo("Calculation", results.strip())
 
     def calculate_pmfh(self):
-        total_fit = getattr(self, "reliability_total_fit", 0.0)
-        if total_fit == 0.0:
-            messagebox.showwarning("PMHF", "Run reliability analysis first")
-            return
-        pmhf = total_fit * 1e-9
+        self.update_basic_event_probabilities()
+        spf = 0.0
+        lpf = 0.0
+        for be in self.get_all_basic_events():
+            fit = getattr(be, "fmeda_fit", 0.0)
+            dc = getattr(be, "fmeda_diag_cov", 0.0)
+            if be.fmeda_fault_type == "permanent":
+                spf += fit * (1 - dc)
+            else:
+                lpf += fit * (1 - dc)
+        self.spfm = spf
+        self.lpfm = lpf
+        pmhf = (spf + lpf) * 1e-9
         for te in self.top_events:
             te.probability = pmhf
         self.update_views()
-        msg = (
-            f"PMHF = {pmhf:.2e}\nSPFM = {self.spfm:.2f}\nLPFM = {self.lpfm:.2f}"
-        )
+        msg = f"PMHF = {pmhf:.2e}\nSPFM = {spf:.2f}\nLPFM = {lpf:.2f}"
         messagebox.showinfo("PMHF Calculation", msg)
 
     def show_requirements_matrix(self):
@@ -8812,6 +9141,7 @@ class FaultTreeApp:
                 total = 0.0
                 spf = 0.0
                 lpf = 0.0
+                asil = "QM"
                 for be in events:
                     fit_mode = be.fmeda_fit
                     total += fit_mode
@@ -8819,11 +9149,27 @@ class FaultTreeApp:
                         spf += fit_mode * (1 - be.fmeda_diag_cov)
                     else:
                         lpf += fit_mode * (1 - be.fmeda_diag_cov)
+                    sg = getattr(be, "fmeda_safety_goal", "")
+                    a = self.get_safety_goal_asil(sg)
+                    if ASIL_ORDER.get(a,0) > ASIL_ORDER.get(asil,0):
+                        asil = a
                 dc = (total - (spf + lpf)) / total if total else 0.0
                 self.reliability_total_fit = total
                 self.spfm = spf
                 self.lpfm = lpf
-                metrics_lbl.config(text=f"Total FIT: {total:.2f}  DC: {dc:.2f}  SPFM: {spf:.2f}  LPFM: {lpf:.2f}")
+                spfm_metric = 1 - spf / total if total else 0.0
+                lpfm_metric = 1 - lpf / (total - spf) if total > spf else 0.0
+                thresh = ASIL_TARGETS.get(asil, ASIL_TARGETS["QM"])
+                ok_dc = dc >= thresh["dc"]
+                ok_spf = spfm_metric >= thresh["spfm"]
+                ok_lpf = lpfm_metric >= thresh["lpfm"]
+                text = (
+                    f"Total FIT: {total:.2f}  DC: {dc:.2f}{'\u2713' if ok_dc else ' \u2717'}"
+                    f"  SPFM: {spfm_metric:.2f}{'\u2713' if ok_spf else ' \u2717'}"
+                    f"  LPFM: {lpfm_metric:.2f}{'\u2713' if ok_lpf else ' \u2717'}"
+                    f"  (ASIL {asil})"
+                )
+                metrics_lbl.config(text=text)
 
         refresh_tree()
 
@@ -9083,8 +9429,18 @@ class FaultTreeApp:
 
         for be in basic_events:
             parent = be.parents[0] if be.parents else None
-            comp = parent.user_name if parent and parent.user_name else (f"Node {parent.unique_id}" if parent else "N/A")
-            tree.insert("", "end", values=[be.user_name or f"BE {be.unique_id}", comp])
+            if parent:
+                if parent.user_name:
+                    comp = parent.user_name
+                else:
+                    comp = "Node {}".format(parent.unique_id)
+            else:
+                comp = "N/A"
+            tree.insert(
+                "",
+                "end",
+                values=[be.user_name or f"BE {be.unique_id}", comp],
+            )
 
     def collect_requirements_recursive(self, node):
         reqs = list(getattr(node, "safety_requirements", []))
@@ -9150,6 +9506,93 @@ class FaultTreeApp:
                     seen.add(rid)
                     writer.writerow([sg_text, sg_asil, te.safe_state, rid, req.get("asil", ""), req.get("text", "")])
         messagebox.showinfo("Export", "Safety goal requirements exported.")
+
+    def show_cut_sets(self):
+        if not self.top_events:
+            return
+        te = self.top_events[0]
+        cut_sets = self.calculate_cut_sets(te)
+        win = tk.Toplevel(self.root)
+        win.title("FTA Cut Sets")
+        tree = ttk.Treeview(win, columns=["Cut Set"], show="headings")
+        tree.heading("Cut Set", text="Basic Events")
+        tree.pack(fill=tk.BOTH, expand=True)
+        for cs in cut_sets:
+            names = ", ".join(str(uid) for uid in sorted(cs))
+            tree.insert("", "end", values=[names])
+
+        def export_csv():
+            path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+            if not path:
+                return
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["Cut Set"])
+                for cs in cut_sets:
+                    writer.writerow([", ".join(str(uid) for uid in sorted(cs))])
+            messagebox.showinfo("Export", "Cut sets exported")
+
+        ttk.Button(win, text="Export CSV", command=export_csv).pack(pady=5)
+
+    def show_common_cause_view(self):
+        win = tk.Toplevel(self.root)
+        win.title("Common Cause Toolbox")
+        var_fmea = tk.BooleanVar(value=True)
+        var_fmeda = tk.BooleanVar(value=True)
+        var_fta = tk.BooleanVar(value=True)
+        chk_frame = ttk.Frame(win)
+        chk_frame.pack(anchor="w")
+        ttk.Checkbutton(chk_frame, text="FMEA", variable=var_fmea).pack(side=tk.LEFT)
+        ttk.Checkbutton(chk_frame, text="FMEDA", variable=var_fmeda).pack(side=tk.LEFT)
+        ttk.Checkbutton(chk_frame, text="FTA", variable=var_fta).pack(side=tk.LEFT)
+        tree = ttk.Treeview(win, columns=["Fault", "Count", "Sources"], show="headings")
+        for c in ["Fault", "Count", "Sources"]:
+            tree.heading(c, text=c)
+            tree.column(c, width=150)
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        def refresh():
+            tree.delete(*tree.get_children())
+            counts = {}
+            srcs = {}
+            if var_fmea.get():
+                for fmea in self.fmeas:
+                    for be in fmea["entries"]:
+                        key = be.description
+                        counts[key] = counts.get(key, 0) + 1
+                        srcs.setdefault(key, set()).add("FMEA")
+            if var_fmeda.get():
+                for fmeda in self.fmedas:
+                    for be in fmeda["entries"]:
+                        key = be.description
+                        counts[key] = counts.get(key, 0) + 1
+                        srcs.setdefault(key, set()).add("FMEDA")
+            if var_fta.get():
+                for be in self.get_all_basic_events():
+                    key = be.description or be.user_name
+                    counts[key] = counts.get(key, 0) + 1
+                    srcs.setdefault(key, set()).add("FTA")
+            for k, cnt in counts.items():
+                if cnt > 1:
+                    tree.insert("", "end", values=[k, cnt, ", ".join(sorted(srcs[k]))])
+
+        refresh()
+
+        def export_csv():
+            path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+            if not path:
+                return
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["Fault", "Count", "Sources"])
+                for iid in tree.get_children():
+                    writer.writerow(tree.item(iid, "values"))
+            messagebox.showinfo("Export", "Common cause data exported")
+
+        btn_frame = ttk.Frame(win)
+        btn_frame.pack()
+        ttk.Button(btn_frame, text="Refresh", command=refresh).pack(side=tk.LEFT, padx=5, pady=5)
+        ttk.Button(btn_frame, text="Export CSV", command=export_csv).pack(side=tk.LEFT, padx=5, pady=5)
 
     def manage_mission_profiles(self):
         win = tk.Toplevel(self.root)
@@ -9262,16 +9705,7 @@ class FaultTreeApp:
     def load_default_mechanisms(self):
         if self.mechanism_libraries:
             return
-        lib = MechanismLibrary(
-            "ISO 26262 Annex D",
-            [
-                DiagnosticMechanism("CRC", 0.99, "Cyclic redundancy check"),
-                DiagnosticMechanism("Watchdog", 0.9, "Execution supervision"),
-                DiagnosticMechanism("Parity", 0.8, "Parity checks"),
-                DiagnosticMechanism("Heartbeat", 0.85, "Temporal monitoring"),
-                DiagnosticMechanism("Range check", 0.9, "Range/limit check"),
-            ],
-        )
+        lib = MechanismLibrary("ISO 26262 Annex D", ANNEX_D_MECHANISMS.copy())
         self.mechanism_libraries.append(lib)
 
     def manage_mechanism_libraries(self):
@@ -9410,16 +9844,7 @@ class FaultTreeApp:
     def load_default_mechanisms(self):
         if self.mechanism_libraries:
             return
-        lib = MechanismLibrary(
-            "ISO 26262 Annex D",
-            [
-                DiagnosticMechanism("CRC", 0.99, "Cyclic redundancy check"),
-                DiagnosticMechanism("Watchdog", 0.9, "Execution supervision"),
-                DiagnosticMechanism("Parity", 0.8, "Parity checks"),
-                DiagnosticMechanism("Heartbeat", 0.85, "Temporal monitoring"),
-                DiagnosticMechanism("Range check", 0.9, "Range/limit check"),
-            ],
-        )
+        lib = MechanismLibrary("ISO 26262 Annex D", ANNEX_D_MECHANISMS.copy())
         self.mechanism_libraries.append(lib)
 
     def manage_mechanism_libraries(self):
@@ -9558,16 +9983,7 @@ class FaultTreeApp:
     def load_default_mechanisms(self):
         if self.mechanism_libraries:
             return
-        lib = MechanismLibrary(
-            "ISO 26262 Annex D",
-            [
-                DiagnosticMechanism("CRC", 0.99, "Cyclic redundancy check"),
-                DiagnosticMechanism("Watchdog", 0.9, "Execution supervision"),
-                DiagnosticMechanism("Parity", 0.8, "Parity checks"),
-                DiagnosticMechanism("Heartbeat", 0.85, "Temporal monitoring"),
-                DiagnosticMechanism("Range check", 0.9, "Range/limit check"),
-            ],
-        )
+        lib = MechanismLibrary("ISO 26262 Annex D", ANNEX_D_MECHANISMS.copy())
         self.mechanism_libraries.append(lib)
 
     def manage_mechanism_libraries(self):
@@ -11333,6 +11749,8 @@ class FaultTreeNode:
         # Probability values for classical FTA calculations
         self.failure_prob = 0.0
         self.probability = 0.0
+        # Formula used to derive probability from FIT rate
+        self.prob_formula = "linear"  # linear, exponential, or constant
 
     @property
     def name(self):
@@ -11379,6 +11797,7 @@ class FaultTreeNode:
             "safety_requirements": self.safety_requirements,
             "failure_prob": self.failure_prob,
             "probability": self.probability,
+            "prob_formula": self.prob_formula,
             "children": [child.to_dict() for child in self.children]
         }
         if not self.is_primary_instance and self.original and (self.original.unique_id != self.unique_id):
@@ -11426,6 +11845,7 @@ class FaultTreeNode:
         node.safety_requirements = data.get("safety_requirements", [])
         node.failure_prob = data.get("failure_prob", 0.0)
         node.probability = data.get("probability", 0.0)
+        node.prob_formula = data.get("prob_formula", "linear")
         node.display_label = ""
         node.equation = ""
         node.detailed_equation = ""
