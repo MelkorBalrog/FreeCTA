@@ -272,6 +272,10 @@ styles = getSampleStyleSheet()  # Create the stylesheet.
 preformatted_style = ParagraphStyle(name="Preformatted", fontName="Courier", fontSize=10)
 styles.add(preformatted_style)
 
+# Characters used to display pass/fail status in metrics labels.
+CHECK_MARK = "\u2713"
+CROSS_MARK = "\u2717"
+
 ##########################################
 # VALID_SUBTYPES dictionary
 ##########################################
@@ -10036,9 +10040,9 @@ class FaultTreeApp:
                 ok_spf = spfm_metric >= thresh["spfm"]
                 ok_lpf = lpfm_metric >= thresh["lpfm"]
                 text = (
-                    f"Total FIT: {total:.2f}  DC: {dc:.2f}{'\u2713' if ok_dc else ' \u2717'}"
-                    f"  SPFM: {spfm_metric:.2f}{'\u2713' if ok_spf else ' \u2717'}"
-                    f"  LPFM: {lpfm_metric:.2f}{'\u2713' if ok_lpf else ' \u2717'}"
+                    f"Total FIT: {total:.2f}  DC: {dc:.2f}{CHECK_MARK if ok_dc else CROSS_MARK}"
+                    f"  SPFM: {spfm_metric:.2f}{CHECK_MARK if ok_spf else CROSS_MARK}"
+                    f"  LPFM: {lpfm_metric:.2f}{CHECK_MARK if ok_lpf else CROSS_MARK}"
                     f"  (ASIL {asil})"
                 )
                 metrics_lbl.config(text=text)
