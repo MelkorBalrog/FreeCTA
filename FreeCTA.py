@@ -2911,6 +2911,20 @@ class EditNodeDialog(simpledialog.Dialog):
                          state='readonly', width=12).grid(row=row_next, column=1, padx=5, pady=5, sticky='w')
             row_next += 1
 
+            ttk.Label(master, text="Represents FM:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+            modes = self.app.get_all_failure_modes()
+            self.fm_map = {self.app.format_failure_mode_label(m): m.unique_id for m in modes}
+            self.fm_var = tk.StringVar()
+            current = ''
+            if getattr(self.node, 'failure_mode_ref', None):
+                n = self.app.find_node_by_id_all(self.node.failure_mode_ref)
+                if n:
+                    current = self.app.format_failure_mode_label(n)
+            self.fm_var.set(current)
+            self.fm_combo = ttk.Combobox(master, textvariable=self.fm_var, values=list(self.fm_map.keys()), state='readonly', width=40)
+            self.fm_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky='w')
+            row_next += 1
+
             ttk.Label(master, text="Probability Formula:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
             self.formula_var = tk.StringVar(value=getattr(self.node, 'prob_formula', 'linear'))
             ttk.Combobox(master, textvariable=self.formula_var,
@@ -3332,6 +3346,18 @@ class EditNodeDialog(simpledialog.Dialog):
         return "break"
 
     def validate(self):
+        if hasattr(self, 'fm_var'):
+            label = self.fm_var.get().strip()
+            ref = self.fm_map.get(label)
+            if ref:
+                for n in self.app.get_all_nodes_in_model():
+                    if n is self.node:
+                        continue
+                    if not n.is_primary_instance:
+                        continue
+                    if getattr(n, 'failure_mode_ref', None) == ref:
+                        messagebox.showerror('Failure Mode', 'Selected failure mode already assigned to another node')
+                        return False
         return True
 
     def apply(self):
@@ -3356,6 +3382,9 @@ class EditNodeDialog(simpledialog.Dialog):
                     raise ValueError
                 target_node.failure_prob = prob
                 target_node.prob_formula = self.formula_var.get()
+                if hasattr(self, 'fm_var'):
+                    label = self.fm_var.get().strip()
+                    target_node.failure_mode_ref = self.fm_map.get(label)
             except ValueError:
                 messagebox.showerror("Invalid Input", "Enter a valid probability")
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
@@ -8591,6 +8620,33 @@ class FaultTreeApp:
         """Return a list of all basic events across all top-level trees."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]
 
+    def get_all_failure_modes(self):
+        """Return list of all failure mode nodes from FTA, FMEAs and FMEDAs."""
+        modes = list(self.get_all_basic_events())
+        for doc in self.fmea_entries:
+            modes.append(doc)
+        for f in self.fmeas:
+            modes.extend(f.get("entries", []))
+        for d in self.fmedas:
+            modes.extend(d.get("entries", []))
+        unique = {}
+        for m in modes:
+            unique[getattr(m, "unique_id", id(m))] = m
+        return list(unique.values())
+
+    def get_failure_mode_node(self, node):
+        ref = getattr(node, "failure_mode_ref", None)
+        if ref:
+            n = self.find_node_by_id_all(ref)
+            if n:
+                return n
+        return node
+
+    def format_failure_mode_label(self, node):
+        comp = node.parents[0].user_name if node.parents else getattr(node, "fmea_component", "")
+        label = node.description or (node.user_name or f"BE {node.unique_id}")
+        return f"{comp}: {label}" if comp else label
+
 
     def get_all_nodes(self, node=None):
         if node is None:
@@ -8639,11 +8695,12 @@ class FaultTreeApp:
         mp = self.mission_profiles[0]
         t = mp.tau
         for be in self.get_all_basic_events():
-            fit = getattr(be, "fmeda_fit", 0.0)
+            fm = self.get_failure_mode_node(be)
+            fit = getattr(fm, "fmeda_fit", 0.0)
             if fit <= 0:
                 continue
             lam = fit / 1e9
-            formula = getattr(be, "prob_formula", "linear")
+            formula = getattr(be, "prob_formula", getattr(fm, "prob_formula", "linear"))
             if formula == "exponential":
                 be.failure_prob = 1 - math.exp(-lam * t)
             elif formula == "constant":
@@ -8657,11 +8714,12 @@ class FaultTreeApp:
         mp = self.mission_profiles[0]
         t = mp.tau
         for be in self.get_all_basic_events():
-            fit = getattr(be, "fmeda_fit", 0.0)
+            fm = self.get_failure_mode_node(be)
+            fit = getattr(fm, "fmeda_fit", 0.0)
             if fit <= 0:
                 continue
             lam = fit / 1e9
-            formula = getattr(be, "prob_formula", "linear")
+            formula = getattr(be, "prob_formula", getattr(fm, "prob_formula", "linear"))
             if formula == "exponential":
                 be.failure_prob = 1 - math.exp(-lam * t)
             elif formula == "constant":
@@ -8675,11 +8733,12 @@ class FaultTreeApp:
         mp = self.mission_profiles[0]
         t = mp.tau
         for be in self.get_all_basic_events():
-            fit = getattr(be, "fmeda_fit", 0.0)
+            fm = self.get_failure_mode_node(be)
+            fit = getattr(fm, "fmeda_fit", 0.0)
             if fit <= 0:
                 continue
             lam = fit / 1e9
-            formula = getattr(be, "prob_formula", "linear")
+            formula = getattr(be, "prob_formula", getattr(fm, "prob_formula", "linear"))
             if formula == "exponential":
                 be.failure_prob = 1 - math.exp(-lam * t)
             elif formula == "constant":
@@ -9948,19 +10007,20 @@ class FaultTreeApp:
             comp_fit = {c.name: c.fit * c.quantity for c in self.reliability_components}
             frac_totals = {}
             for be in events:
+                src = self.get_failure_mode_node(be)
                 comp_name = (
-                    be.parents[0].user_name if be.parents else getattr(be, "fmea_component", "")
+                    src.parents[0].user_name if src.parents else getattr(src, "fmea_component", "")
                 )
                 fit = comp_fit.get(comp_name, 0.0)
-                frac = be.fmeda_fault_fraction
+                frac = src.fmeda_fault_fraction
                 if frac > 1.0:
                     frac /= 100.0
                 be.fmeda_fit = fit * frac
-                if be.fmeda_fault_type == "permanent":
-                    be.fmeda_spfm = be.fmeda_fit * (1 - be.fmeda_diag_cov)
+                if src.fmeda_fault_type == "permanent":
+                    be.fmeda_spfm = be.fmeda_fit * (1 - src.fmeda_diag_cov)
                     be.fmeda_lpfm = 0.0
                 else:
-                    be.fmeda_lpfm = be.fmeda_fit * (1 - be.fmeda_diag_cov)
+                    be.fmeda_lpfm = be.fmeda_fit * (1 - src.fmeda_diag_cov)
                     be.fmeda_spfm = 0.0
                 frac_totals[comp_name] = frac_totals.get(comp_name, 0.0) + frac
 
@@ -9969,12 +10029,13 @@ class FaultTreeApp:
                 messagebox.showwarning("Distribution", "Fault fraction sum != 1:\n" + "\n".join(warnings))
 
             for idx, be in enumerate(events):
-                parent = be.parents[0] if be.parents else None
+                src = self.get_failure_mode_node(be)
+                parent = src.parents[0] if src.parents else None
                 if parent:
                     comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
                     parent_name = comp
                 else:
-                    comp = getattr(be, "fmea_component", "") or "N/A"
+                    comp = getattr(src, "fmea_component", "") or "N/A"
                     parent_name = ""
                 if comp not in comp_items:
                     comp_items[comp] = tree.insert(
@@ -9986,31 +10047,31 @@ class FaultTreeApp:
                     )
                 comp_iid = comp_items[comp]
                 req_ids = "; ".join(
-                    [f"{req['req_type']}:{req['text']}" for req in getattr(be, "safety_requirements", [])]
+                    [f"{req['req_type']}:{req['text']}" for req in getattr(src, "safety_requirements", [])]
                 )
-                rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
-                failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
+                rpn = src.fmea_severity * src.fmea_occurrence * src.fmea_detection
+                failure_mode = src.description or (src.user_name or f"BE {src.unique_id}")
                 vals = [
                     "",
                     parent_name,
                     failure_mode,
-                    be.fmea_effect,
-                    be.fmea_cause,
-                    be.fmea_severity,
-                    be.fmea_occurrence,
-                    be.fmea_detection,
+                    src.fmea_effect,
+                    src.fmea_cause,
+                    src.fmea_severity,
+                    src.fmea_occurrence,
+                    src.fmea_detection,
                     rpn,
                     req_ids,
                 ]
                 if fmeda:
                     vals.extend([
-                        be.fmeda_malfunction,
-                        be.fmeda_safety_goal,
-                        be.fmeda_fault_type,
-                        f"{be.fmeda_fault_fraction:.2f}",
-                        f"{be.fmeda_fit:.2f}",
-                        f"{be.fmeda_diag_cov:.2f}",
-                        getattr(be, "fmeda_mechanism", ""),
+                        src.fmeda_malfunction,
+                        src.fmeda_safety_goal,
+                        src.fmeda_fault_type,
+                        f"{src.fmeda_fault_fraction:.2f}",
+                        f"{src.fmeda_fit:.2f}",
+                        f"{src.fmeda_diag_cov:.2f}",
+                        getattr(src, "fmeda_mechanism", ""),
                     ])
                 tags = ["evenrow" if idx % 2 == 0 else "oddrow"]
                 if rpn >= 100:
@@ -10026,13 +10087,14 @@ class FaultTreeApp:
                 lpf = 0.0
                 asil = "QM"
                 for be in events:
+                    src = self.get_failure_mode_node(be)
                     fit_mode = be.fmeda_fit
                     total += fit_mode
-                    if be.fmeda_fault_type == "permanent":
-                        spf += fit_mode * (1 - be.fmeda_diag_cov)
+                    if src.fmeda_fault_type == "permanent":
+                        spf += fit_mode * (1 - src.fmeda_diag_cov)
                     else:
-                        lpf += fit_mode * (1 - be.fmeda_diag_cov)
-                    sg = getattr(be, "fmeda_safety_goal", "")
+                        lpf += fit_mode * (1 - src.fmeda_diag_cov)
+                    sg = getattr(src, "fmeda_safety_goal", "")
                     a = self.get_safety_goal_asil(sg)
                     if ASIL_ORDER.get(a,0) > ASIL_ORDER.get(asil,0):
                         asil = a
@@ -11898,6 +11960,7 @@ class FaultTreeApp:
                 "comments": [asdict(c) for c in r.comments],
                 "fta_ids": r.fta_ids,
                 "fmea_names": r.fmea_names,
+                "fmeda_names": getattr(r, 'fmeda_names', []),
             })
         current_name = self.review_data.name if self.review_data else None
         data = {
@@ -12085,6 +12148,7 @@ class FaultTreeApp:
                         closed=rd.get("closed", False),
                         fta_ids=rd.get("fta_ids", []),
                         fmea_names=rd.get("fmea_names", []),
+                        fmeda_names=rd.get("fmeda_names", []),
                     )
                 )
             current = data.get("current_review")
@@ -12113,6 +12177,7 @@ class FaultTreeApp:
                     closed=rd.get("closed", False),
                     fta_ids=rd.get("fta_ids", []),
                     fmea_names=rd.get("fmea_names", []),
+                    fmeda_names=rd.get("fmeda_names", []),
                 )
                 self.reviews = [review]
                 self.review_data = review
@@ -12438,10 +12503,10 @@ class FaultTreeApp:
                 messagebox.showerror("Review", "Name already exists")
                 return
             scope = ReviewScopeDialog(self.root, self)
-            fta_ids, fmea_names = scope.result if scope.result else ([], [])
+            fta_ids, fmea_names, fmeda_names = scope.result if scope.result else ([], [], [])
             review = ReviewData(name=name, description=description, mode='peer', moderators=moderators,
                                participants=parts, comments=[],
-                               fta_ids=fta_ids, fmea_names=fmea_names, due_date=due_date)
+                               fta_ids=fta_ids, fmea_names=fmea_names, fmeda_names=fmeda_names, due_date=due_date)
             self.reviews.append(review)
             self.review_data = review
             self.current_user = moderators[0].name if moderators else parts[0].name
@@ -12473,10 +12538,10 @@ class FaultTreeApp:
                 messagebox.showerror("Review", "Name already exists")
                 return
             scope = ReviewScopeDialog(self.root, self)
-            fta_ids, fmea_names = scope.result if scope.result else ([], [])
+            fta_ids, fmea_names, fmeda_names = scope.result if scope.result else ([], [], [])
             review = ReviewData(name=name, description=description, mode='joint', moderators=moderators,
                                participants=participants, comments=[],
-                               fta_ids=fta_ids, fmea_names=fmea_names, due_date=due_date)
+                               fta_ids=fta_ids, fmea_names=fmea_names, fmeda_names=fmeda_names, due_date=due_date)
             self.reviews.append(review)
             self.review_data = review
             self.current_user = moderators[0].name if moderators else participants[0].name
@@ -12618,6 +12683,45 @@ class FaultTreeApp:
                 subtype="csv",
                 filename=f"fmea_{name}.csv",
             )
+        for name in getattr(review, 'fmeda_names', []):
+            fmeda = next((f for f in self.fmedas if f["name"] == name), None)
+            if not fmeda:
+                continue
+            out = StringIO()
+            writer = csv.writer(out)
+            columns = [
+                "Component","Parent","Failure Mode","Malfunction","Safety Goal","FaultType","Fraction","FIT","DiagCov","Mechanism"
+            ]
+            writer.writerow(columns)
+            for be in fmeda["entries"]:
+                parent = be.parents[0] if be.parents else None
+                if parent:
+                    comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                    parent_name = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                else:
+                    comp = getattr(be, "fmea_component", "") or "N/A"
+                    parent_name = ""
+                row = [
+                    comp,
+                    parent_name,
+                    be.description or (be.user_name or f"BE {be.unique_id}"),
+                    be.fmeda_malfunction,
+                    be.fmeda_safety_goal,
+                    be.fmeda_fault_type,
+                    f"{be.fmeda_fault_fraction:.2f}",
+                    f"{be.fmeda_fit:.2f}",
+                    f"{be.fmeda_diag_cov:.2f}",
+                    getattr(be, "fmeda_mechanism", ""),
+                ]
+                writer.writerow(row)
+            csv_bytes = out.getvalue().encode('utf-8')
+            out.close()
+            msg.add_attachment(
+                csv_bytes,
+                maintype="text",
+                subtype="csv",
+                filename=f"fmeda_{name}.csv",
+            )
         try:
             port = cfg.get('port', 465)
             if port == 465:
@@ -12699,6 +12803,7 @@ class FaultTreeApp:
                     approved=rd.get("approved", False),
                     fta_ids=rd.get("fta_ids", []),
                     fmea_names=rd.get("fmea_names", []),
+                    fmeda_names=rd.get("fmeda_names", []),
                     due_date=rd.get("due_date", ""),
                     closed=rd.get("closed", False),
                 )
@@ -12796,9 +12901,11 @@ class FaultTreeApp:
         if self.review_data:
             allowed_ftas = set(self.review_data.fta_ids)
             allowed_fmeas = set(self.review_data.fmea_names)
+            allowed_fmedas = set(getattr(self.review_data, 'fmeda_names', []))
         else:
             allowed_ftas = set()
             allowed_fmeas = set()
+            allowed_fmedas = set()
 
         # Collect nodes from the selected FTAs (or all if none selected).
         nodes = []
@@ -12811,10 +12918,13 @@ class FaultTreeApp:
 
         # Determine which nodes have FMEA entries in the selected FMEAs.
         fmea_node_ids = set()
-        if allowed_fmeas:
+        if allowed_fmeas or allowed_fmedas:
             for fmea in self.fmeas:
                 if fmea["name"] in allowed_fmeas:
                     fmea_node_ids.update(be.unique_id for be in fmea["entries"])
+            for d in self.fmedas:
+                if d["name"] in allowed_fmedas:
+                    fmea_node_ids.update(be.unique_id for be in d["entries"])
         else:
             # When no FMEA was selected, do not offer FMEA-related targets
             fmea_node_ids = set()
@@ -12892,6 +13002,8 @@ class FaultTreeNode:
         self.fmeda_lpfm = 0.0
         self.fmeda_fault_type = "permanent"
         self.fmeda_fault_fraction = 0.0
+        # Reference to a unique failure mode this node represents
+        self.failure_mode_ref = None
         # Probability values for classical FTA calculations
         self.failure_prob = 0.0
         self.probability = 0.0
@@ -12939,6 +13051,7 @@ class FaultTreeNode:
             "fmeda_lpfm": self.fmeda_lpfm,
             "fmeda_fault_type": self.fmeda_fault_type,
             "fmeda_fault_fraction": self.fmeda_fault_fraction,
+            "failure_mode_ref": self.failure_mode_ref,
             # Save the safety requirements list (which now includes custom_id)
             "safety_requirements": self.safety_requirements,
             "failure_prob": self.failure_prob,
@@ -12987,6 +13100,7 @@ class FaultTreeNode:
         node.fmeda_lpfm = data.get("fmeda_lpfm", 0.0)
         node.fmeda_fault_type = data.get("fmeda_fault_type", "permanent")
         node.fmeda_fault_fraction = data.get("fmeda_fault_fraction", 0.0)
+        node.failure_mode_ref = data.get("failure_mode_ref")
         # NEW: Load safety_requirements (or default to empty list)
         node.safety_requirements = data.get("safety_requirements", [])
         node.failure_prob = data.get("failure_prob", 0.0)

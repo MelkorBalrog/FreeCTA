@@ -59,6 +59,7 @@ class ReviewData:
     comments: List[ReviewComment] = field(default_factory=list)
     fta_ids: List[int] = field(default_factory=list)
     fmea_names: List[str] = field(default_factory=list)
+    fmeda_names: List[str] = field(default_factory=list)
     due_date: str = ""
     closed: bool = False
     approved: bool = False
@@ -240,12 +241,22 @@ class ReviewScopeDialog(simpledialog.Dialog):
             cb = tk.Checkbutton(fmea_frame, text=f['name'], variable=var, anchor="w")
             cb.pack(fill=tk.X, anchor="w")
             self.fmea_vars.append((var, f['name']))
-        tk.Label(master, text="Check items to include in the review").grid(row=2, column=0, columnspan=2, pady=(2,5))
+        tk.Label(master, text="FMEDAs:").grid(row=0, column=2, padx=5, pady=5, sticky="w")
+        self.fmeda_vars = []
+        fmeda_frame = tk.Frame(master)
+        fmeda_frame.grid(row=1, column=2, padx=5, pady=5, sticky="nsew")
+        for d in self.app.fmedas:
+            var = tk.BooleanVar()
+            cb = tk.Checkbutton(fmeda_frame, text=d['name'], variable=var, anchor="w")
+            cb.pack(fill=tk.X, anchor="w")
+            self.fmeda_vars.append((var, d['name']))
+        tk.Label(master, text="Check items to include in the review").grid(row=2, column=0, columnspan=3, pady=(2,5))
 
     def apply(self):
         fta_ids = [uid for var, uid in self.fta_vars if var.get()]
         fmea_names = [name for var, name in self.fmea_vars if var.get()]
-        self.result = (fta_ids, fmea_names)
+        fmeda_names = [name for var, name in self.fmeda_vars if var.get()]
+        self.result = (fta_ids, fmea_names, fmeda_names)
 
 
 class UserSelectDialog(simpledialog.Dialog):
@@ -1315,6 +1326,21 @@ class VersionCompareDialog(tk.Toplevel):
         self.fmea_tree.tag_configure("removed", background="#f8d7da")
         self.fmea_tree.tag_configure("existing", background="#e2e3e5")
 
+        columns_fmeda = [
+            "FMEDA","Component","Parent","Failure Mode","Malfunction","Safety Goal","FaultType","Fraction","FIT","DiagCov","Mechanism"
+        ]
+        self.fmeda_tree = ttk.Treeview(self, columns=columns_fmeda, show="headings")
+        for col in columns_fmeda:
+            self.fmeda_tree.heading(col, text=col)
+            width = 100
+            if col in ["Malfunction","Safety Goal"]:
+                width = 150
+            self.fmeda_tree.column(col, width=width, anchor="center")
+        self.fmeda_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.fmeda_tree.tag_configure("added", background="#cce5ff")
+        self.fmeda_tree.tag_configure("removed", background="#f8d7da")
+        self.fmeda_tree.tag_configure("existing", background="#e2e3e5")
+
         # box for requirement changes similar to ReviewDocument
         req_frame = tk.Frame(self)
         req_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -1938,23 +1964,63 @@ class VersionCompareDialog(tk.Toplevel):
                     else:
                         prefix = "Added" if st == "added" else "Removed"
                     self.log_text.insert(tk.END, f"{prefix} FMEA entry {failure}\n", st)
-                    if prefix == "Updated":
-                        e1 = entries1[uid]
-                        e2 = entries2[uid]
-                        for fld in [
-                            "description",
-                            "fmea_effect",
-                            "fmea_cause",
-                            "fmea_severity",
-                            "fmea_occurrence",
-                            "fmea_detection",
-                        ]:
-                            v1 = str(e1.get(fld, ""))
-                            v2 = str(e2.get(fld, ""))
-                            if v1 != v2:
-                                self.log_text.insert(tk.END, f"  {fld}: ")
-                                self.insert_diff(v1, v2)
-                                self.log_text.insert(tk.END, "\n")
+                if prefix == "Updated":
+                    e1 = entries1[uid]
+                    e2 = entries2[uid]
+                    for fld in [
+                        "description",
+                        "fmea_effect",
+                        "fmea_cause",
+                        "fmea_severity",
+                        "fmea_occurrence",
+                        "fmea_detection",
+                    ]:
+                        v1 = str(e1.get(fld, ""))
+                        v2 = str(e2.get(fld, ""))
+                        if v1 != v2:
+                            self.log_text.insert(tk.END, f"  {fld}: ")
+                            self.insert_diff(v1, v2)
+                            self.log_text.insert(tk.END, "\n")
+
+        # ----- FMEDA diff -----
+        self.fmeda_tree.delete(*self.fmeda_tree.get_children())
+        fmd1 = {f["name"]: f for f in data1.get("fmedas", [])}
+        fmd2 = {f["name"]: f for f in data2.get("fmedas", [])}
+        for name in sorted(set(fmd1) | set(fmd2)):
+            ent1 = {e["unique_id"]: e for e in fmd1.get(name, {}).get("entries", [])}
+            ent2 = {e["unique_id"]: e for e in fmd2.get(name, {}).get("entries", [])}
+            for uid in set(ent1) | set(ent2):
+                if uid in ent1 and uid not in ent2:
+                    st = "removed"
+                    entry = ent1[uid]
+                elif uid in ent2 and uid not in ent1:
+                    st = "added"
+                    entry = ent2[uid]
+                else:
+                    if json.dumps(ent1[uid], sort_keys=True) != json.dumps(ent2[uid], sort_keys=True):
+                        st = "added"
+                        entry = ent2[uid]
+                    else:
+                        st = "existing"
+                        entry = ent2[uid]
+                parent = entry.get("parents", [{}])
+                parent = parent[0] if parent else {}
+                comp = parent.get("user_name") or entry.get("fmea_component", "") or "N/A"
+                parent_name = parent.get("user_name", f"Node {parent.get('unique_id')}") if parent else ""
+                row = [
+                    name,
+                    comp,
+                    parent_name,
+                    entry.get("description", entry.get("user_name", f"BE {uid}")),
+                    entry.get("fmeda_malfunction", ""),
+                    entry.get("fmeda_safety_goal", ""),
+                    entry.get("fmeda_fault_type", ""),
+                    entry.get("fmeda_fault_fraction", ""),
+                    entry.get("fmeda_fit", ""),
+                    entry.get("fmeda_diag_cov", ""),
+                    entry.get("fmeda_mechanism", ""),
+                ]
+                self.fmeda_tree.insert("", "end", values=row, tags=(st,))
 
 
 
