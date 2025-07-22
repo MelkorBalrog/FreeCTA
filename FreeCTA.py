@@ -295,11 +295,24 @@ class MissionProfile:
     name: str
     tau_on: float = 0.0
     tau_off: float = 0.0
-    temperature: float = 25.0
+    board_temp: float = 25.0
+    board_temp_min: float = 25.0
+    board_temp_max: float = 25.0
+    ambient_temp: float = 25.0
+    ambient_temp_min: float = 25.0
+    ambient_temp_max: float = 25.0
     humidity: float = 50.0
-    environment: str = ""
     duty_cycle: float = 1.0
     notes: str = ""
+
+    @property
+    def temperature(self) -> float:
+        """Alias for backward compatibility (returns board temperature)."""
+        return self.board_temp
+
+    @temperature.setter
+    def temperature(self, value: float) -> None:
+        self.board_temp = value
 
     @property
     def tau(self) -> float:
@@ -362,90 +375,138 @@ COMPONENT_ATTR_TEMPLATES = {
 RELIABILITY_MODELS = {
     "IEC 62380": {
         "capacitor": {
-            "text": "Base*(1+T/100)*Duty (base=0.02 ceramic, 0.04 electrolytic)",
+            "text": "Base*(1+T/100)*Duty*(1+V/100)",
             "formula": lambda a, mp: (0.02 if a.get("dielectric", "ceramic") == "ceramic" else 0.04)
-            * (1 + mp.temperature / 100.0)
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("voltage_V", 0)) / 100.0)
             * mp.duty_cycle,
         },
         "resistor": {
-            "text": "0.005*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.005 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.005*(1+T/100)*Duty*(1+P/10)",
+            "formula": lambda a, mp: 0.005
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("power_W", 0)) / 10.0)
+            * mp.duty_cycle,
         },
         "inductor": {
-            "text": "0.004*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.004 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.004*(1+T/100)*Duty*(1+I/10)",
+            "formula": lambda a, mp: 0.004
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("current_A", 0)) / 10.0)
+            * mp.duty_cycle,
         },
         "diode": {
-            "text": "0.008*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.008 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.008*(1+T/100)*Duty*(1+VR/100)",
+            "formula": lambda a, mp: 0.008
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("reverse_V", 0)) / 100.0)
+            * mp.duty_cycle,
         },
         "transistor": {
-            "text": "Base*(1+T/100)*Duty (base=0.01 BJT, 0.012 MOSFET)",
+            "text": "Base*(1+T/100)*Duty*(1+I/10) (base=0.01 BJT, 0.012 MOSFET)",
             "formula": lambda a, mp: (0.01 if a.get("transistor_type", "BJT") == "BJT" else 0.012)
-            * (1 + mp.temperature / 100.0)
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("current_A", 0)) / 10.0)
             * mp.duty_cycle,
         },
         "ic": {
-            "text": "Base*(1+T/100)*Duty*(1+pins/1000) (base=0.04 analog, 0.03 digital, 0.05 MCU)",
+            "text": "Base*(1+T/100)*Duty*(1+pins/1000)*(1+trans/1e6) (base=0.04 analog, 0.03 digital, 0.05 MCU)",
             "formula": lambda a, mp: (0.04 if a.get("type", "digital") == "analog" else 0.05 if a.get("type") == "mcu" else 0.03)
-            * (1 + mp.temperature / 100.0)
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
             * mp.duty_cycle
-            * (1 + float(a.get("pins", 0)) / 1000.0),
+            * (1 + float(a.get("pins", 0)) / 1000.0)
+            * (1 + float(a.get("transistors", 0)) / 1_000_000.0),
         },
         "connector": {
-            "text": "0.002*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.002 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.002*(1+T/100)*Duty*(1+pins/100)",
+            "formula": lambda a, mp: 0.002
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("pins", 0)) / 100.0)
+            * mp.duty_cycle,
         },
         "relay": {
-            "text": "0.03*(1+T/100)*Duty*(cycles/1e6)",
-            "formula": lambda a, mp: 0.03 * (1 + mp.temperature / 100.0) * mp.duty_cycle * (float(a.get("cycles", 1e6)) / 1e6),
+            "text": "0.03*(1+T/100)*Duty*(cycles/1e6)*(1+I/10)",
+            "formula": lambda a, mp: 0.03
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * mp.duty_cycle
+            * (float(a.get("cycles", 1e6)) / 1e6)
+            * (1 + float(a.get("current_A", 0)) / 10.0),
         },
         "switch": {
-            "text": "0.02*(1+T/100)*Duty*(cycles/1e6)",
-            "formula": lambda a, mp: 0.02 * (1 + mp.temperature / 100.0) * mp.duty_cycle * (float(a.get("cycles", 1e6)) / 1e6),
+            "text": "0.02*(1+T/100)*Duty*(cycles/1e6)*(1+I/10)",
+            "formula": lambda a, mp: 0.02
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * mp.duty_cycle
+            * (float(a.get("cycles", 1e6)) / 1e6)
+            * (1 + float(a.get("current_A", 0)) / 10.0),
         },
     },
     "SN 29500": {
         "capacitor": {
-            "text": "0.03*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.03 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.03*(1+T/100)*Duty*(1+V/100)",
+            "formula": lambda a, mp: 0.03
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("voltage_V", 0)) / 100.0)
+            * mp.duty_cycle,
         },
         "resistor": {
-            "text": "0.006*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.006 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.006*(1+T/100)*Duty*(1+P/10)",
+            "formula": lambda a, mp: 0.006
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("power_W", 0)) / 10.0)
+            * mp.duty_cycle,
         },
         "inductor": {
-            "text": "0.005*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.005 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.005*(1+T/100)*Duty*(1+I/10)",
+            "formula": lambda a, mp: 0.005
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("current_A", 0)) / 10.0)
+            * mp.duty_cycle,
         },
         "diode": {
-            "text": "0.009*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.009 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.009*(1+T/100)*Duty*(1+VR/100)",
+            "formula": lambda a, mp: 0.009
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("reverse_V", 0)) / 100.0)
+            * mp.duty_cycle,
         },
         "transistor": {
-            "text": "Base*(1+T/100)*Duty (base=0.012 BJT, 0.014 MOSFET)",
+            "text": "Base*(1+T/100)*Duty*(1+I/10) (base=0.012 BJT, 0.014 MOSFET)",
             "formula": lambda a, mp: (0.012 if a.get("transistor_type", "BJT") == "BJT" else 0.014)
-            * (1 + mp.temperature / 100.0)
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("current_A", 0)) / 10.0)
             * mp.duty_cycle,
         },
         "ic": {
-            "text": "Base*(1+T/100)*Duty*(1+pins/1000) (base=0.05 analog, 0.04 digital, 0.06 MCU)",
+            "text": "Base*(1+T/100)*Duty*(1+pins/1000)*(1+trans/1e6) (base=0.05 analog, 0.04 digital, 0.06 MCU)",
             "formula": lambda a, mp: (0.05 if a.get("type", "digital") == "analog" else 0.06 if a.get("type") == "mcu" else 0.04)
-            * (1 + mp.temperature / 100.0)
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
             * mp.duty_cycle
-            * (1 + float(a.get("pins", 0)) / 1000.0),
+            * (1 + float(a.get("pins", 0)) / 1000.0)
+            * (1 + float(a.get("transistors", 0)) / 1_000_000.0),
         },
         "connector": {
-            "text": "0.003*(1+T/100)*Duty",
-            "formula": lambda a, mp: 0.003 * (1 + mp.temperature / 100.0) * mp.duty_cycle,
+            "text": "0.003*(1+T/100)*Duty*(1+pins/100)",
+            "formula": lambda a, mp: 0.003
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * (1 + float(a.get("pins", 0)) / 100.0)
+            * mp.duty_cycle,
         },
         "relay": {
-            "text": "0.035*(1+T/100)*Duty*(cycles/1e6)",
-            "formula": lambda a, mp: 0.035 * (1 + mp.temperature / 100.0) * mp.duty_cycle * (float(a.get("cycles", 1e6)) / 1e6),
+            "text": "0.035*(1+T/100)*Duty*(cycles/1e6)*(1+I/10)",
+            "formula": lambda a, mp: 0.035
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * mp.duty_cycle
+            * (float(a.get("cycles", 1e6)) / 1e6)
+            * (1 + float(a.get("current_A", 0)) / 10.0),
         },
         "switch": {
-            "text": "0.025*(1+T/100)*Duty*(cycles/1e6)",
-            "formula": lambda a, mp: 0.025 * (1 + mp.temperature / 100.0) * mp.duty_cycle * (float(a.get("cycles", 1e6)) / 1e6),
+            "text": "0.025*(1+T/100)*Duty*(cycles/1e6)*(1+I/10)",
+            "formula": lambda a, mp: 0.025
+            * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
+            * mp.duty_cycle
+            * (float(a.get("cycles", 1e6)) / 1e6)
+            * (1 + float(a.get("current_A", 0)) / 10.0),
         },
     },
 }
@@ -2344,6 +2405,14 @@ class FaultTreeApp:
         self.mechanism_libraries = []
         self.selected_mechanism_libraries = []
         self.fmedas = []  # list of FMEDA documents
+        self.load_default_mechanisms()
+
+        self.mechanism_libraries = []
+        self.selected_mechanism_libraries = []
+        self.fmedas = []  # list of FMEDA documents
+        self.load_default_mechanisms()
+
+        self.mechanism_libraries = []
         self.load_default_mechanisms()
 
         menubar = tk.Menu(root)
@@ -8909,6 +8978,63 @@ class FaultTreeApp:
                 ]
                 writer.writerow(row)
 
+    def export_fmeda_to_csv(self, fmeda, path):
+        columns = [
+            "Component",
+            "Parent",
+            "Failure Mode",
+            "Failure Effect",
+            "Cause",
+            "S",
+            "O",
+            "D",
+            "RPN",
+            "Requirements",
+            "Malfunction",
+            "Safety Goal",
+            "FaultType",
+            "Fraction",
+            "FIT",
+            "DiagCov",
+            "Mechanism",
+        ]
+        with open(path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(columns)
+            for be in fmeda['entries']:
+                parent = be.parents[0] if be.parents else None
+                if parent:
+                    comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                    if parent.description:
+                        comp = f"{comp} - {parent.description}"
+                    parent_name = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
+                else:
+                    comp = getattr(be, "fmea_component", "") or "N/A"
+                    parent_name = ""
+                req_ids = "; ".join([f"{req['req_type']}:{req['text']}" for req in getattr(be, 'safety_requirements', [])])
+                rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
+                failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
+                row = [
+                    comp,
+                    parent_name,
+                    failure_mode,
+                    be.fmea_effect,
+                    be.fmea_cause,
+                    be.fmea_severity,
+                    be.fmea_occurrence,
+                    be.fmea_detection,
+                    rpn,
+                    req_ids,
+                    getattr(be, "fmeda_malfunction", ""),
+                    getattr(be, "fmeda_safety_goal", ""),
+                    getattr(be, "fmeda_fault_type", ""),
+                    be.fmeda_fault_fraction,
+                    be.fmeda_fit,
+                    be.fmeda_diag_cov,
+                    getattr(be, "fmeda_mechanism", ""),
+                ]
+                writer.writerow(row)
+
 
     def show_traceability_matrix(self):
         """Display a traceability matrix linking FTA basic events to FMEA components."""
@@ -9005,7 +9131,10 @@ class FaultTreeApp:
         def refresh():
             listbox.delete(0, tk.END)
             for mp in self.mission_profiles:
-                info = f"{mp.name} (on: {mp.tau_on}h, off: {mp.tau_off}h, {mp.environment}, {mp.temperature}\u00b0C)"
+                info = (
+                    f"{mp.name} (on: {mp.tau_on}h, off: {mp.tau_off}h, "
+                    f"board: {mp.board_temp}\u00b0C, ambient: {mp.ambient_temp}\u00b0C)"
+                )
                 listbox.insert(tk.END, info)
 
         class MPDialog(simpledialog.Dialog):
@@ -9019,9 +9148,13 @@ class FaultTreeApp:
                     ("Name", "name"),
                     ("TAU On (h)", "tau_on"),
                     ("TAU Off (h)", "tau_off"),
-                    ("Temperature (\u00b0C)", "temperature"),
+                    ("Board Temp (\u00b0C)", "board_temp"),
+                    ("Board Temp Min (\u00b0C)", "board_temp_min"),
+                    ("Board Temp Max (\u00b0C)", "board_temp_max"),
+                    ("Ambient Temp (\u00b0C)", "ambient_temp"),
+                    ("Ambient Temp Min (\u00b0C)", "ambient_temp_min"),
+                    ("Ambient Temp Max (\u00b0C)", "ambient_temp_max"),
                     ("Humidity (%)", "humidity"),
-                    ("Environment", "environment"),
                     ("Duty Cycle", "duty_cycle"),
                     ("Notes", "notes"),
                 ]
@@ -9040,9 +9173,13 @@ class FaultTreeApp:
                         vals["name"],
                         float(vals["tau_on"] or 0.0),
                         float(vals["tau_off"] or 0.0),
-                        float(vals["temperature"] or 25.0),
+                        float(vals["board_temp"] or 25.0),
+                        float(vals["board_temp_min"] or 25.0),
+                        float(vals["board_temp_max"] or 25.0),
+                        float(vals["ambient_temp"] or 25.0),
+                        float(vals["ambient_temp_min"] or 25.0),
+                        float(vals["ambient_temp_max"] or 25.0),
                         float(vals["humidity"] or 50.0),
-                        vals["environment"],
                         float(vals["duty_cycle"] or 1.0),
                         vals["notes"],
                     )
@@ -9051,9 +9188,13 @@ class FaultTreeApp:
                     self.mp.name = vals["name"]
                     self.mp.tau_on = float(vals["tau_on"] or 0.0)
                     self.mp.tau_off = float(vals["tau_off"] or 0.0)
-                    self.mp.temperature = float(vals["temperature"] or 25.0)
+                    self.mp.board_temp = float(vals["board_temp"] or 25.0)
+                    self.mp.board_temp_min = float(vals["board_temp_min"] or 25.0)
+                    self.mp.board_temp_max = float(vals["board_temp_max"] or 25.0)
+                    self.mp.ambient_temp = float(vals["ambient_temp"] or 25.0)
+                    self.mp.ambient_temp_min = float(vals["ambient_temp_min"] or 25.0)
+                    self.mp.ambient_temp_max = float(vals["ambient_temp_max"] or 25.0)
                     self.mp.humidity = float(vals["humidity"] or 50.0)
-                    self.mp.environment = vals["environment"]
                     self.mp.duty_cycle = float(vals["duty_cycle"] or 1.0)
                     self.mp.notes = vals["notes"]
                     self.result = self.mp
@@ -9085,6 +9226,302 @@ class FaultTreeApp:
         ttk.Button(btn_frame, text="Delete", command=delete_profile).pack(fill=tk.X)
 
         refresh()
+
+    def load_default_mechanisms(self):
+        if self.mechanism_libraries:
+            return
+        lib = MechanismLibrary(
+            "ISO 26262 Annex D",
+            [
+                DiagnosticMechanism("CRC", 0.99, "Cyclic redundancy check"),
+                DiagnosticMechanism("Watchdog", 0.9, "Execution supervision"),
+                DiagnosticMechanism("Parity", 0.8, "Parity checks"),
+                DiagnosticMechanism("Heartbeat", 0.85, "Temporal monitoring"),
+                DiagnosticMechanism("Range check", 0.9, "Range/limit check"),
+            ],
+        )
+        self.mechanism_libraries.append(lib)
+
+    def manage_mechanism_libraries(self):
+        win = tk.Toplevel(self.root)
+        win.title("Mechanism Libraries")
+        lib_lb = tk.Listbox(win, height=8, width=25)
+        lib_lb.grid(row=0, column=0, rowspan=4, sticky="ns")
+        mech_tree = ttk.Treeview(win, columns=("cov", "desc"), show="headings")
+        mech_tree.heading("cov", text="Coverage")
+        mech_tree.column("cov", width=80)
+        mech_tree.heading("desc", text="Description")
+        mech_tree.column("desc", width=200)
+        mech_tree.grid(row=0, column=1, columnspan=3, sticky="nsew")
+
+        def refresh_libs():
+            lib_lb.delete(0, tk.END)
+            for lib in self.mechanism_libraries:
+                lib_lb.insert(tk.END, lib.name)
+            refresh_mechs()
+
+        def refresh_mechs(*_):
+            mech_tree.delete(*mech_tree.get_children())
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.mechanism_libraries[sel[0]]
+            for mech in lib.mechanisms:
+                mech_tree.insert("", tk.END, values=(f"{mech.coverage:.2f}", mech.description), text=mech.name)
+
+        def add_lib():
+            name = simpledialog.askstring("New Library", "Library name:")
+            if not name:
+                return
+            self.mechanism_libraries.append(MechanismLibrary(name))
+            refresh_libs()
+
+        def edit_lib():
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.mechanism_libraries[sel[0]]
+            name = simpledialog.askstring("Edit Library", "Library name:", initialvalue=lib.name)
+            if name:
+                lib.name = name
+                refresh_libs()
+
+        def del_lib():
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            del self.mechanism_libraries[sel[0]]
+            refresh_libs()
+
+        def add_mech():
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.mechanism_libraries[sel[0]]
+            dlg = simpledialog.Dialog(win, title="Add Mechanism")
+            class MForm(simpledialog.Dialog):
+                def body(self, master):
+                    ttk.Label(master, text="Name").grid(row=0, column=0, sticky="e")
+                    self.name_var = tk.StringVar()
+                    ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1)
+                    ttk.Label(master, text="Coverage").grid(row=1, column=0, sticky="e")
+                    self.cov_var = tk.StringVar(value="1.0")
+                    ttk.Entry(master, textvariable=self.cov_var).grid(row=1, column=1)
+                    ttk.Label(master, text="Description").grid(row=2, column=0, sticky="e")
+                    self.desc_var = tk.StringVar()
+                    ttk.Entry(master, textvariable=self.desc_var).grid(row=2, column=1)
+
+                def apply(self):
+                    self.result = (
+                        self.name_var.get(),
+                        float(self.cov_var.get() or 1.0),
+                        self.desc_var.get(),
+                    )
+
+            form = MForm(win)
+            if hasattr(form, "result"):
+                name, cov, desc = form.result
+                lib.mechanisms.append(DiagnosticMechanism(name, cov, desc))
+                refresh_mechs()
+
+        def edit_mech():
+            sel_lib = lib_lb.curselection()
+            sel_mech = mech_tree.selection()
+            if not sel_lib or not sel_mech:
+                return
+            lib = self.mechanism_libraries[sel_lib[0]]
+            idx = mech_tree.index(sel_mech[0])
+            mech = lib.mechanisms[idx]
+
+            class MForm(simpledialog.Dialog):
+                def body(self, master):
+                    ttk.Label(master, text="Name").grid(row=0, column=0, sticky="e")
+                    self.name_var = tk.StringVar(value=mech.name)
+                    ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1)
+                    ttk.Label(master, text="Coverage").grid(row=1, column=0, sticky="e")
+                    self.cov_var = tk.StringVar(value=str(mech.coverage))
+                    ttk.Entry(master, textvariable=self.cov_var).grid(row=1, column=1)
+                    ttk.Label(master, text="Description").grid(row=2, column=0, sticky="e")
+                    self.desc_var = tk.StringVar(value=mech.description)
+                    ttk.Entry(master, textvariable=self.desc_var).grid(row=2, column=1)
+
+                def apply(self):
+                    mech.name = self.name_var.get()
+                    mech.coverage = float(self.cov_var.get() or 1.0)
+                    mech.description = self.desc_var.get()
+
+            MForm(win)
+            refresh_mechs()
+
+        def del_mech():
+            sel_lib = lib_lb.curselection()
+            sel_mech = mech_tree.selection()
+            if not sel_lib or not sel_mech:
+                return
+            lib = self.mechanism_libraries[sel_lib[0]]
+            idx = mech_tree.index(sel_mech[0])
+            del lib.mechanisms[idx]
+            refresh_mechs()
+
+        btnf = ttk.Frame(win)
+        btnf.grid(row=1, column=1, columnspan=3, sticky="ew")
+        ttk.Button(btnf, text="Add Lib", command=add_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Edit Lib", command=edit_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Del Lib", command=del_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Add Mech", command=add_mech).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btnf, text="Edit Mech", command=edit_mech).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Del Mech", command=del_mech).pack(side=tk.LEFT)
+
+        lib_lb.bind("<<ListboxSelect>>", refresh_mechs)
+        refresh_libs()
+
+    def load_default_mechanisms(self):
+        if self.mechanism_libraries:
+            return
+        lib = MechanismLibrary(
+            "ISO 26262 Annex D",
+            [
+                DiagnosticMechanism("CRC", 0.99, "Cyclic redundancy check"),
+                DiagnosticMechanism("Watchdog", 0.9, "Execution supervision"),
+                DiagnosticMechanism("Parity", 0.8, "Parity checks"),
+                DiagnosticMechanism("Heartbeat", 0.85, "Temporal monitoring"),
+                DiagnosticMechanism("Range check", 0.9, "Range/limit check"),
+            ],
+        )
+        self.mechanism_libraries.append(lib)
+
+    def manage_mechanism_libraries(self):
+        win = tk.Toplevel(self.root)
+        win.title("Mechanism Libraries")
+        lib_lb = tk.Listbox(win, height=8, width=25)
+        lib_lb.grid(row=0, column=0, rowspan=4, sticky="ns")
+        mech_tree = ttk.Treeview(win, columns=("cov", "desc"), show="headings")
+        mech_tree.heading("cov", text="Coverage")
+        mech_tree.column("cov", width=80)
+        mech_tree.heading("desc", text="Description")
+        mech_tree.column("desc", width=200)
+        mech_tree.grid(row=0, column=1, columnspan=3, sticky="nsew")
+
+        def refresh_libs():
+            lib_lb.delete(0, tk.END)
+            for lib in self.mechanism_libraries:
+                lib_lb.insert(tk.END, lib.name)
+            refresh_mechs()
+
+        def refresh_mechs(*_):
+            mech_tree.delete(*mech_tree.get_children())
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.mechanism_libraries[sel[0]]
+            for mech in lib.mechanisms:
+                mech_tree.insert("", tk.END, values=(f"{mech.coverage:.2f}", mech.description), text=mech.name)
+
+        def add_lib():
+            name = simpledialog.askstring("New Library", "Library name:")
+            if not name:
+                return
+            self.mechanism_libraries.append(MechanismLibrary(name))
+            refresh_libs()
+
+        def edit_lib():
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.mechanism_libraries[sel[0]]
+            name = simpledialog.askstring("Edit Library", "Library name:", initialvalue=lib.name)
+            if name:
+                lib.name = name
+                refresh_libs()
+
+        def del_lib():
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            del self.mechanism_libraries[sel[0]]
+            refresh_libs()
+
+        def add_mech():
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.mechanism_libraries[sel[0]]
+            dlg = simpledialog.Dialog(win, title="Add Mechanism")
+            class MForm(simpledialog.Dialog):
+                def body(self, master):
+                    ttk.Label(master, text="Name").grid(row=0, column=0, sticky="e")
+                    self.name_var = tk.StringVar()
+                    ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1)
+                    ttk.Label(master, text="Coverage").grid(row=1, column=0, sticky="e")
+                    self.cov_var = tk.StringVar(value="1.0")
+                    ttk.Entry(master, textvariable=self.cov_var).grid(row=1, column=1)
+                    ttk.Label(master, text="Description").grid(row=2, column=0, sticky="e")
+                    self.desc_var = tk.StringVar()
+                    ttk.Entry(master, textvariable=self.desc_var).grid(row=2, column=1)
+
+                def apply(self):
+                    self.result = (
+                        self.name_var.get(),
+                        float(self.cov_var.get() or 1.0),
+                        self.desc_var.get(),
+                    )
+
+            form = MForm(win)
+            if hasattr(form, "result"):
+                name, cov, desc = form.result
+                lib.mechanisms.append(DiagnosticMechanism(name, cov, desc))
+                refresh_mechs()
+
+        def edit_mech():
+            sel_lib = lib_lb.curselection()
+            sel_mech = mech_tree.selection()
+            if not sel_lib or not sel_mech:
+                return
+            lib = self.mechanism_libraries[sel_lib[0]]
+            idx = mech_tree.index(sel_mech[0])
+            mech = lib.mechanisms[idx]
+
+            class MForm(simpledialog.Dialog):
+                def body(self, master):
+                    ttk.Label(master, text="Name").grid(row=0, column=0, sticky="e")
+                    self.name_var = tk.StringVar(value=mech.name)
+                    ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1)
+                    ttk.Label(master, text="Coverage").grid(row=1, column=0, sticky="e")
+                    self.cov_var = tk.StringVar(value=str(mech.coverage))
+                    ttk.Entry(master, textvariable=self.cov_var).grid(row=1, column=1)
+                    ttk.Label(master, text="Description").grid(row=2, column=0, sticky="e")
+                    self.desc_var = tk.StringVar(value=mech.description)
+                    ttk.Entry(master, textvariable=self.desc_var).grid(row=2, column=1)
+
+                def apply(self):
+                    mech.name = self.name_var.get()
+                    mech.coverage = float(self.cov_var.get() or 1.0)
+                    mech.description = self.desc_var.get()
+
+            MForm(win)
+            refresh_mechs()
+
+        def del_mech():
+            sel_lib = lib_lb.curselection()
+            sel_mech = mech_tree.selection()
+            if not sel_lib or not sel_mech:
+                return
+            lib = self.mechanism_libraries[sel_lib[0]]
+            idx = mech_tree.index(sel_mech[0])
+            del lib.mechanisms[idx]
+            refresh_mechs()
+
+        btnf = ttk.Frame(win)
+        btnf.grid(row=1, column=1, columnspan=3, sticky="ew")
+        ttk.Button(btnf, text="Add Lib", command=add_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Edit Lib", command=edit_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Del Lib", command=del_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Add Mech", command=add_mech).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btnf, text="Edit Mech", command=edit_mech).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Del Mech", command=del_mech).pack(side=tk.LEFT)
+
+        lib_lb.bind("<<ListboxSelect>>", refresh_mechs)
+        refresh_libs()
 
     def load_default_mechanisms(self):
         if self.mechanism_libraries:
@@ -9453,7 +9890,6 @@ class FaultTreeApp:
                             ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=5, pady=5)
                         self.vars[k] = var
                         row += 1
-                    
 
                 def apply(self):
                     for k, v in self.vars.items():
@@ -9556,8 +9992,25 @@ class FaultTreeApp:
                 )
             ttk.Button(win, text="Load", command=do_load).pack(side=tk.RIGHT, padx=5, pady=5)
 
-
-
+        def save_analysis(self):
+            if not self.components:
+                messagebox.showwarning("Save", "No components defined")
+                return
+            name = simpledialog.askstring("Save Analysis", "Enter analysis name:")
+            if not name:
+                return
+            ra = ReliabilityAnalysis(
+                name,
+                self.standard_var.get(),
+                self.profile_var.get(),
+                copy.deepcopy(self.components),
+                self.app.reliability_total_fit,
+                self.app.spfm,
+                self.app.lpfm,
+                self.app.reliability_dc,
+            )
+            self.app.reliability_analyses.append(ra)
+            messagebox.showinfo("Save", "Analysis saved")
 
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
@@ -9997,6 +10450,11 @@ class FaultTreeApp:
                 )
             )
 
+
+        self.fmedas = []
+        for doc in data.get("fmedas", []):
+            entries = [FaultTreeNode.from_dict(e) for e in doc.get("entries", [])]
+            self.fmedas.append({"name": doc.get("name", "FMEDA"), "file": doc.get("file", f"fmeda_{len(self.fmedas)}.csv"), "entries": entries})
 
         # Fix clone references for each top event.
         for event in self.top_events:
