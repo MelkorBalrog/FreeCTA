@@ -8521,14 +8521,28 @@ class FaultTreeApp:
             ttk.Label(master, text="Failure Mode:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
             # Include failure modes from both the FTA and any FMEA specific
             # entries so the combo box always lists all available modes.
-            mode_names = [
-                be.description or (be.user_name or f"BE {be.unique_id}")
+            self.mode_map = {
+                be.description or (be.user_name or f"BE {be.unique_id}"): be
                 for be in basic_events + self.fmea_entries
-            ]
+            }
+            mode_names = list(self.mode_map.keys())
             self.mode_var = tk.StringVar(value=self.node.description or self.node.user_name)
             self.mode_combo = ttk.Combobox(master, textvariable=self.mode_var,
                                           values=mode_names, width=30)
             self.mode_combo.grid(row=1, column=1, padx=5, pady=5)
+
+            def mode_sel(_):
+                label = self.mode_var.get()
+                src = self.mode_map.get(label)
+                if src:
+                    if src.parents:
+                        comp_name = src.parents[0].user_name or f"Node {src.parents[0].unique_id}"
+                    else:
+                        comp_name = getattr(src, "fmea_component", "")
+                    if comp_name:
+                        self.comp_var.set(comp_name)
+
+            self.mode_combo.bind("<<ComboboxSelected>>", mode_sel)
 
             ttk.Label(master, text="Failure Effect:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
             self.effect_text = tk.Text(master, width=30, height=3)
@@ -10493,6 +10507,23 @@ class FaultTreeApp:
                     node.equation = updated_node.equation
                     node.detailed_equation = updated_node.detailed_equation
                     node.is_page = updated_node.is_page
+                    node.failure_prob = updated_node.failure_prob
+                    node.prob_formula = updated_node.prob_formula
+                    node.failure_mode_ref = updated_node.failure_mode_ref
+                    node.fmea_effect = updated_node.fmea_effect
+                    node.fmea_cause = updated_node.fmea_cause
+                    node.fmea_severity = updated_node.fmea_severity
+                    node.fmea_occurrence = updated_node.fmea_occurrence
+                    node.fmea_detection = updated_node.fmea_detection
+                    node.fmea_component = updated_node.fmea_component
+                    node.fmeda_malfunction = updated_node.fmeda_malfunction
+                    node.fmeda_safety_goal = updated_node.fmeda_safety_goal
+                    node.fmeda_diag_cov = updated_node.fmeda_diag_cov
+                    node.fmeda_fit = updated_node.fmeda_fit
+                    node.fmeda_spfm = updated_node.fmeda_spfm
+                    node.fmeda_lpfm = updated_node.fmeda_lpfm
+                    node.fmeda_fault_type = updated_node.fmeda_fault_type
+                    node.fmeda_fault_fraction = updated_node.fmeda_fault_fraction
             else:
                 # Use the original pointer to compare.
                 if node.original and node.original.unique_id == updated_primary_id:
@@ -10509,6 +10540,23 @@ class FaultTreeApp:
                     node.detailed_equation = updated_node.detailed_equation
                     # **The key change: update the page flag on clones as well.**
                     node.is_page = updated_node.is_page
+                    node.failure_prob = updated_node.failure_prob
+                    node.prob_formula = updated_node.prob_formula
+                    node.failure_mode_ref = updated_node.failure_mode_ref
+                    node.fmea_effect = updated_node.fmea_effect
+                    node.fmea_cause = updated_node.fmea_cause
+                    node.fmea_severity = updated_node.fmea_severity
+                    node.fmea_occurrence = updated_node.fmea_occurrence
+                    node.fmea_detection = updated_node.fmea_detection
+                    node.fmea_component = updated_node.fmea_component
+                    node.fmeda_malfunction = updated_node.fmeda_malfunction
+                    node.fmeda_safety_goal = updated_node.fmeda_safety_goal
+                    node.fmeda_diag_cov = updated_node.fmeda_diag_cov
+                    node.fmeda_fit = updated_node.fmeda_fit
+                    node.fmeda_spfm = updated_node.fmeda_spfm
+                    node.fmeda_lpfm = updated_node.fmeda_lpfm
+                    node.fmeda_fault_type = updated_node.fmeda_fault_type
+                    node.fmeda_fault_fraction = updated_node.fmeda_fault_fraction
 
     def edit_user_name(self):
         if self.selected_node:
