@@ -4264,6 +4264,13 @@ class FaultTreeApp:
                 return result
         return None
 
+    def get_safety_goal_asil(self, sg_name):
+        """Return the ASIL level for a safety goal name."""
+        for te in self.top_events:
+            if sg_name and (sg_name == te.user_name or sg_name == te.safety_goal_description):
+                return te.safety_goal_asil or "QM"
+        return "QM"
+
     def edit_selected(self):
         sel = self.treeview.selection()
         target = None
