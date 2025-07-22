@@ -241,6 +241,7 @@ from review_toolbox import (
 from dataclasses import dataclass, asdict, field
 import json
 import csv
+import copy
 import tkinter.font as tkFont
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 import os
@@ -314,6 +315,19 @@ class ReliabilityComponent:
     attributes: dict = field(default_factory=dict)
     safety_req: str = ""
     fit: float = 0.0
+
+
+@dataclass
+class ReliabilityAnalysis:
+    """Store the results of a reliability calculation including the BOM."""
+
+    name: str
+    standard: str
+    profile: str
+    components: list
+    total_fit: float
+    spfm: float
+    lpfm: float
 
 COMPONENT_ATTR_TEMPLATES = {
     "capacitor": {
@@ -2296,6 +2310,7 @@ class FaultTreeApp:
         }
         self.mission_profiles = []
         self.fmeda_components = []
+        self.reliability_analyses = []
         self.reliability_components = []
         self.reliability_total_fit = 0.0
         self.spfm = 0.0
@@ -8415,6 +8430,28 @@ class FaultTreeApp:
         if fmeda:
             calc_btn = ttk.Button(btn_frame, text="Calculate FMEDA", command=lambda: refresh_tree())
             calc_btn.pack(side=tk.LEFT, padx=2)
+            ttk.Label(btn_frame, text="BOM:").pack(side=tk.LEFT, padx=2)
+            bom_var = tk.StringVar()
+            bom_combo = ttk.Combobox(
+                btn_frame,
+                textvariable=bom_var,
+                values=[ra.name for ra in self.reliability_analyses],
+                state="readonly",
+                width=20,
+            )
+            bom_combo.pack(side=tk.LEFT, padx=2)
+
+            def load_bom(*_):
+                name = bom_var.get()
+                ra = next((r for r in self.reliability_analyses if r.name == name), None)
+                if ra:
+                    self.reliability_components = copy.deepcopy(ra.components)
+                    self.reliability_total_fit = ra.total_fit
+                    self.spfm = ra.spfm
+                    self.lpfm = ra.lpfm
+                    refresh_tree()
+
+            bom_combo.bind("<<ComboboxSelected>>", load_bom)
 
         tree_frame = ttk.Frame(win)
         tree_frame.pack(fill=tk.BOTH, expand=True)
@@ -8904,6 +8941,12 @@ class FaultTreeApp:
             ttk.Button(btn_frame, text="Calculate FIT", command=self.calculate_fit).pack(
                 side=tk.LEFT, padx=2, pady=2
             )
+            ttk.Button(btn_frame, text="Save Analysis", command=self.save_analysis).pack(
+                side=tk.LEFT, padx=2, pady=2
+            )
+            ttk.Button(btn_frame, text="Load Analysis", command=self.load_analysis).pack(
+                side=tk.LEFT, padx=2, pady=2
+            )
             self.formula_label = ttk.Label(self, text="")
             self.formula_label.pack(anchor="w", padx=5, pady=5)
 
@@ -9101,6 +9144,53 @@ class FaultTreeApp:
             self.app.lpfm = lpf
             self.refresh_tree()
             self.formula_label.config(text=f"Total FIT: {total:.2f}  SPFM: {spf:.2f}  LPFM: {lpf:.2f}")
+
+        def save_analysis(self):
+            if not self.components:
+                messagebox.showwarning("Save", "No components defined")
+                return
+            name = simpledialog.askstring("Save Analysis", "Enter analysis name:")
+            if not name:
+                return
+            ra = ReliabilityAnalysis(
+                name,
+                self.standard_var.get(),
+                self.profile_var.get(),
+                copy.deepcopy(self.components),
+                self.app.reliability_total_fit,
+                self.app.spfm,
+                self.app.lpfm,
+            )
+            self.app.reliability_analyses.append(ra)
+            messagebox.showinfo("Save", "Analysis saved")
+
+        def load_analysis(self):
+            if not self.app.reliability_analyses:
+                messagebox.showwarning("Load", "No saved analyses")
+                return
+            win = tk.Toplevel(self)
+            win.title("Select Analysis")
+            lb = tk.Listbox(win, height=8, width=40)
+            lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            for ra in self.app.reliability_analyses:
+                lb.insert(tk.END, ra.name)
+            def do_load():
+                sel = lb.curselection()
+                if not sel:
+                    return
+                ra = self.app.reliability_analyses[sel[0]]
+                self.standard_var.set(ra.standard)
+                self.profile_var.set(ra.profile)
+                self.components = copy.deepcopy(ra.components)
+                self.app.reliability_total_fit = ra.total_fit
+                self.app.spfm = ra.spfm
+                self.app.lpfm = ra.lpfm
+                win.destroy()
+                self.refresh_tree()
+                self.formula_label.config(
+                    text=f"Total FIT: {ra.total_fit:.2f}  SPFM: {ra.spfm:.2f}  LPFM: {ra.lpfm:.2f}"
+                )
+            ttk.Button(win, text="Load", command=do_load).pack(side=tk.RIGHT, padx=5, pady=5)
 
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
