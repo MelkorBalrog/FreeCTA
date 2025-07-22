@@ -315,6 +315,15 @@ class MissionProfile:
         self.board_temp = value
 
     @property
+    def temperature(self) -> float:
+        """Alias for backward compatibility (returns board temperature)."""
+        return self.board_temp
+
+    @temperature.setter
+    def temperature(self, value: float) -> None:
+        self.board_temp = value
+
+    @property
     def tau(self) -> float:
         """Return the total TAU for backward compatibility."""
         return self.tau_on + self.tau_off
@@ -361,15 +370,38 @@ COMPONENT_ATTR_TEMPLATES = {
         "dielectric": ["ceramic", "electrolytic", "tantalum"],
         "capacitance_uF": "",
         "voltage_V": "",
+        "esr_ohm": "",
+        "tolerance_pct": "",
     },
-    "resistor": {"resistance_ohm": "", "power_W": ""},
-    "inductor": {"inductance_H": "", "current_A": ""},
-    "diode": {"type": ["standard", "zener", "schottky"], "reverse_V": ""},
-    "transistor": {"transistor_type": ["BJT", "MOSFET"], "pins": ""},
-    "ic": {"type": ["digital", "analog", "mcu"], "pins": ""},
+    "resistor": {
+        "resistance_ohm": "",
+        "power_W": "",
+        "tolerance_pct": "",
+    },
+    "inductor": {
+        "inductance_H": "",
+        "current_A": "",
+        "saturation_A": "",
+    },
+    "diode": {
+        "type": ["standard", "zener", "schottky"],
+        "reverse_V": "",
+        "forward_current_A": "",
+    },
+    "transistor": {
+        "transistor_type": ["BJT", "MOSFET"],
+        "pins": "",
+        "voltage_V": "",
+        "current_A": "",
+    },
+    "ic": {
+        "type": ["digital", "analog", "mcu"],
+        "pins": "",
+        "transistors": "",
+    },
     "connector": {"pins": ""},
-    "relay": {"cycles": "", "current_A": ""},
-    "switch": {"cycles": "", "current_A": ""},
+    "relay": {"cycles": "", "current_A": "", "voltage_V": ""},
+    "switch": {"cycles": "", "current_A": "", "voltage_V": ""},
 }
 
 RELIABILITY_MODELS = {
