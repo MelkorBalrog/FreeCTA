@@ -10750,6 +10750,8 @@ class FaultTreeApp:
         def refresh():
             listbox.delete(0, tk.END)
             for mp in self.mission_profiles:
+                if mp is None:
+                    continue
                 info = (
                     f"{mp.name} (on: {mp.tau_on}h, off: {mp.tau_off}h, "
                     f"board: {mp.board_temp}\u00b0C, ambient: {mp.ambient_temp}\u00b0C)"
@@ -10820,7 +10822,7 @@ class FaultTreeApp:
 
         def add_profile():
             dlg = MPDialog(win)
-            if hasattr(dlg, "result"):
+            if getattr(dlg, "result", None) is not None:
                 self.mission_profiles.append(dlg.result)
                 refresh()
 
@@ -10830,7 +10832,7 @@ class FaultTreeApp:
                 return
             mp = self.mission_profiles[sel[0]]
             dlg = MPDialog(win, mp)
-            if hasattr(dlg, "result"):
+            if getattr(dlg, "result", None) is not None:
                 refresh()
 
         def delete_profile():
