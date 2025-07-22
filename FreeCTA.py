@@ -8109,7 +8109,7 @@ class FaultTreeApp:
                 comp = self.node.parents[0].user_name or f"Node {self.node.parents[0].unique_id}"
             else:
                 comp = getattr(self.node, "fmea_component", "")
-            comp_names = set()
+            comp_names = {c.name for c in self.app.reliability_components}
             basic_events = self.app.get_all_basic_events()
             for be in basic_events + self.fmea_entries:
                 parent = be.parents[0] if be.parents else None
@@ -8440,6 +8440,39 @@ class FaultTreeApp:
                 width=20,
             )
             bom_combo.pack(side=tk.LEFT, padx=2)
+
+            def add_component():
+                dlg = tk.Toplevel(win)
+                dlg.title("New Component")
+                ttk.Label(dlg, text="Name").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+                name_var = tk.StringVar()
+                ttk.Entry(dlg, textvariable=name_var).grid(row=0, column=1, padx=5, pady=5)
+                ttk.Label(dlg, text="Type").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+                type_var = tk.StringVar(value="capacitor")
+                ttk.Combobox(
+                    dlg,
+                    textvariable=type_var,
+                    values=list(COMPONENT_ATTR_TEMPLATES.keys()),
+                    state="readonly",
+                ).grid(row=1, column=1, padx=5, pady=5)
+                ttk.Label(dlg, text="Quantity").grid(row=2, column=0, padx=5, pady=5, sticky="e")
+                qty_var = tk.IntVar(value=1)
+                ttk.Entry(dlg, textvariable=qty_var).grid(row=2, column=1, padx=5, pady=5)
+
+                def ok():
+                    comp = ReliabilityComponent(name_var.get(), type_var.get(), qty_var.get())
+                    template = COMPONENT_ATTR_TEMPLATES.get(comp.comp_type, {})
+                    for k, v in template.items():
+                        comp.attributes[k] = v[0] if isinstance(v, list) else v
+                    self.reliability_components.append(comp)
+                    dlg.destroy()
+                    refresh_tree()
+
+                ttk.Button(dlg, text="Add", command=ok).grid(row=3, column=0, columnspan=2, pady=5)
+                dlg.grab_set()
+                dlg.wait_window()
+
+            ttk.Button(btn_frame, text="Add Component", command=add_component).pack(side=tk.LEFT, padx=2)
 
             def load_bom(*_):
                 name = bom_var.get()
