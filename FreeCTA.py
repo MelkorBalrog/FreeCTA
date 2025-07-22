@@ -1930,13 +1930,6 @@ class EditNodeDialog(simpledialog.Dialog):
             self.prob_entry.grid(row=row_next, column=1, padx=5, pady=5)
             row_next += 1
 
-            ttk.Label(master, text="Probability Formula:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-            self.formula_var = tk.StringVar(value=getattr(self.node, 'prob_formula', 'linear'))
-            ttk.Combobox(master, textvariable=self.formula_var,
-                         values=['linear', 'exponential', 'constant'],
-                         state='readonly', width=12).grid(row=row_next, column=1, padx=5, pady=5, sticky='w')
-            row_next += 1
-
             ttk.Label(master, text="Represents FM:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
             modes = self.app.get_all_failure_modes()
             self.fm_map = {self.app.format_failure_mode_label(m): m.unique_id for m in modes}
@@ -1951,19 +1944,6 @@ class EditNodeDialog(simpledialog.Dialog):
             self.fm_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky='w')
             row_next += 1
 
-            ttk.Label(master, text="Probability Formula:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-            self.formula_var = tk.StringVar(value=getattr(self.node, 'prob_formula', 'linear'))
-            ttk.Combobox(master, textvariable=self.formula_var,
-                         values=['linear', 'exponential', 'constant'],
-                         state='readonly', width=12).grid(row=row_next, column=1, padx=5, pady=5, sticky='w')
-            row_next += 1
-
-            ttk.Label(master, text="Probability Formula:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-            self.formula_var = tk.StringVar(value=getattr(self.node, 'prob_formula', 'linear'))
-            ttk.Combobox(master, textvariable=self.formula_var,
-                         values=['linear', 'exponential', 'constant'],
-                         state='readonly', width=12).grid(row=row_next, column=1, padx=5, pady=5, sticky='w')
-            row_next += 1
 
             ttk.Label(master, text="Probability Formula:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
             self.formula_var = tk.StringVar(value=getattr(self.node, 'prob_formula', 'linear'))
@@ -7716,73 +7696,20 @@ class FaultTreeApp:
                 self.canvas.delete("all")
 
     def update_basic_event_probabilities(self):
-        if not self.mission_profiles:
-            return
-        mp = self.mission_profiles[0]
-        t = mp.tau
-        for be in self.get_all_basic_events():
-            fm = self.get_failure_mode_node(be)
-            fit = getattr(fm, "fmeda_fit", 0.0)
-            if fit <= 0:
-                continue
-            lam = fit / 1e9
-            formula = getattr(be, "prob_formula", getattr(fm, "prob_formula", "linear"))
-            if formula == "exponential":
-                be.failure_prob = 1 - math.exp(-lam * t)
-            elif formula == "constant":
-                be.failure_prob = lam
-            else:
-                be.failure_prob = lam * t
+        """Update failure probabilities for all basic events.
 
-    def update_basic_event_probabilities(self):
+        The calculation uses the selected probability formula on each
+        event or its associated failure mode. The FIT rate of the failure
+        mode is converted to a failure rate in events per hour, then the
+        probability is derived for the mission profile time ``tau``.
+        """
         if not self.mission_profiles:
             return
         mp = self.mission_profiles[0]
         t = mp.tau
         for be in self.get_all_basic_events():
             fm = self.get_failure_mode_node(be)
-            fit = getattr(fm, "fmeda_fit", 0.0)
-            if fit <= 0:
-                continue
-            lam = fit / 1e9
-            formula = getattr(be, "prob_formula", getattr(fm, "prob_formula", "linear"))
-            if formula == "exponential":
-                be.failure_prob = 1 - math.exp(-lam * t)
-            elif formula == "constant":
-                be.failure_prob = lam
-            else:
-                be.failure_prob = lam * t
-
-    def update_basic_event_probabilities(self):
-        if not self.mission_profiles:
-            return
-        mp = self.mission_profiles[0]
-        t = mp.tau
-        for be in self.get_all_basic_events():
-            fm = self.get_failure_mode_node(be)
-            fit = getattr(fm, "fmeda_fit", 0.0)
-            if fit <= 0:
-                continue
-            lam = fit / 1e9
-            formula = getattr(be, "prob_formula", getattr(fm, "prob_formula", "linear"))
-            if formula == "exponential":
-                be.failure_prob = 1 - math.exp(-lam * t)
-            elif formula == "constant":
-                be.failure_prob = lam
-            else:
-                be.failure_prob = lam * t
-
-    def update_basic_event_probabilities(self):
-        """Update failure probability for each basic event from its FIT rate."""
-        if not self.mission_profiles:
-            return
-        mp = self.mission_profiles[0]
-        t = mp.tau
-        for be in self.get_all_basic_events():
-            fm = self.get_failure_mode_node(be)
-            fit = getattr(be, "fmeda_fit", None)
-            if fit is None or fit == 0.0:
-                fit = getattr(fm, "fmeda_fit", 0.0)
+            fit = getattr(fm, "fmeda_fit", getattr(be, "fmeda_fit", 0.0))
             if fit <= 0:
                 continue
             lam = fit / 1e9
