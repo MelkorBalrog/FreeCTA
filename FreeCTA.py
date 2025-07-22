@@ -8187,15 +8187,10 @@ class FaultTreeApp:
             ttk.Label(master, text="FIT Rate:").grid(row=12, column=0, sticky="e", padx=5, pady=5)
             self.fit_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_fit', 0.0))
             ttk.Entry(master, textvariable=self.fit_var, width=10).grid(row=12, column=1, sticky="w", padx=5, pady=5)
-            ttk.Label(master, text="SPF Fraction:").grid(row=13, column=0, sticky="e", padx=5, pady=5)
-            self.spf_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_spf_frac', 0.0))
-            ttk.Entry(master, textvariable=self.spf_var, width=5).grid(row=13, column=1, sticky="w", padx=5, pady=5)
-            ttk.Label(master, text="LPF Fraction:").grid(row=14, column=0, sticky="e", padx=5, pady=5)
-            self.lpf_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_lpf_frac', 0.0))
-            ttk.Entry(master, textvariable=self.lpf_var, width=5).grid(row=14, column=1, sticky="w", padx=5, pady=5)
-            ttk.Label(master, text="Requirements:").grid(row=15, column=0, sticky="ne", padx=5, pady=5)
+
+            ttk.Label(master, text="Requirements:").grid(row=13, column=0, sticky="ne", padx=5, pady=5)
             self.req_frame = ttk.Frame(master)
-            self.req_frame.grid(row=15, column=1, padx=5, pady=5, sticky="w")
+            self.req_frame.grid(row=13, column=1, padx=5, pady=5, sticky="w")
             self.req_listbox = tk.Listbox(self.req_frame, height=4, width=40)
             self.req_listbox.grid(row=0, column=0, columnspan=3, sticky="w")
             if not hasattr(self.node, "safety_requirements"):
@@ -8247,14 +8242,6 @@ class FaultTreeApp:
                 self.node.fmeda_fit = float(self.fit_var.get())
             except ValueError:
                 self.node.fmeda_fit = 0.0
-            try:
-                self.node.fmeda_spf_frac = float(self.spf_var.get())
-            except ValueError:
-                self.node.fmeda_spf_frac = 0.0
-            try:
-                self.node.fmeda_lpf_frac = float(self.lpf_var.get())
-            except ValueError:
-                self.node.fmeda_lpf_frac = 0.0
 
         def add_existing_requirement(self):
             global global_requirements
@@ -8416,7 +8403,14 @@ class FaultTreeApp:
             "Requirements",
         ]
         if fmeda:
-            columns.extend(["Malfunction", "Safety Goal", "FaultType", "Fraction", "FIT", "DiagCov"])
+            columns.extend([
+                "Malfunction",
+                "Safety Goal",
+                "FaultType",
+                "Fraction",
+                "FIT",
+                "DiagCov",
+            ])
         btn_frame = ttk.Frame(win)
         btn_frame.pack(side=tk.TOP, pady=2)
         add_btn = ttk.Button(btn_frame, text="Add Failure Mode")
@@ -8539,12 +8533,20 @@ class FaultTreeApp:
             comp_fit = {c.name: c.fit * c.quantity for c in self.reliability_components}
             frac_totals = {}
             for be in events:
-                comp_name = be.parents[0].user_name if be.parents else getattr(be, "fmea_component", "")
+                comp_name = (
+                    be.parents[0].user_name if be.parents else getattr(be, "fmea_component", "")
+                )
                 fit = comp_fit.get(comp_name, 0.0)
                 frac = be.fmeda_fault_fraction
                 if frac > 1.0:
                     frac /= 100.0
                 be.fmeda_fit = fit * frac
+                if be.fmeda_fault_type == "permanent":
+                    be.fmeda_spfm = be.fmeda_fit * (1 - be.fmeda_diag_cov)
+                    be.fmeda_lpfm = 0.0
+                else:
+                    be.fmeda_lpfm = be.fmeda_fit * (1 - be.fmeda_diag_cov)
+                    be.fmeda_spfm = 0.0
                 frac_totals[comp_name] = frac_totals.get(comp_name, 0.0) + frac
 
             warnings = [f"{name} fractions={val:.2f}" for name, val in frac_totals.items() if abs(val - 1.0) > 0.01]
@@ -8604,16 +8606,8 @@ class FaultTreeApp:
 
             if fmeda:
                 total = sum(be.fmeda_fit for be in events)
-                spf = sum(
-                    be.fmeda_fit * be.fmeda_spf_frac * (1 - be.fmeda_diag_cov)
-                    for be in events
-                    if be.fmeda_fault_type == "permanent"
-                )
-                lpf = sum(
-                    be.fmeda_fit * be.fmeda_lpf_frac * (1 - be.fmeda_diag_cov)
-                    for be in events
-                    if be.fmeda_fault_type == "permanent"
-                )
+                spf = sum(be.fmeda_spfm for be in events)
+                lpf = sum(be.fmeda_lpfm for be in events)
                 dc = (total - (spf + lpf)) / total if total else 0.0
                 self.reliability_total_fit = total
                 self.spfm = spf
@@ -9169,8 +9163,9 @@ class FaultTreeApp:
                     frac /= 100.0
                 fit_mode = fit * frac
                 if be.fmeda_fault_type == "permanent":
-                    spf += fit_mode * be.fmeda_spf_frac * (1 - be.fmeda_diag_cov)
-                    lpf += fit_mode * be.fmeda_lpf_frac * (1 - be.fmeda_diag_cov)
+                    spf += fit_mode * (1 - be.fmeda_diag_cov)
+                else:
+                    lpf += fit_mode * (1 - be.fmeda_diag_cov)
             self.app.reliability_components = list(self.components)
             self.app.reliability_total_fit = total
             self.app.spfm = spf
@@ -10428,8 +10423,8 @@ class FaultTreeNode:
         self.fmeda_safety_goal = ""
         self.fmeda_diag_cov = 1.0
         self.fmeda_fit = 0.0
-        self.fmeda_spf_frac = 0.0
-        self.fmeda_lpf_frac = 0.0
+        self.fmeda_spfm = 0.0
+        self.fmeda_lpfm = 0.0
         self.fmeda_fault_type = "permanent"
         self.fmeda_fault_fraction = 0.0
         # Probability values for classical FTA calculations
@@ -10473,8 +10468,8 @@ class FaultTreeNode:
             "fmeda_safety_goal": self.fmeda_safety_goal,
             "fmeda_diag_cov": self.fmeda_diag_cov,
             "fmeda_fit": self.fmeda_fit,
-            "fmeda_spf_frac": self.fmeda_spf_frac,
-            "fmeda_lpf_frac": self.fmeda_lpf_frac,
+            "fmeda_spfm": self.fmeda_spfm,
+            "fmeda_lpfm": self.fmeda_lpfm,
             "fmeda_fault_type": self.fmeda_fault_type,
             "fmeda_fault_fraction": self.fmeda_fault_fraction,
             # Save the safety requirements list (which now includes custom_id)
@@ -10520,8 +10515,8 @@ class FaultTreeNode:
         node.fmeda_safety_goal = data.get("fmeda_safety_goal", "")
         node.fmeda_diag_cov = data.get("fmeda_diag_cov", 1.0)
         node.fmeda_fit = data.get("fmeda_fit", 0.0)
-        node.fmeda_spf_frac = data.get("fmeda_spf_frac", 0.0)
-        node.fmeda_lpf_frac = data.get("fmeda_lpf_frac", 0.0)
+        node.fmeda_spfm = data.get("fmeda_spfm", 0.0)
+        node.fmeda_lpfm = data.get("fmeda_lpfm", 0.0)
         node.fmeda_fault_type = data.get("fmeda_fault_type", "permanent")
         node.fmeda_fault_fraction = data.get("fmeda_fault_fraction", 0.0)
         # NEW: Load safety_requirements (or default to empty list)
