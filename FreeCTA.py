@@ -2369,7 +2369,7 @@ class EditNodeDialog(simpledialog.Dialog):
             formula = self.formula_var.get() if hasattr(self, "formula_var") else None
             prob = self.app.compute_failure_prob(self.node, failure_mode_ref=ref, formula=formula)
             self.prob_entry.delete(0, tk.END)
-            self.prob_entry.insert(0, f"{prob:.6g}")
+            self.prob_entry.insert(0, f"{prob:.10g}")
 
     def validate(self):
         if hasattr(self, 'fm_var'):
@@ -7749,10 +7749,11 @@ class FaultTreeApp:
             return 0.0
         t = tau
         formula = formula or getattr(node, "prob_formula", getattr(fm, "prob_formula", "linear"))
+        f = str(formula).strip().lower()
         lam = fit / 1e9
-        if formula == "exponential":
+        if f == "exponential":
             return 1 - math.exp(-lam * t)
-        elif formula == "constant":
+        elif f == "constant":
             return fit
         else:
             return lam * t
@@ -8303,7 +8304,7 @@ class FaultTreeApp:
             pmhf += prob
 
         self.update_views()
-        msg = f"PMHF = {pmhf:.2e}\nSPFM = {spf:.2f}\nLPFM = {lpf:.2f}"
+        msg = f"PMHF = {pmhf:.6e}\nSPFM = {spf:.2f}\nLPFM = {lpf:.2f}"
         messagebox.showinfo("PMHF Calculation", msg)
 
     def show_requirements_matrix(self):
