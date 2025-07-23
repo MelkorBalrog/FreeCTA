@@ -3297,6 +3297,21 @@ class FaultTreeApp:
             result = self.find_node_by_id(top, unique_id)
             if result is not None:
                 return result
+
+        for entry in self.fmea_entries:
+            if getattr(entry, "unique_id", None) == unique_id:
+                return entry
+
+        for fmea in self.fmeas:
+            for e in fmea.get("entries", []):
+                if getattr(e, "unique_id", None) == unique_id:
+                    return e
+
+        for d in self.fmedas:
+            for e in d.get("entries", []):
+                if getattr(e, "unique_id", None) == unique_id:
+                    return e
+
         return None
 
     def get_safety_goal_asil(self, sg_name):
