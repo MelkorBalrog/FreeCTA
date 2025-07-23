@@ -334,6 +334,8 @@ class ReliabilityComponent:
     attributes: dict = field(default_factory=dict)
     safety_req: str = ""
     fit: float = 0.0
+    is_passive: bool = False
+    sub_boms: list = field(default_factory=list)
 
 
 @dataclass
@@ -8560,11 +8562,12 @@ class FaultTreeApp:
         ttk.Button(btn_frame, text="Delete", command=delete_fmeda).pack(fill=tk.X)
 
     class FMEARowDialog(simpledialog.Dialog):
-        def __init__(self, parent, node, app, fmea_entries, mechanisms=None):
+        def __init__(self, parent, node, app, fmea_entries, mechanisms=None, hide_diagnostics=False):
             self.node = node
             self.app = app
             self.fmea_entries = fmea_entries
             self.mechanisms = mechanisms or []
+            self.hide_diagnostics = hide_diagnostics
             super().__init__(parent, title="Edit FMEA Entry")
             self.app.selected_node = node
 
@@ -8653,39 +8656,49 @@ class FaultTreeApp:
             self.det_spin.insert(0, str(self.node.fmea_detection))
             self.det_spin.grid(row=8, column=1, sticky="w", padx=5, pady=5)
 
-            ttk.Label(master, text="Diag Coverage (0-1):").grid(row=9, column=0, sticky="e", padx=5, pady=5)
-            self.dc_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_diag_cov', 0.0))
-            ttk.Entry(master, textvariable=self.dc_var, width=5).grid(row=9, column=1, sticky="w", padx=5, pady=5)
+            row = 9
+            if not self.hide_diagnostics:
+                ttk.Label(master, text="Diag Coverage (0-1):").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+                self.dc_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_diag_cov', 0.0))
+                ttk.Entry(master, textvariable=self.dc_var, width=5).grid(row=row, column=1, sticky="w", padx=5, pady=5)
+                row += 1
 
-            ttk.Label(master, text="Mechanism:").grid(row=10, column=0, sticky="e", padx=5, pady=5)
-            self.mech_var = tk.StringVar(value=getattr(self.node, 'fmeda_mechanism', ''))
-            self.mech_combo = ttk.Combobox(master, textvariable=self.mech_var, values=[m.name for m in self.mechanisms], state='readonly', width=30)
-            self.mech_combo.grid(row=10, column=1, padx=5, pady=5)
+                ttk.Label(master, text="Mechanism:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+                self.mech_var = tk.StringVar(value=getattr(self.node, 'fmeda_mechanism', ''))
+                self.mech_combo = ttk.Combobox(master, textvariable=self.mech_var, values=[m.name for m in self.mechanisms], state='readonly', width=30)
+                self.mech_combo.grid(row=row, column=1, padx=5, pady=5)
 
-            def mech_sel(_):
-                name = self.mech_var.get()
-                for m in self.mechanisms:
-                    if m.name == name:
-                        self.dc_var.set(m.coverage)
-                        break
+                def mech_sel(_):
+                    name = self.mech_var.get()
+                    for m in self.mechanisms:
+                        if m.name == name:
+                            self.dc_var.set(m.coverage)
+                            break
 
-            self.mech_combo.bind("<<ComboboxSelected>>", mech_sel)
+                self.mech_combo.bind("<<ComboboxSelected>>", mech_sel)
+                row += 1
+            else:
+                self.dc_var = tk.DoubleVar(value=0.0)
+                self.mech_var = tk.StringVar(value="")
 
-            ttk.Label(master, text="Fault Type:").grid(row=11, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(master, text="Fault Type:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
             self.ftype_var = tk.StringVar(value=getattr(self.node, 'fmeda_fault_type', 'permanent'))
-            ttk.Combobox(master, textvariable=self.ftype_var, values=['permanent', 'transient'], state='readonly', width=10).grid(row=11, column=1, sticky="w", padx=5, pady=5)
+            ttk.Combobox(master, textvariable=self.ftype_var, values=['permanent', 'transient'], state='readonly', width=10).grid(row=row, column=1, sticky="w", padx=5, pady=5)
 
-            ttk.Label(master, text="Fault Fraction:").grid(row=12, column=0, sticky="e", padx=5, pady=5)
+            row += 1
+            ttk.Label(master, text="Fault Fraction:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
             self.ffrac_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_fault_fraction', 0.0))
-            ttk.Entry(master, textvariable=self.ffrac_var, width=5).grid(row=12, column=1, sticky="w", padx=5, pady=5)
+            ttk.Entry(master, textvariable=self.ffrac_var, width=5).grid(row=row, column=1, sticky="w", padx=5, pady=5)
 
-            ttk.Label(master, text="FIT Rate:").grid(row=13, column=0, sticky="e", padx=5, pady=5)
+            row += 1
+            ttk.Label(master, text="FIT Rate:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
             self.fit_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_fit', 0.0))
-            ttk.Entry(master, textvariable=self.fit_var, width=10).grid(row=13, column=1, sticky="w", padx=5, pady=5)
+            ttk.Entry(master, textvariable=self.fit_var, width=10).grid(row=row, column=1, sticky="w", padx=5, pady=5)
 
-            ttk.Label(master, text="Requirements:").grid(row=14, column=0, sticky="ne", padx=5, pady=5)
+            row += 1
+            ttk.Label(master, text="Requirements:").grid(row=row, column=0, sticky="ne", padx=5, pady=5)
             self.req_frame = ttk.Frame(master)
-            self.req_frame.grid(row=14, column=1, padx=5, pady=5, sticky="w")
+            self.req_frame.grid(row=row, column=1, padx=5, pady=5, sticky="w")
             self.req_listbox = tk.Listbox(self.req_frame, height=4, width=40)
             self.req_listbox.grid(row=0, column=0, columnspan=3, sticky="w")
             if not hasattr(self.node, "safety_requirements"):
@@ -8729,6 +8742,9 @@ class FaultTreeApp:
             except ValueError:
                 self.node.fmeda_diag_cov = 0.0
             self.node.fmeda_mechanism = self.mech_var.get()
+            if self.hide_diagnostics:
+                self.node.fmeda_diag_cov = 0.0
+                self.node.fmeda_mechanism = ""
             self.node.fmeda_fault_type = self.ftype_var.get()
             try:
                 self.node.fmeda_fault_fraction = float(self.ffrac_var.get())
@@ -8950,9 +8966,11 @@ class FaultTreeApp:
                 ttk.Label(dlg, text="Quantity").grid(row=2, column=0, padx=5, pady=5, sticky="e")
                 qty_var = tk.IntVar(value=1)
                 ttk.Entry(dlg, textvariable=qty_var).grid(row=2, column=1, padx=5, pady=5)
+                passive_var = tk.BooleanVar(value=False)
+                ttk.Checkbutton(dlg, text="Passive", variable=passive_var).grid(row=3, column=0, columnspan=2, pady=5)
 
                 def ok():
-                    comp = ReliabilityComponent(name_var.get(), type_var.get(), qty_var.get())
+                    comp = ReliabilityComponent(name_var.get(), type_var.get(), qty_var.get(), is_passive=passive_var.get())
                     template = COMPONENT_ATTR_TEMPLATES.get(comp.comp_type, {})
                     for k, v in template.items():
                         comp.attributes[k] = v[0] if isinstance(v, list) else v
@@ -8960,7 +8978,7 @@ class FaultTreeApp:
                     dlg.destroy()
                     refresh_tree()
 
-                ttk.Button(dlg, text="Add", command=ok).grid(row=3, column=0, columnspan=2, pady=5)
+                ttk.Button(dlg, text="Add", command=ok).grid(row=4, column=0, columnspan=2, pady=5)
                 dlg.grab_set()
                 dlg.wait_window()
 
@@ -9177,7 +9195,9 @@ class FaultTreeApp:
                 mechs = []
                 for lib in selected_libs:
                     mechs.extend(lib.mechanisms)
-                self.FMEARowDialog(win, node, self, entries, mechanisms=mechs)
+                comp_name = node.parents[0].user_name if node.parents else getattr(node, "fmea_component", "")
+                is_passive = any(c.name == comp_name and c.is_passive for c in self.reliability_components)
+                self.FMEARowDialog(win, node, self, entries, mechanisms=mechs, hide_diagnostics=is_passive)
                 refresh_tree()
 
         tree.bind("<Double-1>", on_double)
@@ -9191,7 +9211,9 @@ class FaultTreeApp:
                 mechs = []
                 for lib in selected_libs:
                     mechs.extend(lib.mechanisms)
-                self.FMEARowDialog(win, node, self, entries, mechanisms=mechs)
+                comp_name = getattr(node, "fmea_component", "")
+                is_passive = any(c.name == comp_name and c.is_passive for c in self.reliability_components)
+                self.FMEARowDialog(win, node, self, entries, mechanisms=mechs, hide_diagnostics=is_passive)
             elif node:
                 # gather all failure modes under the same component/parent
                 if node.parents:
@@ -9218,7 +9240,9 @@ class FaultTreeApp:
                     mechs = []
                     for lib in selected_libs:
                         mechs.extend(lib.mechanisms)
-                    self.FMEARowDialog(win, be, self, entries, mechanisms=mechs)
+                    comp_name = be.parents[0].user_name if be.parents else getattr(be, "fmea_component", "")
+                    is_passive = any(c.name == comp_name and c.is_passive for c in self.reliability_components)
+                    self.FMEARowDialog(win, be, self, entries, mechanisms=mechs, hide_diagnostics=is_passive)
             refresh_tree()
 
         add_btn.config(command=add_failure_mode)
@@ -10225,6 +10249,9 @@ class FaultTreeApp:
             ttk.Button(btn_frame, text="Add Component", command=self.add_component).pack(
                 side=tk.LEFT, padx=2, pady=2
             )
+            ttk.Button(btn_frame, text="Add Circuit", command=self.add_circuit).pack(
+                side=tk.LEFT, padx=2, pady=2
+            )
             ttk.Button(btn_frame, text="Configure Component", command=self.configure_component).pack(
                 side=tk.LEFT, padx=2, pady=2
             )
@@ -10252,9 +10279,11 @@ class FaultTreeApp:
             ttk.Label(dialog, text="Quantity").grid(row=2, column=0, padx=5, pady=5, sticky="e")
             qty_var = tk.IntVar(value=1)
             ttk.Entry(dialog, textvariable=qty_var).grid(row=2, column=1, padx=5, pady=5)
+            passive_var = tk.BooleanVar(value=False)
+            ttk.Checkbutton(dialog, text="Passive", variable=passive_var).grid(row=3, column=0, columnspan=2, pady=5)
 
             def ok():
-                comp = ReliabilityComponent(name_var.get(), type_var.get(), qty_var.get())
+                comp = ReliabilityComponent(name_var.get(), type_var.get(), qty_var.get(), is_passive=passive_var.get())
                 template = COMPONENT_ATTR_TEMPLATES.get(comp.comp_type, {})
                 for k, v in template.items():
                     comp.attributes[k] = v[0] if isinstance(v, list) else v
@@ -10262,9 +10291,40 @@ class FaultTreeApp:
                 self.refresh_tree()
                 dialog.destroy()
 
-            ttk.Button(dialog, text="Add", command=ok).grid(row=3, column=0, columnspan=2, pady=5)
+            ttk.Button(dialog, text="Add", command=ok).grid(row=4, column=0, columnspan=2, pady=5)
             dialog.grab_set()
             dialog.wait_window()
+
+        def add_circuit(self):
+            dlg = tk.Toplevel(self)
+            dlg.title("New Circuit")
+            ttk.Label(dlg, text="Name").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+            name_var = tk.StringVar()
+            ttk.Entry(dlg, textvariable=name_var).grid(row=0, column=1, padx=5, pady=5)
+            ttk.Label(dlg, text="BOMs").grid(row=1, column=0, padx=5, pady=5, sticky="ne")
+            lb = tk.Listbox(dlg, selectmode=tk.MULTIPLE, height=6)
+            for ra in self.app.reliability_analyses:
+                lb.insert(tk.END, ra.name)
+            lb.grid(row=1, column=1, padx=5, pady=5)
+            qty_var = tk.IntVar(value=1)
+            ttk.Label(dlg, text="Quantity").grid(row=2, column=0, padx=5, pady=5, sticky="e")
+            ttk.Entry(dlg, textvariable=qty_var).grid(row=2, column=1, padx=5, pady=5)
+            passive_var = tk.BooleanVar(value=False)
+            ttk.Checkbutton(dlg, text="Passive", variable=passive_var).grid(row=3, column=0, columnspan=2, pady=5)
+
+            def ok():
+                bom_idxs = lb.curselection()
+                boms = [self.app.reliability_analyses[i].components for i in bom_idxs]
+                comp = ReliabilityComponent(name_var.get(), "circuit", qty_var.get(), is_passive=passive_var.get())
+                comp.sub_boms = copy.deepcopy(boms)
+                comp.fit = 0.0
+                self.components.append(comp)
+                self.refresh_tree()
+                dlg.destroy()
+
+            ttk.Button(dlg, text="Add", command=ok).grid(row=4, column=0, columnspan=2, pady=5)
+            dlg.grab_set()
+            dlg.wait_window()
 
         def show_formula(self, event=None):
             sel = self.tree.focus()
@@ -10406,11 +10466,23 @@ class FaultTreeApp:
             std = self.standard_var.get()
             total = 0.0
             for comp in self.components:
-                info = RELIABILITY_MODELS.get(std, {}).get(comp.comp_type)
-                if info:
-                    comp.fit = info["formula"](comp.attributes, mp) * mp.tau
+                if comp.sub_boms:
+                    sub_total = 0.0
+                    for bom in comp.sub_boms:
+                        for sub in bom:
+                            info = RELIABILITY_MODELS.get(std, {}).get(sub.comp_type)
+                            if info:
+                                sub.fit = info["formula"](sub.attributes, mp) * mp.tau
+                            else:
+                                sub.fit = 0.0
+                            sub_total += sub.fit * sub.quantity
+                    comp.fit = sub_total
                 else:
-                    comp.fit = 0.0
+                    info = RELIABILITY_MODELS.get(std, {}).get(comp.comp_type)
+                    if info:
+                        comp.fit = info["formula"](comp.attributes, mp) * mp.tau
+                    else:
+                        comp.fit = 0.0
                 total += comp.fit * comp.quantity
 
             comp_fit = {c.name: c.fit * c.quantity for c in self.components}
@@ -10985,7 +11057,23 @@ class FaultTreeApp:
         # Reliability analyses
         self.reliability_analyses = []
         for ra in data.get("reliability_analyses", []):
-            comps = [ReliabilityComponent(**c) for c in ra.get("components", [])]
+            def load_comp(cdata):
+                comp = ReliabilityComponent(
+                    cdata.get("name", ""),
+                    cdata.get("comp_type", ""),
+                    cdata.get("quantity", 1),
+                    cdata.get("attributes", {}),
+                    cdata.get("safety_req", ""),
+                    cdata.get("fit", 0.0),
+                    cdata.get("is_passive", False),
+                )
+                comp.sub_boms = [
+                    [load_comp(sc) for sc in bom]
+                    for bom in cdata.get("sub_boms", [])
+                ]
+                return comp
+
+            comps = [load_comp(c) for c in ra.get("components", [])]
             self.reliability_analyses.append(
                 ReliabilityAnalysis(
                     ra.get("name", ""),
