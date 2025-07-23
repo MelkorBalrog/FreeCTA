@@ -11835,7 +11835,8 @@ class FaultTreeApp:
 class FaultTreeNode:
     def __init__(self, user_name, node_type, parent=None):
         self.unique_id = AD_RiskAssessment_Helper.get_next_unique_id()
-        self.user_name = user_name
+        # Assign a sequential default name if none is provided
+        self.user_name = user_name if user_name else f"Node {self.unique_id}"
         self.node_type = node_type
         self.children = []
         self.parents = []
@@ -11891,10 +11892,12 @@ class FaultTreeNode:
     @property
     def name(self):
         orig = getattr(self, "original", self)
-        if not self.is_primary_instance:
-            return f"Node {orig.unique_id}: {self.user_name}" if self.user_name else f"Node {orig.unique_id}"
-        else:
-            return f"Node {self.unique_id}: {self.user_name}" if self.user_name else f"Node {self.unique_id}"
+        uid = orig.unique_id if not self.is_primary_instance else self.unique_id
+        base_name = self.user_name
+        # Avoid repeating the ID if the user_name already matches the default
+        if not base_name or base_name == f"Node {uid}":
+            return f"Node {uid}"
+        return f"Node {uid}: {base_name}"
 
     def to_dict(self):
         d = {
