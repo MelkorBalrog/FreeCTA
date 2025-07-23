@@ -686,17 +686,31 @@ class ReviewDocumentDialog(tk.Toplevel):
         self.title(f"Review Document - {review.name}")
 
         self.resizable(True, True)
-        self.outer = tk.Canvas(self)
-        vbar = tk.Scrollbar(self, orient=tk.VERTICAL, command=self.outer.yview)
-        self.outer.configure(yscrollcommand=vbar.set)
-        vbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.outer.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        container = tk.Frame(self)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        self.outer = tk.Canvas(container)
+        vbar = tk.Scrollbar(container, orient=tk.VERTICAL, command=self.outer.yview)
+        hbar = tk.Scrollbar(container, orient=tk.HORIZONTAL, command=self.outer.xview)
+        self.outer.configure(yscrollcommand=vbar.set, xscrollcommand=hbar.set)
+        self.outer.grid(row=0, column=0, sticky="nsew")
+        vbar.grid(row=0, column=1, sticky="ns")
+        hbar.grid(row=1, column=0, sticky="ew")
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(0, weight=1)
+
         self.inner = tk.Frame(self.outer)
-        self.outer.create_window((0, 0), window=self.inner, anchor="nw")
+        self.inner_id = self.outer.create_window((0, 0), window=self.inner, anchor="nw")
         self.inner.bind(
             "<Configure>",
             lambda e: self.outer.configure(scrollregion=self.outer.bbox("all")),
         )
+        self.outer.bind(
+            "<Configure>",
+            lambda e: self.outer.itemconfigure(self.inner_id, width=e.width),
+        )
+        self.inner.grid_columnconfigure(0, weight=1)
         self.images = []
         self.populate()
 
@@ -1395,6 +1409,7 @@ class VersionCompareDialog(tk.Toplevel):
         self.app = app
         self.title("Compare Versions")
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.resizable(True, True)
 
         names = [v["name"] for v in self.app.versions]
         tk.Label(self, text="Base version:").pack(padx=5, pady=2)
@@ -1414,9 +1429,13 @@ class VersionCompareDialog(tk.Toplevel):
         canvas_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.tree_canvas = tk.Canvas(canvas_frame, width=600, height=300, bg="white")
         vbar = tk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self.tree_canvas.yview)
-        self.tree_canvas.configure(yscrollcommand=vbar.set)
-        vbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.tree_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        hbar = tk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL, command=self.tree_canvas.xview)
+        self.tree_canvas.configure(yscrollcommand=vbar.set, xscrollcommand=hbar.set)
+        self.tree_canvas.grid(row=0, column=0, sticky="nsew")
+        vbar.grid(row=0, column=1, sticky="ns")
+        hbar.grid(row=1, column=0, sticky="ew")
+        canvas_frame.rowconfigure(0, weight=1)
+        canvas_frame.columnconfigure(0, weight=1)
 
         # table for FMEA differences - mimic the full FMEA table
         columns = [
@@ -1432,7 +1451,9 @@ class VersionCompareDialog(tk.Toplevel):
             "RPN",
             "Requirements",
         ]
-        self.fmea_tree = ttk.Treeview(self, columns=columns, show="headings")
+        fmea_frame = tk.Frame(self)
+        fmea_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.fmea_tree = ttk.Treeview(fmea_frame, columns=columns, show="headings")
         for col in columns:
             self.fmea_tree.heading(col, text=col)
             width = 120
@@ -1441,7 +1462,14 @@ class VersionCompareDialog(tk.Toplevel):
             elif col == "Parent":
                 width = 150
             self.fmea_tree.column(col, width=width, anchor="center")
-        self.fmea_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        vsb_fmea = ttk.Scrollbar(fmea_frame, orient="vertical", command=self.fmea_tree.yview)
+        hsb_fmea = ttk.Scrollbar(fmea_frame, orient="horizontal", command=self.fmea_tree.xview)
+        self.fmea_tree.configure(yscrollcommand=vsb_fmea.set, xscrollcommand=hsb_fmea.set)
+        self.fmea_tree.grid(row=0, column=0, sticky="nsew")
+        vsb_fmea.grid(row=0, column=1, sticky="ns")
+        hsb_fmea.grid(row=1, column=0, sticky="ew")
+        fmea_frame.rowconfigure(0, weight=1)
+        fmea_frame.columnconfigure(0, weight=1)
         self.fmea_tree.tag_configure("added", background="#cce5ff")
         self.fmea_tree.tag_configure("removed", background="#f8d7da")
         self.fmea_tree.tag_configure("existing", background="#e2e3e5")
@@ -1449,14 +1477,23 @@ class VersionCompareDialog(tk.Toplevel):
         columns_fmeda = [
             "FMEDA","Component","Parent","Failure Mode","Malfunction","Safety Goal","FaultType","Fraction","FIT","DiagCov","Mechanism"
         ]
-        self.fmeda_tree = ttk.Treeview(self, columns=columns_fmeda, show="headings")
+        fmeda_frame = tk.Frame(self)
+        fmeda_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.fmeda_tree = ttk.Treeview(fmeda_frame, columns=columns_fmeda, show="headings")
         for col in columns_fmeda:
             self.fmeda_tree.heading(col, text=col)
             width = 100
             if col in ["Malfunction","Safety Goal"]:
                 width = 150
             self.fmeda_tree.column(col, width=width, anchor="center")
-        self.fmeda_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        vsb_fmeda = ttk.Scrollbar(fmeda_frame, orient="vertical", command=self.fmeda_tree.yview)
+        hsb_fmeda = ttk.Scrollbar(fmeda_frame, orient="horizontal", command=self.fmeda_tree.xview)
+        self.fmeda_tree.configure(yscrollcommand=vsb_fmeda.set, xscrollcommand=hsb_fmeda.set)
+        self.fmeda_tree.grid(row=0, column=0, sticky="nsew")
+        vsb_fmeda.grid(row=0, column=1, sticky="ns")
+        hsb_fmeda.grid(row=1, column=0, sticky="ew")
+        fmeda_frame.rowconfigure(0, weight=1)
+        fmeda_frame.columnconfigure(0, weight=1)
         self.fmeda_tree.tag_configure("added", background="#cce5ff")
         self.fmeda_tree.tag_configure("removed", background="#f8d7da")
         self.fmeda_tree.tag_configure("existing", background="#e2e3e5")
@@ -1474,14 +1511,23 @@ class VersionCompareDialog(tk.Toplevel):
             "Covered",
             "Covered By",
         ]
-        self.hazop_tree = ttk.Treeview(self, columns=columns_hazop, show="headings")
+        hazop_frame = tk.Frame(self)
+        hazop_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.hazop_tree = ttk.Treeview(hazop_frame, columns=columns_hazop, show="headings")
         for col in columns_hazop:
             self.hazop_tree.heading(col, text=col)
             width = 100
             if col in ["Function", "Malfunction", "Scenario", "Rationale"]:
                 width = 150
             self.hazop_tree.column(col, width=width, anchor="center")
-        self.hazop_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        vsb_hazop = ttk.Scrollbar(hazop_frame, orient="vertical", command=self.hazop_tree.yview)
+        hsb_hazop = ttk.Scrollbar(hazop_frame, orient="horizontal", command=self.hazop_tree.xview)
+        self.hazop_tree.configure(yscrollcommand=vsb_hazop.set, xscrollcommand=hsb_hazop.set)
+        self.hazop_tree.grid(row=0, column=0, sticky="nsew")
+        vsb_hazop.grid(row=0, column=1, sticky="ns")
+        hsb_hazop.grid(row=1, column=0, sticky="ew")
+        hazop_frame.rowconfigure(0, weight=1)
+        hazop_frame.columnconfigure(0, weight=1)
         self.hazop_tree.tag_configure("added", background="#cce5ff")
         self.hazop_tree.tag_configure("removed", background="#f8d7da")
         self.hazop_tree.tag_configure("existing", background="#e2e3e5")
@@ -1498,14 +1544,23 @@ class VersionCompareDialog(tk.Toplevel):
             "ASIL",
             "Safety Goal",
         ]
-        self.hara_tree = ttk.Treeview(self, columns=columns_hara, show="headings")
+        hara_frame = tk.Frame(self)
+        hara_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.hara_tree = ttk.Treeview(hara_frame, columns=columns_hara, show="headings")
         for col in columns_hara:
             self.hara_tree.heading(col, text=col)
             width = 100
             if col in ["Malfunction", "Sev Rationale", "Cont Rationale", "Exp Rationale", "Safety Goal"]:
                 width = 150
             self.hara_tree.column(col, width=width, anchor="center")
-        self.hara_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        vsb_hara = ttk.Scrollbar(hara_frame, orient="vertical", command=self.hara_tree.yview)
+        hsb_hara = ttk.Scrollbar(hara_frame, orient="horizontal", command=self.hara_tree.xview)
+        self.hara_tree.configure(yscrollcommand=vsb_hara.set, xscrollcommand=hsb_hara.set)
+        self.hara_tree.grid(row=0, column=0, sticky="nsew")
+        vsb_hara.grid(row=0, column=1, sticky="ns")
+        hsb_hara.grid(row=1, column=0, sticky="ew")
+        hara_frame.rowconfigure(0, weight=1)
+        hara_frame.columnconfigure(0, weight=1)
         self.hara_tree.tag_configure("added", background="#cce5ff")
         self.hara_tree.tag_configure("removed", background="#f8d7da")
         self.hara_tree.tag_configure("existing", background="#e2e3e5")
