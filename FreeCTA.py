@@ -7755,7 +7755,9 @@ class FaultTreeApp:
         if formula == "exponential":
             return 1 - math.exp(-lam * t)
         elif formula == "constant":
-            return lam
+            # Treat the FIT value as a probability independent of mission time
+            # so no conversion to a failure rate is applied.
+            return fit
         else:
             return lam * t
 
@@ -10837,6 +10839,7 @@ class FaultTreeApp:
                 for lib in self.mechanism_libraries
             ],
             "selected_mechanism_libraries": [lib.name for lib in self.selected_mechanism_libraries],
+            "mission_profiles": [asdict(mp) for mp in self.mission_profiles],
             "reliability_analyses": [
                 {
                     "name": ra.name,
@@ -10937,6 +10940,14 @@ class FaultTreeApp:
                 self.selected_mechanism_libraries.append(found)
         if not self.mechanism_libraries:
             self.load_default_mechanisms()
+
+        # Mission profiles
+        self.mission_profiles = []
+        for mp_data in data.get("mission_profiles", []):
+            try:
+                self.mission_profiles.append(MissionProfile(**mp_data))
+            except TypeError:
+                pass
 
         # Reliability analyses
         self.reliability_analyses = []

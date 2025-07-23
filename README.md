@@ -39,6 +39,26 @@ attached so they can be opened in Excel or another spreadsheet application. Requ
 If sending fails with a connection error, the dialog will prompt again so you
 can correct the server address or port.
 
+## Mission Profiles and Probability Formulas
+
+The **Reliability** menu lets you define mission profiles describing the on/off
+time, temperatures and other conditions for your system.  When a profile is
+present its total `TAU` value is used to convert FIT rates into failure
+probabilities for each basic event.
+
+In the *Edit Node* dialog for a basic event you can choose how the FIT rate is
+interpreted:
+
+* **linear** – probability is calculated as `λ × τ` where `λ` is the FIT value
+  expressed as failures per hour and `τ` comes from the selected mission profile.
+* **exponential** – uses the exponential model `1 − exp(−λ × τ)`.
+* **constant** – the numeric FIT value is used directly as the
+  probability, ignoring mission time. Use this when the value already
+  represents a probability rather than a failure rate.
+
+Mission profiles and the selected formula for each basic event are stored in the
+JSON model so results remain consistent when reloading the file.
+
 ## License
 
 This project is licensed under the GNU General Public License version 3. See the [LICENSE](LICENSE) file for details.
