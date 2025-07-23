@@ -105,6 +105,7 @@ class HaraDoc:
     hazops: list
     entries: list
     approved: bool = False
+    status: str = "draft"
 
 COMPONENT_ATTR_TEMPLATES = {
     "capacitor": {
@@ -303,11 +304,28 @@ ASIL_TARGETS = {
 # Mapping of ASIL decomposition schemes as allowed by ISO 26262. Each
 # parent ASIL level maps to a list of two-element tuples representing the
 # resulting ASIL assignments for the decomposed requirements.
+# Decomposition schemes following ISO 26262 guidance.  Each key is the
+# original ASIL level and maps to the allowed pairs for the decomposed
+# requirements.  Options marked as ``QM(X)`` indicate decomposition with
+# additional justification and analysis for the original level ``X``.
+# Decomposition of an ASIL A requirement is not defined.
 ASIL_DECOMP_SCHEMES = {
-    "D": [("B", "B"), ("C", "D")],
-    "C": [("B", "C"), ("A", "C")],
-    "B": [("A", "B"), ("QM", "B")],
-    "A": [("QM", "A")],
+    "D": [
+        ("B", "B"),          # Valid: ASIL B + ASIL B
+        ("C", "QM(D)"),      # Conditional: ASIL C + QM(D)
+        ("B", "QM(D)"),      # Conditional: ASIL B + QM(D)
+    ],
+    "C": [
+        ("A", "A"),          # Valid: ASIL A + ASIL A
+        ("B", "QM(C)"),      # Conditional: ASIL B + QM(C)
+        ("A", "QM(C)"),      # Conditional: ASIL A + QM(C)
+    ],
+    "B": [
+        ("QM", "QM"),        # Valid: QM + QM
+        ("A", "QM(B)"),      # Conditional: ASIL A + QM(B)
+        ("B", "QM(B)"),      # Conditional: ASIL B + QM(B)
+    ],
+    "A": [],  # No further decomposition defined for ASIL A
 }
 
 # ASIL determination table following the ISO 26262 risk graph used in the HARA

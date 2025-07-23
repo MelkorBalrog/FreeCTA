@@ -817,6 +817,8 @@ class EditNodeDialog(simpledialog.Dialog):
             self.delete_req_button.grid(row=1, column=2, padx=2, pady=2)
             self.add_existing_req_button = ttk.Button(self.safety_req_frame, text="Add Existing", command=self.add_existing_requirement)
             self.add_existing_req_button.grid(row=1, column=3, padx=2, pady=2)
+            self.decomp_req_button = ttk.Button(self.safety_req_frame, text="Decompose", command=self.decompose_safety_requirement)
+            self.decomp_req_button.grid(row=1, column=4, padx=2, pady=2)
 
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
             ttk.Label(master, text="Gate Type:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
@@ -1208,7 +1210,12 @@ class EditNodeDialog(simpledialog.Dialog):
         current_req = self.node.safety_requirements[index]
         initial_req = current_req.copy()
         # Pass self.master as the parent here as well.
-        dialog = self.RequirementDialog(self.master, title="Edit Safety Requirement", initial_req=initial_req)
+        dialog = self.RequirementDialog(
+            self.master,
+            title="Edit Safety Requirement",
+            initial_req=initial_req,
+            asil_readonly=self.node.node_type.upper() == "BASIC EVENT",
+        )
         if dialog.result is None or dialog.result["text"] == "":
             return
         new_custom_id = dialog.result["custom_id"].strip() or current_req.get("custom_id") or current_req.get("id") or str(uuid.uuid4())
@@ -2500,11 +2507,25 @@ class FaultTreeApp:
                 return d
         return None
 
+    def update_hara_statuses(self):
+        """Update each HARA document's status based on linked reviews."""
+        for doc in self.hara_docs:
+            status = "draft"
+            for review in self.reviews:
+                if doc.name in getattr(review, "hara_names", []):
+                    if review.approved and self.review_is_closed_for(review):
+                        status = "closed"
+                        break
+                    else:
+                        status = "in review"
+            doc.status = status
+            doc.approved = status == "closed"
+
     def get_safety_goal_asil(self, sg_name):
         """Return the highest ASIL level for a safety goal name across approved HARAs."""
         best = "QM"
         for doc in getattr(self, "hara_docs", []):
-            if not getattr(doc, "approved", False):
+            if not getattr(doc, "approved", False) and getattr(doc, "status", "") != "closed":
                 continue
             for e in doc.entries:
                 if sg_name and sg_name == e.safety_goal and ASIL_ORDER.get(e.asil, 0) > ASIL_ORDER.get(best, 0):
@@ -2519,7 +2540,7 @@ class FaultTreeApp:
         """Propagate HARA values to safety goals when the HARA is approved."""
         sg_data = {}
         for doc in getattr(self, "hara_docs", []):
-            if not getattr(doc, "approved", False):
+            if not getattr(doc, "approved", False) and getattr(doc, "status", "") != "closed":
                 continue
             for e in doc.entries:
                 if not e.safety_goal:
@@ -10687,6 +10708,7 @@ class FaultTreeApp:
                     "hazops": getattr(doc, "hazops", []),
                     "entries": [asdict(e) for e in doc.entries],
                     "approved": getattr(doc, "approved", False),
+                    "status": getattr(doc, "status", "draft"),
                 }
                 for doc in self.hara_docs
             ],
@@ -10865,12 +10887,13 @@ class FaultTreeApp:
                     hazops,
                     entries,
                     d.get("approved", False),
+                    d.get("status", "draft"),
                 )
             )
         if not self.hara_docs and "hara_entries" in data:
             hazop_name = self.hazop_docs[0].name if self.hazop_docs else ""
             self.hara_docs.append(
-                HaraDoc("Default", [hazop_name] if hazop_name else [], [HaraEntry(**e) for e in data.get("hara_entries", [])])
+                HaraDoc("Default", [hazop_name] if hazop_name else [], [HaraEntry(**e) for e in data.get("hara_entries", [])], False, "draft")
             )
         self.active_hara = self.hara_docs[0] if self.hara_docs else None
         self.hara_entries = self.active_hara.entries if self.active_hara else []
@@ -10971,6 +10994,10 @@ class FaultTreeApp:
                 self.review_data = review
             else:
                 self.review_data = None
+
+        self.update_hara_statuses()
+        self.sync_hara_to_safety_goals()
+
         self.versions = data.get("versions", [])
 
         self.selected_node = None
