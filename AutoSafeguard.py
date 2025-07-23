@@ -11468,7 +11468,7 @@ class FaultTreeApp:
             def peer_completed(pred):
                 return any(
                     r.mode == 'peer'
-                    and (getattr(r, 'reviewed', False) or self.review_is_closed_for(r))
+                    and getattr(r, 'reviewed', False)
                     and pred(r)
                     for r in self.reviews
                 )
@@ -11477,21 +11477,21 @@ class FaultTreeApp:
                 if not peer_completed(lambda r: tid in r.fta_ids):
                     messagebox.showerror(
                         "Review",
-                        "Peer review must be approved or closed before starting joint review",
+                        "Peer review must be reviewed before starting joint review",
                     )
                     return
             for name_fta in fmea_names:
                 if not peer_completed(lambda r: name_fta in r.fmea_names):
                     messagebox.showerror(
                         "Review",
-                        "Peer review must be approved or closed before starting joint review",
+                        "Peer review must be reviewed before starting joint review",
                     )
                     return
             for name_fd in fmeda_names:
                 if not peer_completed(lambda r: name_fd in r.fmeda_names):
                     messagebox.showerror(
                         "Review",
-                        "Peer review must be approved or closed before starting joint review",
+                        "Peer review must be reviewed before starting joint review",
                     )
                     return
             review = ReviewData(name=name, description=description, mode='joint', moderators=moderators,
@@ -11512,6 +11512,8 @@ class FaultTreeApp:
             return
         if not self.review_data and self.reviews:
             self.review_data = self.reviews[0]
+        self.update_hara_statuses()
+        self.update_requirement_statuses()
         if self.review_window is None or not self.review_window.winfo_exists():
             self.review_window = ReviewToolbox(self.root, self)
         self.set_current_user()
