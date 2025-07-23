@@ -8290,9 +8290,13 @@ class FaultTreeApp:
                 lpf += fit * (1 - dc)
         self.spfm = spf
         self.lpfm = lpf
-        pmhf = (spf + lpf) * 1e-9
+
+        pmhf = 0.0
         for te in self.top_events:
-            te.probability = pmhf
+            prob = self.calculate_probability_recursive(te)
+            te.probability = prob
+            pmhf += prob
+
         self.update_views()
         msg = f"PMHF = {pmhf:.2e}\nSPFM = {spf:.2f}\nLPFM = {lpf:.2f}"
         messagebox.showinfo("PMHF Calculation", msg)
