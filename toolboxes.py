@@ -819,6 +819,7 @@ class HaraWindow(tk.Toplevel):
         ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
+        ttk.Button(btn, text="Approve", command=self.approve_doc).pack(side=tk.LEFT, padx=2, pady=2)
         self.refresh_docs()
         self.refresh()
 
@@ -867,7 +868,7 @@ class HaraWindow(tk.Toplevel):
         if not getattr(dlg, "result", None):
             return
         name, hazop = dlg.result
-        doc = HaraDoc(name, hazop, [])
+        doc = HaraDoc(name, hazop, [], False)
         self.app.hara_docs.append(doc)
         self.app.active_hara = doc
         self.app.hara_entries = doc.entries
@@ -979,6 +980,13 @@ class HaraWindow(tk.Toplevel):
             if idx < len(self.app.hara_entries):
                 del self.app.hara_entries[idx]
         self.refresh()
+
+    def approve_doc(self):
+        if not self.app.active_hara:
+            return
+        self.app.active_hara.approved = True
+        self.app.sync_hara_to_safety_goals()
+        messagebox.showinfo("HARA", "HARA approved")
 
 
 
