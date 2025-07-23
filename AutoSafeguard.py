@@ -2232,6 +2232,14 @@ class FaultTreeApp:
             if name in asil_map:
                 te.safety_goal_asil = asil_map[name]
 
+    def sync_hara_to_safety_goals(self):
+        """Propagate ASIL values from HARA entries to safety goals."""
+        asil_map = {e.safety_goal: e.asil for e in self.hara_entries if e.safety_goal}
+        for te in self.top_events:
+            name = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
+            if name in asil_map:
+                te.safety_goal_asil = asil_map[name]
+
     def edit_selected(self):
         sel = self.treeview.selection()
         target = None
@@ -6576,6 +6584,35 @@ class FaultTreeApp:
                     names.append(name)
         return names
 
+    def classify_scenarios(self):
+        """Return two lists of scenario names grouped by category."""
+        use_case = []
+        sotif = []
+        for lib in self.scenario_libraries:
+            for sc in lib.get("scenarios", []):
+                if isinstance(sc, dict):
+                    name = sc.get("name", "")
+                    if sc.get("tcs") or sc.get("fis") or sc.get("type") == "sotif":
+                        sotif.append(name)
+                    else:
+                        use_case.append(name)
+                else:
+                    use_case.append(sc)
+        return {"use_case": use_case, "sotif": sotif}
+
+    def get_all_scenery_names(self):
+        """Return the list of scenery/ODD element names."""
+        names = []
+        for lib in self.odd_libraries:
+            for el in lib.get("elements", []):
+                if isinstance(el, dict):
+                    name = el.get("name") or el.get("element") or el.get("id")
+                else:
+                    name = str(el)
+                if name:
+                    names.append(name)
+        return names
+
     def get_all_scenery_names(self):
         """Return the list of scenery/ODD element names."""
         names = []
@@ -9231,13 +9268,46 @@ class FaultTreeApp:
         lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         for lib in self.scenario_libraries:
             lb.insert(tk.END, lib.get("name",""))
+
         def add_lib():
-            name = simpledialog.askstring("New Library","Library name:")
+            name = simpledialog.askstring("New Library", "Library name:")
+            if not name:
+                return
+            elems = []
+            if messagebox.askyesno("Import", "Import elements from file?"):
+                path = filedialog.askopenfilename(filetypes=[("CSV/Excel", "*.csv *.xlsx")])
+                if path:
+                    if path.lower().endswith(".csv"):
+                        with open(path, newline="") as f:
+                            elems = list(csv.DictReader(f))
+                    elif path.lower().endswith(".xlsx"):
+                        try:
+                            if load_workbook is None:
+                                raise ImportError
+                            wb = load_workbook(path, read_only=True)
+                            ws = wb.active
+                            headers = [c.value for c in next(ws.iter_rows(max_row=1))]
+                            for row in ws.iter_rows(min_row=2, values_only=True):
+                                elem = {headers[i]: row[i] for i in range(len(headers))}
+                                elems.append(elem)
+                        except Exception:
+                            messagebox.showerror("Import", "Failed to read Excel file. openpyxl required.")
+            self.odd_libraries.append({"name": name, "elements": elems})
+            refresh_libs()
+            self.update_odd_elements()
+
+        def edit_lib():
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.odd_libraries[sel[0]]
+            name = simpledialog.askstring("Edit Library", "Library name:", initialvalue=lib.get("name", ""))
             if name:
-                self.scenario_libraries.append({"name":name,"scenarios":[]})
-                lb.insert(tk.END,name)
+                lib["name"] = name
+                refresh_libs()
+
         def delete_lib():
-            sel = lb.curselection()
+            sel = lib_lb.curselection()
             if sel:
                 idx=sel[0]; del self.scenario_libraries[idx]; lb.delete(idx)
         btn = ttk.Frame(win); btn.pack(side=tk.RIGHT, fill=tk.Y)

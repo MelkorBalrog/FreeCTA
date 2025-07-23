@@ -516,6 +516,7 @@ class FI2TCWindow(tk.Toplevel):
                     self.widgets[col] = ent
                 r += 1
             refresh_funcs()
+            
         def apply(self):
             for col, widget in self.widgets.items():
                 if isinstance(widget, tk.Entry):
@@ -1230,6 +1231,3 @@ class TC2FIWindow(tk.Toplevel):
             for r in self.app.tc2fi_entries:
                 w.writerow([r.get(k, "") for k in self.COLS])
         messagebox.showinfo("Export", "TC2FI exported")
-
-
-
