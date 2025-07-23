@@ -6999,6 +6999,12 @@ class FaultTreeApp:
         for lib in self.odd_libraries:
             self.odd_elements.extend(lib.get("elements", []))
 
+    def get_entry_field(self, entry, field, default=""):
+        """Retrieve attribute or dict value from an entry."""
+        if isinstance(entry, dict):
+            return entry.get(field, default)
+        return getattr(entry, field, default)
+
     def get_all_failure_modes(self):
         """Return list of all failure mode nodes from FTA, FMEAs and FMEDAs."""
         modes = list(self.get_all_basic_events())
@@ -11631,16 +11637,16 @@ class FaultTreeApp:
             writer.writerow(columns)
             for e in doc.entries:
                 writer.writerow([
-                    getattr(e, "function", e.get("function", "")),
-                    getattr(e, "malfunction", e.get("malfunction", "")),
-                    getattr(e, "mtype", e.get("mtype", "")),
-                    getattr(e, "scenario", e.get("scenario", "")),
-                    getattr(e, "conditions", e.get("conditions", "")),
-                    getattr(e, "hazard", e.get("hazard", "")),
-                    "Yes" if getattr(e, "safety", e.get("safety", False)) else "No",
-                    getattr(e, "rationale", e.get("rationale", "")),
-                    "Yes" if getattr(e, "covered", e.get("covered", False)) else "No",
-                    getattr(e, "covered_by", e.get("covered_by", "")),
+                    self.get_entry_field(e, "function"),
+                    self.get_entry_field(e, "malfunction"),
+                    self.get_entry_field(e, "mtype"),
+                    self.get_entry_field(e, "scenario"),
+                    self.get_entry_field(e, "conditions"),
+                    self.get_entry_field(e, "hazard"),
+                    "Yes" if self.get_entry_field(e, "safety", False) else "No",
+                    self.get_entry_field(e, "rationale"),
+                    "Yes" if self.get_entry_field(e, "covered", False) else "No",
+                    self.get_entry_field(e, "covered_by"),
                 ])
             csv_bytes = out.getvalue().encode("utf-8")
             out.close()
@@ -11670,15 +11676,15 @@ class FaultTreeApp:
             writer.writerow(columns)
             for e in doc.entries:
                 writer.writerow([
-                    getattr(e, "malfunction", e.get("malfunction", "")),
-                    getattr(e, "severity", e.get("severity", "")),
-                    getattr(e, "sev_rationale", e.get("sev_rationale", "")),
-                    getattr(e, "controllability", e.get("controllability", "")),
-                    getattr(e, "cont_rationale", e.get("cont_rationale", "")),
-                    getattr(e, "exposure", e.get("exposure", "")),
-                    getattr(e, "exp_rationale", e.get("exp_rationale", "")),
-                    getattr(e, "asil", e.get("asil", "")),
-                    getattr(e, "safety_goal", e.get("safety_goal", "")),
+                    self.get_entry_field(e, "malfunction"),
+                    self.get_entry_field(e, "severity"),
+                    self.get_entry_field(e, "sev_rationale"),
+                    self.get_entry_field(e, "controllability"),
+                    self.get_entry_field(e, "cont_rationale"),
+                    self.get_entry_field(e, "exposure"),
+                    self.get_entry_field(e, "exp_rationale"),
+                    self.get_entry_field(e, "asil"),
+                    self.get_entry_field(e, "safety_goal"),
                 ])
             csv_bytes = out.getvalue().encode("utf-8")
             out.close()
