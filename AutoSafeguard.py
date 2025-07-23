@@ -378,6 +378,19 @@ class HazopEntry:
     component: str = ""
 
 
+@dataclass
+class HaraEntry:
+    malfunction: str
+    severity: int
+    sev_rationale: str
+    controllability: int
+    cont_rationale: str
+    exposure: int
+    exp_rationale: str
+    asil: str
+    safety_goal: str
+
+
 
 COMPONENT_ATTR_TEMPLATES = {
     "capacitor": {
@@ -572,6 +585,20 @@ ASIL_TARGETS = {
     "A": {"spfm":0.0, "lpfm":0.0, "dc":0.0},
     "QM": {"spfm":0.0, "lpfm":0.0, "dc":0.0},
 }
+
+# Simplified ISO 26262 risk graph for ASIL determination
+ASIL_TABLE = {
+    (3, 1, 4): "D", (3, 1, 3): "D", (3, 1, 2): "C", (3, 1, 1): "B",
+    (3, 2, 4): "C", (3, 2, 3): "C", (3, 2, 2): "B", (3, 2, 1): "A",
+    (3, 3, 4): "B", (3, 3, 3): "B", (3, 3, 2): "A", (3, 3, 1): "QM",
+    (2, 1, 4): "C", (2, 1, 3): "C", (2, 1, 2): "B", (2, 1, 1): "A",
+    (2, 2, 4): "B", (2, 2, 3): "B", (2, 2, 2): "A", (2, 2, 1): "QM",
+    (2, 3, 4): "A", (2, 3, 3): "A", (2, 3, 2): "QM", (2, 3, 1): "QM",
+}
+
+def calc_asil(sev: int, cont: int, expo: int) -> str:
+    """Return ASIL based on severity, controllability and exposure."""
+    return ASIL_TABLE.get((sev, cont, expo), "QM")
 dynamic_recommendations = {
     1: {
         "Testing Requirements": (
@@ -2300,10 +2327,21 @@ class EditNodeDialog(simpledialog.Dialog):
         )
 
     def get_safety_goal_asil(self, sg_name):
+        for e in self.hara_entries:
+            if sg_name and sg_name == e.safety_goal:
+                return e.asil
         for te in self.top_events:
             if sg_name and (sg_name == te.user_name or sg_name == te.safety_goal_description):
                 return te.safety_goal_asil or "QM"
         return "QM"
+
+    def sync_hara_to_safety_goals(self):
+        """Propagate ASIL values from HARA entries to safety goals."""
+        asil_map = {e.safety_goal: e.asil for e in self.hara_entries if e.safety_goal}
+        for te in self.top_events:
+            name = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
+            if name in asil_map:
+                te.safety_goal_asil = asil_map[name]
     
     def add_safety_requirement(self):
         """
@@ -2520,6 +2558,7 @@ class FaultTreeApp:
         self.lpfm = 0.0
         self.reliability_dc = 0.0
         self.hazop_entries = []
+        self.hara_entries = []
         self.top_events = []
         self.reviews = []
         self.review_data = None
@@ -2613,11 +2652,15 @@ class FaultTreeApp:
         reliability_menu = tk.Menu(menubar, tearoff=0)
         reliability_menu.add_command(label="Mission Profiles", command=self.manage_mission_profiles)
         reliability_menu.add_command(label="Mechanism Libraries", command=self.manage_mechanism_libraries)
-        reliability_menu.add_command(label="HAZOP Analysis", command=self.open_hazop_window)
         reliability_menu.add_command(label="Reliability Analysis", command=self.open_reliability_window)
         reliability_menu.add_command(label="FMEDA Analysis", command=self.open_fmeda_window)
         reliability_menu.add_command(label="FMEDA Manager", command=self.show_fmeda_list)
         menubar.add_cascade(label="Reliability", menu=reliability_menu)
+
+        hazard_menu = tk.Menu(menubar, tearoff=0)
+        hazard_menu.add_command(label="HAZOP Analysis", command=self.open_hazop_window)
+        hazard_menu.add_command(label="HARA Analysis", command=self.open_hara_window)
+        menubar.add_cascade(label="Hazard", menu=hazard_menu)
         sotif_menu = tk.Menu(menubar, tearoff=0)
         sotif_menu.add_command(label="Triggering Conditions", command=self.show_triggering_condition_list)
         sotif_menu.add_command(label="Functional Insufficiencies", command=self.show_functional_insufficiency_list)
@@ -3393,6 +3436,9 @@ class FaultTreeApp:
 
     def get_safety_goal_asil(self, sg_name):
         """Return the ASIL level for a safety goal name."""
+        for e in self.hara_entries:
+            if sg_name and sg_name == e.safety_goal:
+                return e.asil
         for te in self.top_events:
             if sg_name and (sg_name == te.user_name or sg_name == te.safety_goal_description):
                 return te.safety_goal_asil or "QM"
@@ -10367,6 +10413,12 @@ class FaultTreeApp:
             return
         self._hazop_window = self.HazopWindow(self)
 
+    def open_hara_window(self):
+        if hasattr(self, "_hara_window") and self._hara_window.winfo_exists():
+            self._hara_window.lift()
+            return
+        self._hara_window = self.HaraWindow(self)
+
     def open_fi2tc_window(self):
         if hasattr(self, "_fi2tc_window") and self._fi2tc_window.winfo_exists():
             self._fi2tc_window.lift()
@@ -11047,6 +11099,131 @@ class FaultTreeApp:
             self.app.reliability_analyses.append(ra)
             messagebox.showinfo("Save", "Analysis saved")
 
+
+    class HaraWindow(tk.Toplevel):
+        COLS = [
+            "malfunction","severity","sev_rationale","controllability",
+            "cont_rationale","exposure","exp_rationale","asil","safety_goal"
+        ]
+
+        def __init__(self, app):
+            super().__init__(app.root)
+            self.app = app
+            self.title("HARA Analysis")
+            self.tree = ttk.Treeview(self, columns=self.COLS, show="headings")
+            for c in self.COLS:
+                self.tree.heading(c, text=c.replace("_"," ").title())
+                self.tree.column(c, width=120)
+            self.tree.pack(fill=tk.BOTH, expand=True)
+            btn = ttk.Frame(self)
+            btn.pack()
+            ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
+            self.refresh()
+
+        def refresh(self):
+            self.tree.delete(*self.tree.get_children())
+            for row in self.app.hara_entries:
+                vals = [
+                    row.malfunction, row.severity, row.sev_rationale,
+                    row.controllability, row.cont_rationale,
+                    row.exposure, row.exp_rationale,
+                    row.asil, row.safety_goal
+                ]
+                self.tree.insert("", "end", values=vals)
+            self.app.sync_hara_to_safety_goals()
+
+        class RowDialog(simpledialog.Dialog):
+            def __init__(self, parent, app, row=None):
+                self.app = app
+                self.row = row or HaraEntry("",1,"",1,"",1,"","QM","")
+                super().__init__(parent, title="Edit HARA Row")
+
+            def body(self, master):
+                malfs = [e.malfunction for e in self.app.hazop_entries if e.safety]
+                goals = [te.safety_goal_description or (te.user_name or f"SG {te.unique_id}") for te in self.app.top_events]
+                ttk.Label(master, text="Malfunction").grid(row=0,column=0,sticky="e")
+                self.mal_var = tk.StringVar(value=self.row.malfunction)
+                ttk.Combobox(master, textvariable=self.mal_var, values=malfs, state="readonly").grid(row=0,column=1)
+                ttk.Label(master, text="Severity").grid(row=1,column=0,sticky="e")
+                self.sev_var = tk.StringVar(value=str(self.row.severity))
+                sev_cb = ttk.Combobox(master, textvariable=self.sev_var, values=["1","2","3"], state="readonly")
+                sev_cb.grid(row=1,column=1)
+                ttk.Label(master, text="Severity Rationale").grid(row=2,column=0,sticky="e")
+                self.sev_rat = tk.Entry(master)
+                self.sev_rat.insert(0, self.row.sev_rationale)
+                self.sev_rat.grid(row=2,column=1)
+                ttk.Label(master, text="Controllability").grid(row=3,column=0,sticky="e")
+                self.cont_var = tk.StringVar(value=str(self.row.controllability))
+                cont_cb = ttk.Combobox(master, textvariable=self.cont_var, values=["1","2","3"], state="readonly")
+                cont_cb.grid(row=3,column=1)
+                ttk.Label(master, text="Controllability Rationale").grid(row=4,column=0,sticky="e")
+                self.cont_rat = tk.Entry(master)
+                self.cont_rat.insert(0, self.row.cont_rationale)
+                self.cont_rat.grid(row=4,column=1)
+                ttk.Label(master, text="Exposure").grid(row=5,column=0,sticky="e")
+                self.exp_var = tk.StringVar(value=str(self.row.exposure))
+                exp_cb = ttk.Combobox(master, textvariable=self.exp_var, values=["1","2","3","4"], state="readonly")
+                exp_cb.grid(row=5,column=1)
+                ttk.Label(master, text="Exposure Rationale").grid(row=6,column=0,sticky="e")
+                self.exp_rat = tk.Entry(master)
+                self.exp_rat.insert(0, self.row.exp_rationale)
+                self.exp_rat.grid(row=6,column=1)
+                ttk.Label(master, text="ASIL").grid(row=7,column=0,sticky="e")
+                self.asil_var = tk.StringVar(value=self.row.asil)
+                asil_lbl = ttk.Label(master, textvariable=self.asil_var)
+                asil_lbl.grid(row=7,column=1)
+                ttk.Label(master, text="Safety Goal").grid(row=8,column=0,sticky="e")
+                self.sg_var = tk.StringVar(value=self.row.safety_goal)
+                ttk.Combobox(master, textvariable=self.sg_var, values=goals, state="readonly").grid(row=8,column=1)
+
+                def recalc(_=None):
+                    try:
+                        s = int(self.sev_var.get())
+                        c = int(self.cont_var.get())
+                        e = int(self.exp_var.get())
+                    except ValueError:
+                        self.asil_var.set("QM")
+                        return
+                    self.asil_var.set(calc_asil(s,c,e))
+
+                sev_cb.bind("<<ComboboxSelected>>", recalc)
+                cont_cb.bind("<<ComboboxSelected>>", recalc)
+                exp_cb.bind("<<ComboboxSelected>>", recalc)
+                recalc()
+
+            def apply(self):
+                self.row.malfunction = self.mal_var.get()
+                self.row.severity = int(self.sev_var.get())
+                self.row.sev_rationale = self.sev_rat.get()
+                self.row.controllability = int(self.cont_var.get())
+                self.row.cont_rationale = self.cont_rat.get()
+                self.row.exposure = int(self.exp_var.get())
+                self.row.exp_rationale = self.exp_rat.get()
+                self.row.asil = self.asil_var.get()
+                self.row.safety_goal = self.sg_var.get()
+
+        def add_row(self):
+            dlg = self.RowDialog(self, self.app)
+            self.app.hara_entries.append(dlg.row)
+            self.refresh()
+
+        def edit_row(self):
+            sel = self.tree.focus()
+            if not sel:
+                return
+            idx = self.tree.index(sel)
+            dlg = self.RowDialog(self, self.app, self.app.hara_entries[idx])
+            self.refresh()
+
+        def del_row(self):
+            sel = self.tree.selection()
+            for iid in sel:
+                idx = self.tree.index(iid)
+                if idx < len(self.app.hara_entries):
+                    del self.app.hara_entries[idx]
+            self.refresh()
 
     class TC2FIWindow(tk.Toplevel):
         COLS = [
@@ -11835,6 +12012,7 @@ class FaultTreeApp:
                 for ra in self.reliability_analyses
             ],
             "hazop_entries": [asdict(e) for e in self.hazop_entries],
+            "hara_entries": [asdict(e) for e in self.hara_entries],
             "fi2tc_entries": self.fi2tc_entries,
             "tc2fi_entries": self.tc2fi_entries,
             "scenario_libraries": self.scenario_libraries,
@@ -11992,10 +12170,26 @@ class FaultTreeApp:
             )
             for h in data.get("hazop_entries", [])
         ]
+        self.hara_entries = [
+            HaraEntry(
+                h.get("malfunction", ""),
+                int(h.get("severity", 1)),
+                h.get("sev_rationale", ""),
+                int(h.get("controllability", 1)),
+                h.get("cont_rationale", ""),
+                int(h.get("exposure", 1)),
+                h.get("exp_rationale", ""),
+                h.get("asil", "QM"),
+                h.get("safety_goal", ""),
+            )
+            for h in data.get("hara_entries", [])
+        ]
         self.fi2tc_entries = data.get("fi2tc_entries", [])
         self.tc2fi_entries = data.get("tc2fi_entries", [])
         self.scenario_libraries = data.get("scenario_libraries", [])
         self.odd_elements = data.get("odd_elements", [])
+
+        self.sync_hara_to_safety_goals()
 
         self.fmedas = []
         for doc in data.get("fmedas", []):
