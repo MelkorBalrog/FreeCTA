@@ -9480,18 +9480,35 @@ class FaultTreeApp:
         messagebox.showinfo("Export", "Safety goal requirements exported.")
 
     def show_cut_sets(self):
+        """Display minimal cut sets for every top event."""
         if not self.top_events:
             return
-        te = self.top_events[0]
-        cut_sets = self.calculate_cut_sets(te)
         win = tk.Toplevel(self.root)
         win.title("FTA Cut Sets")
-        tree = ttk.Treeview(win, columns=["Cut Set"], show="headings")
-        tree.heading("Cut Set", text="Basic Events")
+        columns = ("Top Event", "Cut Set #", "Basic Events")
+        tree = ttk.Treeview(win, columns=columns, show="headings")
+        for c in columns:
+            tree.heading(c, text=c)
         tree.pack(fill=tk.BOTH, expand=True)
-        for cs in cut_sets:
-            names = ", ".join(str(uid) for uid in sorted(cs))
-            tree.insert("", "end", values=[names])
+
+        for te in self.top_events:
+            nodes_by_id = {}
+
+            def map_nodes(n):
+                nodes_by_id[n.unique_id] = n
+                for child in n.children:
+                    map_nodes(child)
+
+            map_nodes(te)
+            cut_sets = self.calculate_cut_sets(te)
+            te_label = te.user_name or f"Top Event {te.unique_id}"
+            for idx, cs in enumerate(cut_sets, start=1):
+                names = ", ".join(
+                    f"{nodes_by_id[uid].user_name or nodes_by_id[uid].node_type} [{uid}]"
+                    for uid in sorted(cs)
+                )
+                tree.insert("", "end", values=(te_label, idx, names))
+                te_label = ""
 
         def export_csv():
             path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
@@ -9499,9 +9516,9 @@ class FaultTreeApp:
                 return
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["Cut Set"])
-                for cs in cut_sets:
-                    writer.writerow([", ".join(str(uid) for uid in sorted(cs))])
+                writer.writerow(["Top Event", "Cut Set #", "Basic Events"])
+                for iid in tree.get_children():
+                    writer.writerow(tree.item(iid, "values"))
             messagebox.showinfo("Export", "Cut sets exported")
 
         ttk.Button(win, text="Export CSV", command=export_csv).pack(pady=5)
@@ -9517,36 +9534,35 @@ class FaultTreeApp:
         ttk.Checkbutton(chk_frame, text="FMEA", variable=var_fmea).pack(side=tk.LEFT)
         ttk.Checkbutton(chk_frame, text="FMEDA", variable=var_fmeda).pack(side=tk.LEFT)
         ttk.Checkbutton(chk_frame, text="FTA", variable=var_fta).pack(side=tk.LEFT)
-        tree = ttk.Treeview(win, columns=["Fault", "Count", "Sources"], show="headings")
-        for c in ["Fault", "Count", "Sources"]:
+        tree = ttk.Treeview(win, columns=["Cause", "Events"], show="headings")
+        for c in ["Cause", "Events"]:
             tree.heading(c, text=c)
             tree.column(c, width=150)
         tree.pack(fill=tk.BOTH, expand=True)
 
         def refresh():
             tree.delete(*tree.get_children())
-            counts = {}
-            srcs = {}
+            events_by_cause = {}
             if var_fmea.get():
                 for fmea in self.fmeas:
                     for be in fmea["entries"]:
-                        key = be.description
-                        counts[key] = counts.get(key, 0) + 1
-                        srcs.setdefault(key, set()).add("FMEA")
+                        cause = be.description
+                        label = f"{fmea['name']}:{be.user_name or be.description or be.unique_id}"
+                        events_by_cause.setdefault(cause, set()).add(label)
             if var_fmeda.get():
                 for fmeda in self.fmedas:
                     for be in fmeda["entries"]:
-                        key = be.description
-                        counts[key] = counts.get(key, 0) + 1
-                        srcs.setdefault(key, set()).add("FMEDA")
+                        cause = be.description
+                        label = f"{fmeda['name']}:{be.user_name or be.description or be.unique_id}"
+                        events_by_cause.setdefault(cause, set()).add(label)
             if var_fta.get():
                 for be in self.get_all_basic_events():
-                    key = be.description or be.user_name
-                    counts[key] = counts.get(key, 0) + 1
-                    srcs.setdefault(key, set()).add("FTA")
-            for k, cnt in counts.items():
-                if cnt > 1:
-                    tree.insert("", "end", values=[k, cnt, ", ".join(sorted(srcs[k]))])
+                    cause = be.description or ""
+                    label = be.user_name or f"BE {be.unique_id}"
+                    events_by_cause.setdefault(cause, set()).add(label)
+            for cause, evts in events_by_cause.items():
+                if len(evts) > 1:
+                    tree.insert("", "end", values=[cause, ", ".join(sorted(evts))])
 
         refresh()
 
@@ -9556,7 +9572,7 @@ class FaultTreeApp:
                 return
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["Fault", "Count", "Sources"])
+                writer.writerow(["Cause", "Events"])
                 for iid in tree.get_children():
                     writer.writerow(tree.item(iid, "values"))
             messagebox.showinfo("Export", "Common cause data exported")
@@ -9567,18 +9583,35 @@ class FaultTreeApp:
         ttk.Button(btn_frame, text="Export CSV", command=export_csv).pack(side=tk.LEFT, padx=5, pady=5)
 
     def show_cut_sets(self):
+        """Display minimal cut sets for every top event."""
         if not self.top_events:
             return
-        te = self.top_events[0]
-        cut_sets = self.calculate_cut_sets(te)
         win = tk.Toplevel(self.root)
         win.title("FTA Cut Sets")
-        tree = ttk.Treeview(win, columns=["Cut Set"], show="headings")
-        tree.heading("Cut Set", text="Basic Events")
+        columns = ("Top Event", "Cut Set #", "Basic Events")
+        tree = ttk.Treeview(win, columns=columns, show="headings")
+        for c in columns:
+            tree.heading(c, text=c)
         tree.pack(fill=tk.BOTH, expand=True)
-        for cs in cut_sets:
-            names = ", ".join(str(uid) for uid in sorted(cs))
-            tree.insert("", "end", values=[names])
+
+        for te in self.top_events:
+            nodes_by_id = {}
+
+            def map_nodes(n):
+                nodes_by_id[n.unique_id] = n
+                for child in n.children:
+                    map_nodes(child)
+
+            map_nodes(te)
+            cut_sets = self.calculate_cut_sets(te)
+            te_label = te.user_name or f"Top Event {te.unique_id}"
+            for idx, cs in enumerate(cut_sets, start=1):
+                names = ", ".join(
+                    f"{nodes_by_id[uid].user_name or nodes_by_id[uid].node_type} [{uid}]"
+                    for uid in sorted(cs)
+                )
+                tree.insert("", "end", values=(te_label, idx, names))
+                te_label = ""
 
         def export_csv():
             path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
@@ -9586,9 +9619,9 @@ class FaultTreeApp:
                 return
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["Cut Set"])
-                for cs in cut_sets:
-                    writer.writerow([", ".join(str(uid) for uid in sorted(cs))])
+                writer.writerow(["Top Event", "Cut Set #", "Basic Events"])
+                for iid in tree.get_children():
+                    writer.writerow(tree.item(iid, "values"))
             messagebox.showinfo("Export", "Cut sets exported")
 
         ttk.Button(win, text="Export CSV", command=export_csv).pack(pady=5)
@@ -9604,36 +9637,35 @@ class FaultTreeApp:
         ttk.Checkbutton(chk_frame, text="FMEA", variable=var_fmea).pack(side=tk.LEFT)
         ttk.Checkbutton(chk_frame, text="FMEDA", variable=var_fmeda).pack(side=tk.LEFT)
         ttk.Checkbutton(chk_frame, text="FTA", variable=var_fta).pack(side=tk.LEFT)
-        tree = ttk.Treeview(win, columns=["Fault", "Count", "Sources"], show="headings")
-        for c in ["Fault", "Count", "Sources"]:
+        tree = ttk.Treeview(win, columns=["Cause", "Events"], show="headings")
+        for c in ["Cause", "Events"]:
             tree.heading(c, text=c)
             tree.column(c, width=150)
         tree.pack(fill=tk.BOTH, expand=True)
 
         def refresh():
             tree.delete(*tree.get_children())
-            counts = {}
-            srcs = {}
+            events_by_cause = {}
             if var_fmea.get():
                 for fmea in self.fmeas:
                     for be in fmea["entries"]:
-                        key = be.description
-                        counts[key] = counts.get(key, 0) + 1
-                        srcs.setdefault(key, set()).add("FMEA")
+                        cause = be.description
+                        label = f"{fmea['name']}:{be.user_name or be.description or be.unique_id}"
+                        events_by_cause.setdefault(cause, set()).add(label)
             if var_fmeda.get():
                 for fmeda in self.fmedas:
                     for be in fmeda["entries"]:
-                        key = be.description
-                        counts[key] = counts.get(key, 0) + 1
-                        srcs.setdefault(key, set()).add("FMEDA")
+                        cause = be.description
+                        label = f"{fmeda['name']}:{be.user_name or be.description or be.unique_id}"
+                        events_by_cause.setdefault(cause, set()).add(label)
             if var_fta.get():
                 for be in self.get_all_basic_events():
-                    key = be.description or be.user_name
-                    counts[key] = counts.get(key, 0) + 1
-                    srcs.setdefault(key, set()).add("FTA")
-            for k, cnt in counts.items():
-                if cnt > 1:
-                    tree.insert("", "end", values=[k, cnt, ", ".join(sorted(srcs[k]))])
+                    cause = be.description or ""
+                    label = be.user_name or f"BE {be.unique_id}"
+                    events_by_cause.setdefault(cause, set()).add(label)
+            for cause, evts in events_by_cause.items():
+                if len(evts) > 1:
+                    tree.insert("", "end", values=[cause, ", ".join(sorted(evts))])
 
         refresh()
 
@@ -9643,7 +9675,7 @@ class FaultTreeApp:
                 return
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["Fault", "Count", "Sources"])
+                writer.writerow(["Cause", "Events"])
                 for iid in tree.get_children():
                     writer.writerow(tree.item(iid, "values"))
             messagebox.showinfo("Export", "Common cause data exported")
@@ -9654,18 +9686,35 @@ class FaultTreeApp:
         ttk.Button(btn_frame, text="Export CSV", command=export_csv).pack(side=tk.LEFT, padx=5, pady=5)
 
     def show_cut_sets(self):
+        """Display minimal cut sets for every top event."""
         if not self.top_events:
             return
-        te = self.top_events[0]
-        cut_sets = self.calculate_cut_sets(te)
         win = tk.Toplevel(self.root)
         win.title("FTA Cut Sets")
-        tree = ttk.Treeview(win, columns=["Cut Set"], show="headings")
-        tree.heading("Cut Set", text="Basic Events")
+        columns = ("Top Event", "Cut Set #", "Basic Events")
+        tree = ttk.Treeview(win, columns=columns, show="headings")
+        for c in columns:
+            tree.heading(c, text=c)
         tree.pack(fill=tk.BOTH, expand=True)
-        for cs in cut_sets:
-            names = ", ".join(str(uid) for uid in sorted(cs))
-            tree.insert("", "end", values=[names])
+
+        for te in self.top_events:
+            nodes_by_id = {}
+
+            def map_nodes(n):
+                nodes_by_id[n.unique_id] = n
+                for child in n.children:
+                    map_nodes(child)
+
+            map_nodes(te)
+            cut_sets = self.calculate_cut_sets(te)
+            te_label = te.user_name or f"Top Event {te.unique_id}"
+            for idx, cs in enumerate(cut_sets, start=1):
+                names = ", ".join(
+                    f"{nodes_by_id[uid].user_name or nodes_by_id[uid].node_type} [{uid}]"
+                    for uid in sorted(cs)
+                )
+                tree.insert("", "end", values=(te_label, idx, names))
+                te_label = ""
 
         def export_csv():
             path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
@@ -9673,9 +9722,9 @@ class FaultTreeApp:
                 return
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["Cut Set"])
-                for cs in cut_sets:
-                    writer.writerow([", ".join(str(uid) for uid in sorted(cs))])
+                writer.writerow(["Top Event", "Cut Set #", "Basic Events"])
+                for iid in tree.get_children():
+                    writer.writerow(tree.item(iid, "values"))
             messagebox.showinfo("Export", "Cut sets exported")
 
         ttk.Button(win, text="Export CSV", command=export_csv).pack(pady=5)
@@ -9691,36 +9740,35 @@ class FaultTreeApp:
         ttk.Checkbutton(chk_frame, text="FMEA", variable=var_fmea).pack(side=tk.LEFT)
         ttk.Checkbutton(chk_frame, text="FMEDA", variable=var_fmeda).pack(side=tk.LEFT)
         ttk.Checkbutton(chk_frame, text="FTA", variable=var_fta).pack(side=tk.LEFT)
-        tree = ttk.Treeview(win, columns=["Fault", "Count", "Sources"], show="headings")
-        for c in ["Fault", "Count", "Sources"]:
+        tree = ttk.Treeview(win, columns=["Cause", "Events"], show="headings")
+        for c in ["Cause", "Events"]:
             tree.heading(c, text=c)
             tree.column(c, width=150)
         tree.pack(fill=tk.BOTH, expand=True)
 
         def refresh():
             tree.delete(*tree.get_children())
-            counts = {}
-            srcs = {}
+            events_by_cause = {}
             if var_fmea.get():
                 for fmea in self.fmeas:
                     for be in fmea["entries"]:
-                        key = be.description
-                        counts[key] = counts.get(key, 0) + 1
-                        srcs.setdefault(key, set()).add("FMEA")
+                        cause = be.description
+                        label = f"{fmea['name']}:{be.user_name or be.description or be.unique_id}"
+                        events_by_cause.setdefault(cause, set()).add(label)
             if var_fmeda.get():
                 for fmeda in self.fmedas:
                     for be in fmeda["entries"]:
-                        key = be.description
-                        counts[key] = counts.get(key, 0) + 1
-                        srcs.setdefault(key, set()).add("FMEDA")
+                        cause = be.description
+                        label = f"{fmeda['name']}:{be.user_name or be.description or be.unique_id}"
+                        events_by_cause.setdefault(cause, set()).add(label)
             if var_fta.get():
                 for be in self.get_all_basic_events():
-                    key = be.description or be.user_name
-                    counts[key] = counts.get(key, 0) + 1
-                    srcs.setdefault(key, set()).add("FTA")
-            for k, cnt in counts.items():
-                if cnt > 1:
-                    tree.insert("", "end", values=[k, cnt, ", ".join(sorted(srcs[k]))])
+                    cause = be.description or ""
+                    label = be.user_name or f"BE {be.unique_id}"
+                    events_by_cause.setdefault(cause, set()).add(label)
+            for cause, evts in events_by_cause.items():
+                if len(evts) > 1:
+                    tree.insert("", "end", values=[cause, ", ".join(sorted(evts))])
 
         refresh()
 
@@ -9730,7 +9778,7 @@ class FaultTreeApp:
                 return
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["Fault", "Count", "Sources"])
+                writer.writerow(["Cause", "Events"])
                 for iid in tree.get_children():
                     writer.writerow(tree.item(iid, "values"))
             messagebox.showinfo("Export", "Common cause data exported")
@@ -9741,18 +9789,35 @@ class FaultTreeApp:
         ttk.Button(btn_frame, text="Export CSV", command=export_csv).pack(side=tk.LEFT, padx=5, pady=5)
 
     def show_cut_sets(self):
+        """Display minimal cut sets for every top event."""
         if not self.top_events:
             return
-        te = self.top_events[0]
-        cut_sets = self.calculate_cut_sets(te)
         win = tk.Toplevel(self.root)
         win.title("FTA Cut Sets")
-        tree = ttk.Treeview(win, columns=["Cut Set"], show="headings")
-        tree.heading("Cut Set", text="Basic Events")
+        columns = ("Top Event", "Cut Set #", "Basic Events")
+        tree = ttk.Treeview(win, columns=columns, show="headings")
+        for c in columns:
+            tree.heading(c, text=c)
         tree.pack(fill=tk.BOTH, expand=True)
-        for cs in cut_sets:
-            names = ", ".join(str(uid) for uid in sorted(cs))
-            tree.insert("", "end", values=[names])
+
+        for te in self.top_events:
+            nodes_by_id = {}
+
+            def map_nodes(n):
+                nodes_by_id[n.unique_id] = n
+                for child in n.children:
+                    map_nodes(child)
+
+            map_nodes(te)
+            cut_sets = self.calculate_cut_sets(te)
+            te_label = te.user_name or f"Top Event {te.unique_id}"
+            for idx, cs in enumerate(cut_sets, start=1):
+                names = ", ".join(
+                    f"{nodes_by_id[uid].user_name or nodes_by_id[uid].node_type} [{uid}]"
+                    for uid in sorted(cs)
+                )
+                tree.insert("", "end", values=(te_label, idx, names))
+                te_label = ""
 
         def export_csv():
             path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
@@ -9760,9 +9825,9 @@ class FaultTreeApp:
                 return
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["Cut Set"])
-                for cs in cut_sets:
-                    writer.writerow([", ".join(str(uid) for uid in sorted(cs))])
+                writer.writerow(["Top Event", "Cut Set #", "Basic Events"])
+                for iid in tree.get_children():
+                    writer.writerow(tree.item(iid, "values"))
             messagebox.showinfo("Export", "Cut sets exported")
 
         ttk.Button(win, text="Export CSV", command=export_csv).pack(pady=5)
@@ -9778,36 +9843,35 @@ class FaultTreeApp:
         ttk.Checkbutton(chk_frame, text="FMEA", variable=var_fmea).pack(side=tk.LEFT)
         ttk.Checkbutton(chk_frame, text="FMEDA", variable=var_fmeda).pack(side=tk.LEFT)
         ttk.Checkbutton(chk_frame, text="FTA", variable=var_fta).pack(side=tk.LEFT)
-        tree = ttk.Treeview(win, columns=["Fault", "Count", "Sources"], show="headings")
-        for c in ["Fault", "Count", "Sources"]:
+        tree = ttk.Treeview(win, columns=["Cause", "Events"], show="headings")
+        for c in ["Cause", "Events"]:
             tree.heading(c, text=c)
             tree.column(c, width=150)
         tree.pack(fill=tk.BOTH, expand=True)
 
         def refresh():
             tree.delete(*tree.get_children())
-            counts = {}
-            srcs = {}
+            events_by_cause = {}
             if var_fmea.get():
                 for fmea in self.fmeas:
                     for be in fmea["entries"]:
-                        key = be.description
-                        counts[key] = counts.get(key, 0) + 1
-                        srcs.setdefault(key, set()).add("FMEA")
+                        cause = be.description
+                        label = f"{fmea['name']}:{be.user_name or be.description or be.unique_id}"
+                        events_by_cause.setdefault(cause, set()).add(label)
             if var_fmeda.get():
                 for fmeda in self.fmedas:
                     for be in fmeda["entries"]:
-                        key = be.description
-                        counts[key] = counts.get(key, 0) + 1
-                        srcs.setdefault(key, set()).add("FMEDA")
+                        cause = be.description
+                        label = f"{fmeda['name']}:{be.user_name or be.description or be.unique_id}"
+                        events_by_cause.setdefault(cause, set()).add(label)
             if var_fta.get():
                 for be in self.get_all_basic_events():
-                    key = be.description or be.user_name
-                    counts[key] = counts.get(key, 0) + 1
-                    srcs.setdefault(key, set()).add("FTA")
-            for k, cnt in counts.items():
-                if cnt > 1:
-                    tree.insert("", "end", values=[k, cnt, ", ".join(sorted(srcs[k]))])
+                    cause = be.description or ""
+                    label = be.user_name or f"BE {be.unique_id}"
+                    events_by_cause.setdefault(cause, set()).add(label)
+            for cause, evts in events_by_cause.items():
+                if len(evts) > 1:
+                    tree.insert("", "end", values=[cause, ", ".join(sorted(evts))])
 
         refresh()
 
@@ -9817,7 +9881,7 @@ class FaultTreeApp:
                 return
             with open(path, "w", newline="") as f:
                 writer = csv.writer(f)
-                writer.writerow(["Fault", "Count", "Sources"])
+                writer.writerow(["Cause", "Events"])
                 for iid in tree.get_children():
                     writer.writerow(tree.item(iid, "values"))
             messagebox.showinfo("Export", "Common cause data exported")
