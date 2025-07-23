@@ -105,6 +105,7 @@ class HaraDoc:
     hazops: list
     entries: list
     approved: bool = False
+    status: str = "draft"
 
 COMPONENT_ATTR_TEMPLATES = {
     "capacitor": {
@@ -303,27 +304,50 @@ ASIL_TARGETS = {
 # Mapping of ASIL decomposition schemes as allowed by ISO 26262. Each
 # parent ASIL level maps to a list of two-element tuples representing the
 # resulting ASIL assignments for the decomposed requirements.
+# Decomposition schemes following ISO 26262 guidance.  Each key is the
+# original ASIL level and maps to the allowed pairs for the decomposed
+# requirements.  Options marked as ``QM(X)`` indicate decomposition with
+# additional justification and analysis for the original level ``X``.
+# Decomposition of an ASIL A requirement is not defined.
 ASIL_DECOMP_SCHEMES = {
-    "D": [("B", "B"), ("C", "D")],
-    "C": [("B", "C"), ("A", "C")],
-    "B": [("A", "B"), ("QM", "B")],
-    "A": [("QM", "A")],
+    "D": [
+        ("B", "B"),          # Valid: ASIL B + ASIL B
+        ("C", "QM(D)"),      # Conditional: ASIL C + QM(D)
+        ("B", "QM(D)"),      # Conditional: ASIL B + QM(D)
+    ],
+    "C": [
+        ("A", "A"),          # Valid: ASIL A + ASIL A
+        ("B", "QM(C)"),      # Conditional: ASIL B + QM(C)
+        ("A", "QM(C)"),      # Conditional: ASIL A + QM(C)
+    ],
+    "B": [
+        ("QM", "QM"),        # Valid: QM + QM
+        ("A", "QM(B)"),      # Conditional: ASIL A + QM(B)
+        ("B", "QM(B)"),      # Conditional: ASIL B + QM(B)
+    ],
+    "A": [],  # No further decomposition defined for ASIL A
 }
 
-# Simplified ISO 26262 risk graph for ASIL determination
-# Controllability values follow the standard ordering where 1 is easily
-# controllable and 3 represents difficult or uncontrollable situations.
+# ASIL determination table following the ISO 26262 risk graph used in the HARA
+# view. The keys are tuples ``(severity, controllability, exposure)`` using the
+# numeric levels 1–3 for severity/controllability and 1–4 for exposure.  The
+# mapping below implements the conditions from the HARA specification so that
+# ``calc_asil`` returns the correct ASIL value for each combination.
 ASIL_TABLE = {
-    # Severity 3 rows
-    (3, 1, 4): "C", (3, 2, 4): "D", (3, 3, 4): "D",
-    (3, 1, 3): "B", (3, 2, 3): "C", (3, 3, 3): "D",
-    (3, 1, 2): "A", (3, 2, 2): "B", (3, 3, 2): "C",
-    (3, 1, 1): "QM", (3, 2, 1): "A", (3, 3, 1): "B",
+    # Severity 1 rows
+    (1, 1, 1): "QM", (1, 1, 2): "QM", (1, 1, 3): "QM", (1, 1, 4): "QM",
+    (1, 2, 1): "QM", (1, 2, 2): "QM", (1, 2, 3): "QM", (1, 2, 4): "A",
+    (1, 3, 1): "QM", (1, 3, 2): "QM", (1, 3, 3): "QM", (1, 3, 4): "B",
+
     # Severity 2 rows
-    (2, 1, 4): "B", (2, 2, 4): "C", (2, 3, 4): "D",
-    (2, 1, 3): "A", (2, 2, 3): "B", (2, 3, 3): "C",
-    (2, 1, 2): "QM", (2, 2, 2): "A", (2, 3, 2): "B",
-    (2, 1, 1): "QM", (2, 2, 1): "QM", (2, 3, 1): "A",
+    (2, 1, 1): "QM", (2, 1, 2): "QM", (2, 1, 3): "QM", (2, 1, 4): "A",
+    (2, 2, 1): "QM", (2, 2, 2): "QM", (2, 2, 3): "A", (2, 2, 4): "B",
+    (2, 3, 1): "QM", (2, 3, 2): "A", (2, 3, 3): "B", (2, 3, 4): "C",
+
+    # Severity 3 rows
+    (3, 1, 1): "QM", (3, 1, 2): "QM", (3, 1, 3): "A", (3, 1, 4): "B",
+    (3, 2, 1): "QM", (3, 2, 2): "A", (3, 2, 3): "B", (3, 2, 4): "C",
+    (3, 3, 1): "A", (3, 3, 2): "B", (3, 3, 3): "C", (3, 3, 4): "D",
 }
 
 def calc_asil(sev: int, cont: int, expo: int) -> str:

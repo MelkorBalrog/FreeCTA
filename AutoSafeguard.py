@@ -817,6 +817,8 @@ class EditNodeDialog(simpledialog.Dialog):
             self.delete_req_button.grid(row=1, column=2, padx=2, pady=2)
             self.add_existing_req_button = ttk.Button(self.safety_req_frame, text="Add Existing", command=self.add_existing_requirement)
             self.add_existing_req_button.grid(row=1, column=3, padx=2, pady=2)
+            self.decomp_req_button = ttk.Button(self.safety_req_frame, text="Decompose", command=self.decompose_safety_requirement)
+            self.decomp_req_button.grid(row=1, column=4, padx=2, pady=2)
 
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
             ttk.Label(master, text="Gate Type:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
@@ -1018,6 +1020,8 @@ class EditNodeDialog(simpledialog.Dialog):
     
                 # For each requirement in the global registry, create a Checkbutton.
                 for req_id, req in global_requirements.items():
+                    if req.get("decomposed"):
+                        continue
                     var = tk.BooleanVar(value=False)
                     self.selected_vars[req_id] = var
                     text = f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}"
@@ -1045,23 +1049,42 @@ class EditNodeDialog(simpledialog.Dialog):
             for req_id in dialog.result:
                 req = global_requirements.get(req_id)
                 if req and not any(r["id"] == req_id for r in self.node.safety_requirements):
-                    # For clone semantics, we simply add the same dictionary reference.
                     self.node.safety_requirements.append(req)
-                    self.update_requirement_asil(req_id)
-                    self.safety_req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
+                    if not req.get("decomposed"):
+                        if self.node.node_type.upper() == "BASIC EVENT":
+                            req["asil"] = self.infer_requirement_asil_from_node(self.node)
+                        else:
+                            self.update_requirement_asil(req_id)
+                    self.safety_req_listbox.insert(
+                        tk.END,
+                        f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}",
+                    )
         else:
             messagebox.showinfo("No Selection", "No existing requirements were selected.")
    
     def add_new_requirement(self,custom_id, req_type, text, asil="QM"):
         # When a requirement is created, register it in the global registry.
-        req = {"id": custom_id, "req_type": req_type, "text": text, "custom_id": custom_id, "asil": asil, "status": "draft", "parent_id": ""}
+        req = {
+            "id": custom_id,
+            "req_type": req_type,
+            "text": text,
+            "custom_id": custom_id,
+            "asil": asil,
+            "status": "draft",
+            "parent_id": "",
+            "decomposed": False,
+        }
         global_requirements[custom_id] = req
         print(f"Added new requirement: {req}")
         return req
         
     def list_all_requirements(self):
-        # This function returns a list of formatted strings for all requirements
-        return [f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}" for req in global_requirements.values()]
+        # This function returns a list of formatted strings for all non-decomposed requirements
+        return [
+            f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}"
+            for req in global_requirements.values()
+            if not req.get("decomposed")
+        ]
 
     # --- Traceability helpers ---
     def get_requirement_allocation_names(self, req_id):
@@ -1147,6 +1170,8 @@ class EditNodeDialog(simpledialog.Dialog):
         req = global_requirements.get(req_id)
         if not req:
             return
+        if req.get("decomposed"):
+            return
         req["asil"] = self.compute_requirement_asil(req_id)
 
     
@@ -1192,8 +1217,12 @@ class EditNodeDialog(simpledialog.Dialog):
             self.node.safety_requirements = []
         if not any(r["id"] == custom_id for r in self.node.safety_requirements):
             self.node.safety_requirements.append(req)
-            self.update_requirement_asil(custom_id)
-            self.safety_req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
+            if self.node.node_type.upper() != "BASIC EVENT":
+                self.update_requirement_asil(custom_id)
+            self.safety_req_listbox.insert(
+                tk.END,
+                f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}",
+            )
 
     def edit_safety_requirement(self):
         """
@@ -1208,14 +1237,19 @@ class EditNodeDialog(simpledialog.Dialog):
         current_req = self.node.safety_requirements[index]
         initial_req = current_req.copy()
         # Pass self.master as the parent here as well.
-        dialog = self.RequirementDialog(self.master, title="Edit Safety Requirement", initial_req=initial_req)
+        dialog = self.RequirementDialog(
+            self.master,
+            title="Edit Safety Requirement",
+            initial_req=initial_req,
+            asil_readonly=self.node.node_type.upper() == "BASIC EVENT",
+        )
         if dialog.result is None or dialog.result["text"] == "":
             return
         new_custom_id = dialog.result["custom_id"].strip() or current_req.get("custom_id") or current_req.get("id") or str(uuid.uuid4())
         current_req["req_type"] = dialog.result["req_type"]
         current_req["text"] = dialog.result["text"]
         if self.node.node_type.upper() == "BASIC EVENT":
-            current_req["asil"] = self.compute_requirement_asil(current_req.get("id"))
+            current_req["asil"] = self.infer_requirement_asil_from_node(self.node)
         else:
             current_req["asil"] = dialog.result.get("asil", "QM")
         current_req["custom_id"] = new_custom_id
@@ -1223,8 +1257,12 @@ class EditNodeDialog(simpledialog.Dialog):
         global_requirements[new_custom_id] = current_req
         self.node.safety_requirements[index] = current_req
         self.safety_req_listbox.delete(index)
-        self.update_requirement_asil(new_custom_id)
-        self.safety_req_listbox.insert(index, f"[{current_req['id']}] [{current_req['req_type']}] [{current_req.get('asil','')}] {current_req['text']}")
+        if self.node.node_type.upper() != "BASIC EVENT":
+            self.update_requirement_asil(new_custom_id)
+        self.safety_req_listbox.insert(
+            index,
+            f"[{current_req['id']}] [{current_req['req_type']}] [{current_req.get('asil','')}] {current_req['text']}",
+        )
 
     def delete_safety_requirement(self):
         selected = self.safety_req_listbox.curselection()
@@ -1234,7 +1272,8 @@ class EditNodeDialog(simpledialog.Dialog):
         index = selected[0]
         req_id = self.node.safety_requirements[index]["id"]
         del self.node.safety_requirements[index]
-        self.update_requirement_asil(req_id)
+        if self.node.node_type.upper() != "BASIC EVENT":
+            self.update_requirement_asil(req_id)
         self.safety_req_listbox.delete(index)
 
     def decompose_safety_requirement(self):
@@ -1259,6 +1298,7 @@ class EditNodeDialog(simpledialog.Dialog):
             "asil": asil_a,
             "status": "draft",
             "parent_id": req.get("id"),
+            "decomposed": True,
         }
         r2 = {
             "id": req_id_b,
@@ -1268,17 +1308,25 @@ class EditNodeDialog(simpledialog.Dialog):
             "asil": asil_b,
             "status": "draft",
             "parent_id": req.get("id"),
+            "decomposed": True,
         }
         global_requirements[req_id_a] = r1
         global_requirements[req_id_b] = r2
         del self.node.safety_requirements[index]
         self.node.safety_requirements.insert(index, r2)
         self.node.safety_requirements.insert(index, r1)
-        self.update_requirement_asil(req_id_a)
-        self.update_requirement_asil(req_id_b)
+        if self.node.node_type.upper() != "BASIC EVENT":
+            self.update_requirement_asil(req_id_a)
+            self.update_requirement_asil(req_id_b)
         self.safety_req_listbox.delete(index)
-        self.safety_req_listbox.insert(index, f"[{r1['id']}] [{r1['req_type']}] [{r1.get('asil','')}] {r1['text']}")
-        self.safety_req_listbox.insert(index+1, f"[{r2['id']}] [{r2['req_type']}] [{r2.get('asil','')}] {r2['text']}")
+        self.safety_req_listbox.insert(
+            index,
+            f"[{r1['id']}] [{r1['req_type']}] [{r1.get('asil','')}] {r1['text']}",
+        )
+        self.safety_req_listbox.insert(
+            index + 1,
+            f"[{r2['id']}] [{r2['req_type']}] [{r2.get('asil','')}] {r2['text']}",
+        )
 
     def buttonbox(self):
         box = tk.Frame(self)
@@ -2500,11 +2548,25 @@ class FaultTreeApp:
                 return d
         return None
 
+    def update_hara_statuses(self):
+        """Update each HARA document's status based on linked reviews."""
+        for doc in self.hara_docs:
+            status = "draft"
+            for review in self.reviews:
+                if doc.name in getattr(review, "hara_names", []):
+                    if review.approved and self.review_is_closed_for(review):
+                        status = "closed"
+                        break
+                    else:
+                        status = "in review"
+            doc.status = status
+            doc.approved = status == "closed"
+
     def get_safety_goal_asil(self, sg_name):
         """Return the highest ASIL level for a safety goal name across approved HARAs."""
         best = "QM"
         for doc in getattr(self, "hara_docs", []):
-            if not getattr(doc, "approved", False):
+            if not getattr(doc, "approved", False) and getattr(doc, "status", "") != "closed":
                 continue
             for e in doc.entries:
                 if sg_name and sg_name == e.safety_goal and ASIL_ORDER.get(e.asil, 0) > ASIL_ORDER.get(best, 0):
@@ -2519,7 +2581,7 @@ class FaultTreeApp:
         """Propagate HARA values to safety goals when the HARA is approved."""
         sg_data = {}
         for doc in getattr(self, "hara_docs", []):
-            if not getattr(doc, "approved", False):
+            if not getattr(doc, "approved", False) and getattr(doc, "status", "") != "closed":
                 continue
             for e in doc.entries:
                 if not e.safety_goal:
@@ -7880,10 +7942,14 @@ class FaultTreeApp:
 
                 frame.bind("<Configure>", on_config)
 
+                disabled = self.requirement.get("decomposed")
                 for n in [n for n in self.app.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]:
                     var = tk.BooleanVar(value=any(r.get("id") == self.requirement.get("id") for r in getattr(n, "safety_requirements", [])))
                     self.vars[n] = var
-                    ttk.Checkbutton(frame, text=n.user_name or f"BE {n.unique_id}", variable=var).pack(anchor="w")
+                    state = "disabled" if disabled else "normal"
+                    ttk.Checkbutton(frame, text=n.user_name or f"BE {n.unique_id}", variable=var, state=state).pack(anchor="w")
+                if disabled:
+                    ttk.Label(frame, text="Decomposed requirements cannot be reallocated.", foreground="red").pack(pady=5)
                 return frame
 
             def apply(self):
@@ -8324,7 +8390,8 @@ class FaultTreeApp:
                     "req_type": dialog.result["req_type"],
                     "text": dialog.result["text"],
                     "custom_id": custom_id,
-                    "asil": dialog.result.get("asil", "QM")
+                    "asil": dialog.result.get("asil", "QM"),
+                    "decomposed": False,
                 }
                 global_requirements[custom_id] = req
             if not hasattr(self.node, "safety_requirements"):
@@ -10687,6 +10754,7 @@ class FaultTreeApp:
                     "hazops": getattr(doc, "hazops", []),
                     "entries": [asdict(e) for e in doc.entries],
                     "approved": getattr(doc, "approved", False),
+                    "status": getattr(doc, "status", "draft"),
                 }
                 for doc in self.hara_docs
             ],
@@ -10865,12 +10933,13 @@ class FaultTreeApp:
                     hazops,
                     entries,
                     d.get("approved", False),
+                    d.get("status", "draft"),
                 )
             )
         if not self.hara_docs and "hara_entries" in data:
             hazop_name = self.hazop_docs[0].name if self.hazop_docs else ""
             self.hara_docs.append(
-                HaraDoc("Default", [hazop_name] if hazop_name else [], [HaraEntry(**e) for e in data.get("hara_entries", [])])
+                HaraDoc("Default", [hazop_name] if hazop_name else [], [HaraEntry(**e) for e in data.get("hara_entries", [])], False, "draft")
             )
         self.active_hara = self.hara_docs[0] if self.hara_docs else None
         self.hara_entries = self.active_hara.entries if self.active_hara else []
@@ -10971,6 +11040,10 @@ class FaultTreeApp:
                 self.review_data = review
             else:
                 self.review_data = None
+
+        self.update_hara_statuses()
+        self.sync_hara_to_safety_goals()
+
         self.versions = data.get("versions", [])
 
         self.selected_node = None
