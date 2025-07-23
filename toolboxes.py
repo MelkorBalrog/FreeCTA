@@ -1115,6 +1115,3 @@ class TC2FIWindow(tk.Toplevel):
             for r in self.app.tc2fi_entries:
                 w.writerow([r.get(k, "") for k in self.COLS])
         messagebox.showinfo("Export", "TC2FI exported")
-
-
-

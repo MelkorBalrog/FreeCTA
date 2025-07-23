@@ -6581,6 +6581,12 @@ class FaultTreeApp:
         for lib in self.odd_libraries:
             self.odd_elements.extend(lib.get("elements", []))
 
+    def update_odd_elements(self):
+        """Aggregate elements from all ODD libraries into odd_elements list."""
+        self.odd_elements = []
+        for lib in self.odd_libraries:
+            self.odd_elements.extend(lib.get("elements", []))
+
     def get_all_failure_modes(self):
         """Return list of all failure mode nodes from FTA, FMEAs and FMEDAs."""
         modes = list(self.get_all_basic_events())
@@ -9767,6 +9773,7 @@ class FaultTreeApp:
                 for ra in self.reliability_analyses
             ],
             "hazop_entries": [asdict(e) for e in self.hazop_entries],
+            "hara_entries": [asdict(e) for e in self.hara_entries],
             "fi2tc_entries": self.fi2tc_entries,
             "tc2fi_entries": self.tc2fi_entries,
             "scenario_libraries": self.scenario_libraries,
@@ -9909,6 +9916,8 @@ class FaultTreeApp:
             )
 
         self.hazop_entries = [HazopEntry(**h) for h in data.get("hazop_entries", [])]
+        self.hara_entries = [HaraEntry(**h) for h in data.get("hara_entries", [])]
+        self.sync_hara_to_safety_goals()
         self.fi2tc_entries = data.get("fi2tc_entries", [])
         self.tc2fi_entries = data.get("tc2fi_entries", [])
         self.scenario_libraries = data.get("scenario_libraries", [])
