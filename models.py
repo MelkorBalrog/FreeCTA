@@ -301,13 +301,19 @@ ASIL_TARGETS = {
 }
 
 # Simplified ISO 26262 risk graph for ASIL determination
+# Controllability values follow the standard ordering where 1 is easily
+# controllable and 3 represents difficult or uncontrollable situations.
 ASIL_TABLE = {
-    (3, 1, 4): "D", (3, 1, 3): "D", (3, 1, 2): "C", (3, 1, 1): "B",
-    (3, 2, 4): "C", (3, 2, 3): "C", (3, 2, 2): "B", (3, 2, 1): "A",
-    (3, 3, 4): "B", (3, 3, 3): "B", (3, 3, 2): "A", (3, 3, 1): "QM",
-    (2, 1, 4): "C", (2, 1, 3): "C", (2, 1, 2): "B", (2, 1, 1): "A",
-    (2, 2, 4): "B", (2, 2, 3): "B", (2, 2, 2): "A", (2, 2, 1): "QM",
-    (2, 3, 4): "A", (2, 3, 3): "A", (2, 3, 2): "QM", (2, 3, 1): "QM",
+    # Severity 3 rows
+    (3, 1, 4): "C", (3, 2, 4): "D", (3, 3, 4): "D",
+    (3, 1, 3): "B", (3, 2, 3): "C", (3, 3, 3): "D",
+    (3, 1, 2): "A", (3, 2, 2): "B", (3, 3, 2): "C",
+    (3, 1, 1): "QM", (3, 2, 1): "A", (3, 3, 1): "B",
+    # Severity 2 rows
+    (2, 1, 4): "B", (2, 2, 4): "C", (2, 3, 4): "D",
+    (2, 1, 3): "A", (2, 2, 3): "B", (2, 3, 3): "C",
+    (2, 1, 2): "QM", (2, 2, 2): "A", (2, 3, 2): "B",
+    (2, 1, 1): "QM", (2, 2, 1): "QM", (2, 3, 1): "A",
 }
 
 def calc_asil(sev: int, cont: int, expo: int) -> str:
