@@ -395,6 +395,7 @@ class ReviewToolbox(tk.Toplevel):
         self.destroy()
 
     def refresh_reviews(self):
+        self.app.update_hara_statuses()
         names = [r.name for r in self.app.reviews]
         self.review_combo['values'] = names
         if self.app.review_data:
@@ -569,6 +570,8 @@ class ReviewToolbox(tk.Toplevel):
         self.app.review_data.approved = True
         messagebox.showinfo("Approve", "Review approved")
         self.app.add_version()
+        self.app.update_hara_statuses()
+        self.app.sync_hara_to_safety_goals()
         self.refresh_reviews()
 
     def edit_review(self):
