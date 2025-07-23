@@ -1231,7 +1231,10 @@ class EditNodeDialog(simpledialog.Dialog):
         current_req["req_type"] = dialog.result["req_type"]
         current_req["text"] = dialog.result["text"]
         if self.node.node_type.upper() == "BASIC EVENT":
-            current_req["asil"] = self.infer_requirement_asil_from_node(self.node)
+            # Leave the ASIL untouched for decomposed requirements when
+            # editing within a base event so the value set during
+            # decomposition remains intact.
+            pass
         else:
             current_req["asil"] = dialog.result.get("asil", "QM")
         current_req["custom_id"] = new_custom_id
