@@ -9983,21 +9983,43 @@ class FaultTreeApp:
                     ("Duty Cycle", "duty_cycle"),
                     ("Notes", "notes"),
                 ]
+                self.entries = {}
                 for row, (label, key) in enumerate(fields):
                     ttk.Label(master, text=label).grid(row=row, column=0, padx=5, pady=5, sticky="e")
                     var = tk.StringVar()
                     if self.mp:
                         var.set(str(getattr(self.mp, key)))
-                    ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=5, pady=5)
+                    state = "readonly" if key == "duty_cycle" else "normal"
+                    entry = ttk.Entry(master, textvariable=var, state=state)
+                    entry.grid(row=row, column=1, padx=5, pady=5)
                     self.vars[key] = var
+                    self.entries[key] = entry
+
+                def update_dc(*_):
+                    try:
+                        on = float(self.vars["tau_on"].get() or 0)
+                        off = float(self.vars["tau_off"].get() or 0)
+                        total = on + off
+                        dc = on / total if total else 0.0
+                    except ValueError:
+                        dc = 0.0
+                    self.vars["duty_cycle"].set(str(dc))
+
+                self.vars["tau_on"].trace_add("write", update_dc)
+                self.vars["tau_off"].trace_add("write", update_dc)
+                update_dc()
 
             def apply(self):
                 vals = {k: v.get() for k, v in self.vars.items()}
+                tau_on = float(vals.get("tau_on") or 0.0)
+                tau_off = float(vals.get("tau_off") or 0.0)
+                total = tau_on + tau_off
+                dc = tau_on / total if total else 0.0
                 if self.mp is None:
                     mp = MissionProfile(
                         vals["name"],
-                        float(vals["tau_on"] or 0.0),
-                        float(vals["tau_off"] or 0.0),
+                        tau_on,
+                        tau_off,
                         float(vals["board_temp"] or 25.0),
                         float(vals["board_temp_min"] or 25.0),
                         float(vals["board_temp_max"] or 25.0),
@@ -10005,14 +10027,14 @@ class FaultTreeApp:
                         float(vals["ambient_temp_min"] or 25.0),
                         float(vals["ambient_temp_max"] or 25.0),
                         float(vals["humidity"] or 50.0),
-                        float(vals["duty_cycle"] or 1.0),
+                        dc,
                         vals["notes"],
                     )
                     self.result = mp
                 else:
                     self.mp.name = vals["name"]
-                    self.mp.tau_on = float(vals["tau_on"] or 0.0)
-                    self.mp.tau_off = float(vals["tau_off"] or 0.0)
+                    self.mp.tau_on = tau_on
+                    self.mp.tau_off = tau_off
                     self.mp.board_temp = float(vals["board_temp"] or 25.0)
                     self.mp.board_temp_min = float(vals["board_temp_min"] or 25.0)
                     self.mp.board_temp_max = float(vals["board_temp_max"] or 25.0)
@@ -10020,7 +10042,7 @@ class FaultTreeApp:
                     self.mp.ambient_temp_min = float(vals["ambient_temp_min"] or 25.0)
                     self.mp.ambient_temp_max = float(vals["ambient_temp_max"] or 25.0)
                     self.mp.humidity = float(vals["humidity"] or 50.0)
-                    self.mp.duty_cycle = float(vals["duty_cycle"] or 1.0)
+                    self.mp.duty_cycle = dc
                     self.mp.notes = vals["notes"]
                     self.result = self.mp
 
@@ -10939,7 +10961,15 @@ class FaultTreeApp:
                 for lib in self.mechanism_libraries
             ],
             "selected_mechanism_libraries": [lib.name for lib in self.selected_mechanism_libraries],
-            "mission_profiles": [asdict(mp) for mp in self.mission_profiles],
+            "mission_profiles": [
+                {
+                    **asdict(mp),
+                    "duty_cycle": mp.tau_on / (mp.tau_on + mp.tau_off)
+                    if (mp.tau_on + mp.tau_off)
+                    else 0.0,
+                }
+                for mp in self.mission_profiles
+            ],
             "reliability_analyses": [
                 {
                     "name": ra.name,
@@ -11050,7 +11080,10 @@ class FaultTreeApp:
         self.mission_profiles = []
         for mp_data in data.get("mission_profiles", []):
             try:
-                self.mission_profiles.append(MissionProfile(**mp_data))
+                mp = MissionProfile(**mp_data)
+                total = mp.tau_on + mp.tau_off
+                mp.duty_cycle = mp.tau_on / total if total else 0.0
+                self.mission_profiles.append(mp)
             except TypeError:
                 pass
 
