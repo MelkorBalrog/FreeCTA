@@ -9221,12 +9221,12 @@ class FaultTreeApp:
             messagebox.showwarning("Copy", "Select a non-root node to copy.")
 
     def cut_node(self):
-        if self.selected_node:
+        """Store the currently selected node for a cut & paste operation."""
+        if self.selected_node and self.selected_node != self.root_node:
             self.clipboard_node = self.selected_node
             self.cut_mode = True
-            self.clipboard_node.is_cut = True
         else:
-            messagebox.showwarning("Cut", "Select a node to cut.")
+            messagebox.showwarning("Cut", "Select a non-root node to cut.")
 
     def paste_node(self):
         # 1) Determine target from selection or current selected node.
