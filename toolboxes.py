@@ -544,6 +544,7 @@ class HazopWindow(tk.Toplevel):
 
     class RowDialog(simpledialog.Dialog):
         def __init__(self, parent, row=None):
+            self.app = parent.app
             self.row = row or HazopEntry(
                 "",
                 "",
@@ -915,10 +916,10 @@ class HaraWindow(tk.Toplevel):
 class TC2FIWindow(tk.Toplevel):
     COLS = [
         "id",
-        "hazard_use_case",
+        "known_use_case",
         "occurrence",
-        "system_function",
-        "elements_impacted",
+        "impacted_function",
+        "arch_elements",
         "interfaces",
         "functional_insufficiency",
         "vehicle_effect",
@@ -1028,6 +1029,3 @@ class TC2FIWindow(tk.Toplevel):
             for r in self.app.tc2fi_entries:
                 w.writerow([r.get(k, "") for k in self.COLS])
         messagebox.showinfo("Export", "TC2FI exported")
-
-
-

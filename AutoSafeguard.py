@@ -1424,10 +1424,10 @@ class FaultTreeApp:
         reliability_menu.add_command(label="FMEDA Analysis", command=self.open_fmeda_window)
         reliability_menu.add_command(label="FMEDA Manager", command=self.show_fmeda_list)
         menubar.add_cascade(label="Reliability", menu=reliability_menu)
-        hazard_menu = tk.Menu(menubar, tearoff=0)
-        hazard_menu.add_command(label="HAZOP Analysis", command=self.open_hazop_window)
-        hazard_menu.add_command(label="HARA Analysis", command=self.open_hara_window)
-        menubar.add_cascade(label="Hazard", menu=hazard_menu)
+        hara_menu = tk.Menu(menubar, tearoff=0)
+        hara_menu.add_command(label="HAZOP Analysis", command=self.open_hazop_window)
+        hara_menu.add_command(label="HARA Analysis", command=self.open_hara_window)
+        menubar.add_cascade(label="HARA", menu=hara_menu)
         sotif_menu = tk.Menu(menubar, tearoff=0)
         sotif_menu.add_command(label="Triggering Conditions", command=self.show_triggering_condition_list)
         sotif_menu.add_command(label="Functional Insufficiencies", command=self.show_functional_insufficiency_list)
@@ -9196,10 +9196,64 @@ class FaultTreeApp:
     def manage_odd_libraries(self):
         win = tk.Toplevel(self.root)
         win.title("ODD Libraries")
-        lb = tk.Listbox(win, height=8, width=40)
-        lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        for lib in self.odd_libraries:
-            lb.insert(tk.END, lib.get("name", ""))
+        lib_lb = tk.Listbox(win, height=8, width=25)
+        lib_lb.grid(row=0, column=0, rowspan=4, sticky="nsew")
+        elem_tree = ttk.Treeview(win, columns=("attrs",), show="headings")
+        elem_tree.heading("attrs", text="Attributes")
+        elem_tree.column("attrs", width=200)
+        elem_tree.grid(row=0, column=1, columnspan=3, sticky="nsew")
+        win.grid_rowconfigure(0, weight=1)
+        win.grid_columnconfigure(1, weight=1)
+
+        def refresh_libs():
+            lib_lb.delete(0, tk.END)
+            for lib in self.odd_libraries:
+                lib_lb.insert(tk.END, lib.get("name", ""))
+            refresh_elems()
+
+        def refresh_elems(*_):
+            elem_tree.delete(*elem_tree.get_children())
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.odd_libraries[sel[0]]
+            for el in lib.get("elements", []):
+                name = el.get("name") or el.get("element") or el.get("id")
+                attrs = ", ".join(f"{k}={v}" for k, v in el.items() if k != "name")
+                elem_tree.insert("", tk.END, values=(attrs,), text=name)
+
+        class ElementDialog(simpledialog.Dialog):
+            def __init__(self, parent, data=None):
+                self.data = data or {"name": ""}
+                super().__init__(parent, title="Edit Element")
+
+            def add_attr_row(self, key="", val=""):
+                r = len(self.attr_rows)
+                k_var = tk.StringVar(value=key)
+                v_var = tk.StringVar(value=str(val))
+                ttk.Entry(self.attr_frame, textvariable=k_var).grid(row=r, column=0, padx=2, pady=2)
+                ttk.Entry(self.attr_frame, textvariable=v_var).grid(row=r, column=1, padx=2, pady=2)
+                self.attr_rows.append((k_var, v_var))
+
+            def body(self, master):
+                ttk.Label(master, text="Name").grid(row=0, column=0, sticky="e")
+                self.name_var = tk.StringVar(value=self.data.get("name", ""))
+                ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, sticky="ew")
+                self.attr_frame = ttk.Frame(master)
+                self.attr_frame.grid(row=1, column=0, columnspan=2, sticky="nsew")
+                self.attr_rows = []
+                for k, v in self.data.items():
+                    if k != "name":
+                        self.add_attr_row(k, v)
+                ttk.Button(master, text="Add Attribute", command=self.add_attr_row).grid(row=2, column=0, columnspan=2, pady=5)
+
+            def apply(self):
+                new_data = {"name": self.name_var.get()}
+                for k_var, v_var in self.attr_rows:
+                    key = k_var.get().strip()
+                    if key:
+                        new_data[key] = v_var.get()
+                self.data = new_data
 
         def add_lib():
             name = simpledialog.askstring("New Library", "Library name:")
@@ -9225,21 +9279,72 @@ class FaultTreeApp:
                         except Exception:
                             messagebox.showerror("Import", "Failed to read Excel file. openpyxl required.")
             self.odd_libraries.append({"name": name, "elements": elems})
-            lb.insert(tk.END, name)
+            refresh_libs()
             self.update_odd_elements()
 
+        def edit_lib():
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.odd_libraries[sel[0]]
+            name = simpledialog.askstring("Edit Library", "Library name:", initialvalue=lib.get("name", ""))
+            if name:
+                lib["name"] = name
+                refresh_libs()
+
         def delete_lib():
-            sel = lb.curselection()
+            sel = lib_lb.curselection()
             if sel:
                 idx = sel[0]
                 del self.odd_libraries[idx]
-                lb.delete(idx)
+                refresh_libs()
                 self.update_odd_elements()
 
-        btn = ttk.Frame(win)
-        btn.pack(side=tk.RIGHT, fill=tk.Y)
-        ttk.Button(btn, text="Add", command=add_lib).pack(fill=tk.X)
-        ttk.Button(btn, text="Delete", command=delete_lib).pack(fill=tk.X)
+        def add_elem():
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.odd_libraries[sel[0]]
+            dlg = ElementDialog(win)
+            lib.setdefault("elements", []).append(dlg.data)
+            refresh_elems()
+            self.update_odd_elements()
+
+        def edit_elem():
+            sel_lib = lib_lb.curselection()
+            sel_elem = elem_tree.selection()
+            if not sel_lib or not sel_elem:
+                return
+            lib = self.odd_libraries[sel_lib[0]]
+            idx = elem_tree.index(sel_elem[0])
+            data = lib.get("elements", [])[idx]
+            dlg = ElementDialog(win, data)
+            lib["elements"][idx] = dlg.data
+            refresh_elems()
+            self.update_odd_elements()
+
+        def del_elem():
+            sel_lib = lib_lb.curselection()
+            sel_elem = elem_tree.selection()
+            if not sel_lib or not sel_elem:
+                return
+            lib = self.odd_libraries[sel_lib[0]]
+            idx = elem_tree.index(sel_elem[0])
+            del lib.get("elements", [])[idx]
+            refresh_elems()
+            self.update_odd_elements()
+
+        btnf = ttk.Frame(win)
+        btnf.grid(row=1, column=1, columnspan=3, sticky="ew")
+        ttk.Button(btnf, text="Add Lib", command=add_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Edit Lib", command=edit_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Del Lib", command=delete_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Add Elem", command=add_elem).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btnf, text="Edit Elem", command=edit_elem).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Del Elem", command=del_elem).pack(side=tk.LEFT)
+
+        lib_lb.bind("<<ListboxSelect>>", refresh_elems)
+        refresh_libs()
 
     def open_reliability_window(self):
         if hasattr(self, "_rel_window") and self._rel_window.winfo_exists():
