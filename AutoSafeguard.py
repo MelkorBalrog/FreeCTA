@@ -303,6 +303,15 @@ styles.add(preformatted_style)
 CHECK_MARK = "\u2713"
 CROSS_MARK = "\u2717"
 
+# Target PMHF limits per ASIL level (events per hour)
+PMHF_TARGETS = {
+    "D": 1e-8,
+    "C": 1e-7,
+    "B": 1e-7,
+    "A": 1e-6,
+    "QM": 1.0,
+}
+
 ##########################################
 # VALID_SUBTYPES dictionary
 ##########################################
@@ -1470,6 +1479,9 @@ class FaultTreeApp:
         self.treeview.pack(fill=tk.BOTH, expand=True)
         self.treeview.bind("<Double-1>", lambda e: self.edit_selected())
         self.treeview.bind("<ButtonRelease-1>", self.on_treeview_click)
+        self.pmhf_var = tk.StringVar(value="")
+        self.pmhf_label = ttk.Label(self.tree_frame, textvariable=self.pmhf_var, foreground="blue")
+        self.pmhf_label.pack(side=tk.BOTTOM, fill=tk.X, pady=2)
         self.main_pane.add(self.tree_frame, width=300)
         self.canvas_frame = ttk.Frame(self.main_pane)
         self.main_pane.add(self.canvas_frame, stretch="always")
@@ -2205,9 +2217,11 @@ class FaultTreeApp:
         return None
 
     def get_safety_goal_asil(self, sg_name):
-        """Return the highest ASIL level for a safety goal name across HARAs."""
+        """Return the highest ASIL level for a safety goal name across approved HARAs."""
         best = "QM"
         for doc in getattr(self, "hara_docs", []):
+            if not getattr(doc, "approved", False):
+                continue
             for e in doc.entries:
                 if sg_name and sg_name == e.safety_goal and ASIL_ORDER.get(e.asil, 0) > ASIL_ORDER.get(best, 0):
                     best = e.asil
@@ -2218,19 +2232,27 @@ class FaultTreeApp:
         return best
 
     def sync_hara_to_safety_goals(self):
-        """Propagate ASIL values from all HARA documents to safety goals."""
-        asil_map = {}
+        """Propagate HARA values to safety goals when the HARA is approved."""
+        sg_data = {}
         for doc in getattr(self, "hara_docs", []):
+            if not getattr(doc, "approved", False):
+                continue
             for e in doc.entries:
                 if not e.safety_goal:
                     continue
-                cur = asil_map.get(e.safety_goal, "QM")
-                if ASIL_ORDER.get(e.asil, 0) > ASIL_ORDER.get(cur, 0):
-                    asil_map[e.safety_goal] = e.asil
+                data = sg_data.setdefault(e.safety_goal, {"asil": "QM", "severity": 1, "cont": 1})
+                if ASIL_ORDER.get(e.asil, 0) > ASIL_ORDER.get(data["asil"], 0):
+                    data["asil"] = e.asil
+                if e.severity > data["severity"]:
+                    data["severity"] = e.severity
+                if e.controllability > data["cont"]:
+                    data["cont"] = e.controllability
         for te in self.top_events:
             name = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
-            if name in asil_map:
-                te.safety_goal_asil = asil_map[name]
+            if name in sg_data:
+                te.safety_goal_asil = sg_data[name]["asil"]
+                te.severity = sg_data[name]["severity"]
+                te.controllability = sg_data[name]["cont"]
 
     def edit_selected(self):
         sel = self.treeview.selection()
@@ -7308,8 +7330,17 @@ class FaultTreeApp:
             pmhf += prob
 
         self.update_views()
-        msg = f"PMHF = {pmhf:.6e}\nSPFM = {spf:.2f}\nLPFM = {lpf:.2f}"
-        messagebox.showinfo("PMHF Calculation", msg)
+        lines = [f"Total PMHF: {pmhf:.2e}"]
+        overall_ok = True
+        for te in self.top_events:
+            asil = te.safety_goal_asil or "QM"
+            target = PMHF_TARGETS.get(asil, 1.0)
+            ok = te.probability <= target
+            overall_ok = overall_ok and ok
+            symbol = CHECK_MARK if ok else CROSS_MARK
+            lines.append(f"{te.user_name or te.display_label}: {te.probability:.2e} <= {target:.1e} {symbol}")
+        self.pmhf_var.set("\n".join(lines))
+        self.pmhf_label.config(foreground="green" if overall_ok else "red", font=("Segoe UI", 10, "bold"))
 
     def show_requirements_matrix(self):
         """Display a matrix table of requirements vs. basic events."""
@@ -9892,6 +9923,7 @@ class FaultTreeApp:
                     "name": doc.name,
                     "hazop": doc.hazop,
                     "entries": [asdict(e) for e in doc.entries],
+                    "approved": getattr(doc, "approved", False),
                 }
                 for doc in self.hara_docs
             ],
@@ -10049,7 +10081,14 @@ class FaultTreeApp:
         self.hara_docs = []
         for d in data.get("haras", []):
             entries = [HaraEntry(**e) for e in d.get("entries", [])]
-            self.hara_docs.append(HaraDoc(d.get("name", f"HARA {len(self.hara_docs)+1}"), d.get("hazop", ""), entries))
+            self.hara_docs.append(
+                HaraDoc(
+                    d.get("name", f"HARA {len(self.hara_docs)+1}"),
+                    d.get("hazop", ""),
+                    entries,
+                    d.get("approved", False),
+                )
+            )
         if not self.hara_docs and "hara_entries" in data:
             hazop_name = self.hazop_docs[0].name if self.hazop_docs else ""
             self.hara_docs.append(HaraDoc("Default", hazop_name, [HaraEntry(**e) for e in data.get("hara_entries", [])]))
@@ -10504,6 +10543,20 @@ class FaultTreeApp:
                 return
             scope = ReviewScopeDialog(self.root, self)
             fta_ids, fmea_names, fmeda_names = scope.result if scope.result else ([], [], [])
+
+            # Ensure each selected element has an approved peer review
+            for tid in fta_ids:
+                if not any(r.mode == 'peer' and r.approved and tid in r.fta_ids for r in self.reviews):
+                    messagebox.showerror("Review", "Peer review must be approved before starting joint review")
+                    return
+            for name_fta in fmea_names:
+                if not any(r.mode == 'peer' and r.approved and name_fta in r.fmea_names for r in self.reviews):
+                    messagebox.showerror("Review", "Peer review must be approved before starting joint review")
+                    return
+            for name_fd in fmeda_names:
+                if not any(r.mode == 'peer' and r.approved and name_fd in r.fmeda_names for r in self.reviews):
+                    messagebox.showerror("Review", "Peer review must be approved before starting joint review")
+                    return
             review = ReviewData(name=name, description=description, mode='joint', moderators=moderators,
                                participants=participants, comments=[],
                                fta_ids=fta_ids, fmea_names=fmea_names, fmeda_names=fmeda_names, due_date=due_date)
