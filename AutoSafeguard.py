@@ -825,7 +825,7 @@ class EditNodeDialog(simpledialog.Dialog):
             if self.node.node_type.upper() == "TOP EVENT":
                 ttk.Label(master, text="Severity (1-3):").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
                 self.sev_combo = ttk.Combobox(master, values=["1", "2", "3"],
-                                              state="readonly", width=5, font=dialog_font)
+                                              state="disabled", width=5, font=dialog_font)
                 current_sev = self.node.severity if self.node.severity is not None else 3
                 self.sev_combo.set(str(int(current_sev)))
                 self.sev_combo.grid(row=row_next, column=1, padx=5, pady=5)
@@ -833,7 +833,7 @@ class EditNodeDialog(simpledialog.Dialog):
 
                 ttk.Label(master, text="Controllability (1-3):").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
                 self.cont_combo = ttk.Combobox(master, values=["1", "2", "3"],
-                                              state="readonly", width=5, font=dialog_font)
+                                              state="disabled", width=5, font=dialog_font)
                 current_cont = self.node.controllability if self.node.controllability is not None else 3
                 self.cont_combo.set(str(int(current_cont)))
                 self.cont_combo.grid(row=row_next, column=1, padx=5, pady=5)
@@ -852,7 +852,7 @@ class EditNodeDialog(simpledialog.Dialog):
                     master,
                     textvariable=self.sg_asil_var,
                     values=ASIL_LEVEL_OPTIONS,
-                    state="readonly",
+                    state="disabled",
                     width=8,
                 )
                 self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
@@ -9601,7 +9601,7 @@ class FaultTreeApp:
         lib_lb.grid(row=0, column=0, rowspan=4, sticky="nsew")
         scen_tree = ttk.Treeview(
             win,
-            columns=("beh", "sce", "tc", "fi"),
+            columns=("beh", "sce", "tc", "fi", "desc"),
             show="tree headings",
         )
         scen_tree.heading("#0", text="Name")
@@ -9614,6 +9614,8 @@ class FaultTreeApp:
         scen_tree.column("tc", width=80)
         scen_tree.heading("fi", text="FI")
         scen_tree.column("fi", width=80)
+        scen_tree.heading("desc", text="Description")
+        scen_tree.column("desc", width=200)
         scen_tree.grid(row=0, column=1, columnspan=3, sticky="nsew")
         win.grid_rowconfigure(0, weight=1)
         win.grid_columnconfigure(1, weight=1)
@@ -9637,10 +9639,11 @@ class FaultTreeApp:
                     sce = sc.get("scenery", "")
                     tc = sc.get("tc", "")
                     fi = sc.get("fi", "")
+                    desc = sc.get("description", "")
                 else:
                     name = str(sc)
-                    beh = sce = tc = fi = ""
-                scen_tree.insert("", tk.END, text=name, values=(beh, sce, tc, fi))
+                    beh = sce = tc = fi = desc = ""
+                scen_tree.insert("", tk.END, text=name, values=(beh, sce, tc, fi, desc))
 
         class LibraryDialog(simpledialog.Dialog):
             def __init__(self, parent, app, data=None):
@@ -9671,7 +9674,15 @@ class FaultTreeApp:
             def __init__(self, parent, app, lib, data=None):
                 self.app = app
                 self.lib = lib
-                self.data = data or {"name": "", "behavior": "", "scenery": "", "tc": "", "fi": ""}
+                self.data = data or {
+                    "name": "",
+                    "behavior": "",
+                    "scenery": "",
+                    "tc": "",
+                    "fi": "",
+                    "description": "",
+                }
+                self.tag_counter = 0
                 super().__init__(parent, title="Edit Scenario")
 
             def body(self, master):
@@ -9703,7 +9714,8 @@ class FaultTreeApp:
                 self.elem_var = tk.StringVar()
                 self.elem_combo = ttk.Combobox(master, textvariable=self.elem_var, values=elems, state="readonly")
                 self.elem_combo.grid(row=3, column=1, sticky="ew")
-                ttk.Button(master, text="Insert", command=self.insert_elem).grid(row=3, column=2, padx=2)
+                ttk.Button(master, text="To Scenery", command=self.insert_elem).grid(row=3, column=2, padx=2)
+                ttk.Button(master, text="To Desc", command=self.insert_desc_elem).grid(row=3, column=3, padx=2)
 
                 tc_names = [n.user_name or f"TC {n.unique_id}" for n in self.app.get_all_triggering_conditions()]
                 fi_names = [n.user_name or f"FI {n.unique_id}" for n in self.app.get_all_functional_insufficiencies()]
@@ -9713,6 +9725,11 @@ class FaultTreeApp:
                 ttk.Label(master, text="Functional Insufficiency").grid(row=5, column=0, sticky="e")
                 self.fi_var = tk.StringVar(value=self.data.get("fi", ""))
                 ttk.Combobox(master, textvariable=self.fi_var, values=fi_names, state="readonly").grid(row=5, column=1, sticky="ew")
+
+                ttk.Label(master, text="Description").grid(row=6, column=0, sticky="ne")
+                self.desc = tk.Text(master, height=4, width=40, wrap="word")
+                self.desc.grid(row=6, column=1, columnspan=3, sticky="nsew")
+                self.load_desc_links()
                 master.grid_columnconfigure(1, weight=1)
 
             def insert_elem(self):
@@ -9724,12 +9741,52 @@ class FaultTreeApp:
                     else:
                         self.sce_var.set(el)
 
+            def insert_desc_elem(self):
+                el = self.elem_var.get()
+                if not el:
+                    return
+                pos = self.desc.index(tk.INSERT)
+                text = f"[[{el}]]"
+                self.desc.insert(pos, text)
+                tag = f"link{self.tag_counter}"
+                self.tag_counter += 1
+                end = self.desc.index(f"{pos}+{len(text)}c")
+                self.desc.tag_add(tag, pos, end)
+                self.desc.tag_config(tag, foreground="blue", underline=1)
+                self.desc.tag_bind(tag, "<Button-1>", lambda e, n=el: self.show_elem(n))
+
+            def load_desc_links(self):
+                desc = self.data.get("description", "")
+                self.desc.insert("1.0", desc)
+                for m in re.finditer(r"\[\[(.+?)\]\]", desc):
+                    name = m.group(1)
+                    start = f"1.0+{m.start()}c"
+                    end = f"1.0+{m.end()}c"
+                    tag = f"link{self.tag_counter}"
+                    self.tag_counter += 1
+                    self.desc.tag_add(tag, start, end)
+                    self.desc.tag_config(tag, foreground="blue", underline=1)
+                    self.desc.tag_bind(tag, "<Button-1>", lambda e, n=name: self.show_elem(n))
+
+            def show_elem(self, name):
+                for lib_name in self.lib.get("odds", []):
+                    for l in self.app.odd_libraries:
+                        if l.get("name") == lib_name:
+                            for el in l.get("elements", []):
+                                val = el.get("name") or el.get("element") or el.get("id")
+                                if val == name:
+                                    msg = "\n".join(f"{k}: {v}" for k, v in el.items())
+                                    messagebox.showinfo("ODD Element", msg)
+                                    return
+                messagebox.showinfo("ODD Element", f"{name}")
+
             def apply(self):
                 self.data["name"] = self.name_var.get()
                 self.data["behavior"] = self.beh_var.get()
                 self.data["scenery"] = self.sce_var.get()
                 self.data["tc"] = self.tc_var.get()
                 self.data["fi"] = self.fi_var.get()
+                self.data["description"] = self.desc.get("1.0", "end-1c")
 
         def add_lib():
             dlg = LibraryDialog(win, self)
@@ -10231,32 +10288,16 @@ class FaultTreeApp:
             messagebox.showwarning("Edit Gate Type", "Select a gate-type node.")
 
     def edit_severity(self):
-        if self.selected_node and self.selected_node.node_type.upper() == "TOP EVENT":
-            try:
-                new_sev = simpledialog.askfloat("Edit Severity", "Enter new severity (1-3):", initialvalue=self.selected_node.severity)
-                if new_sev is not None and 1 <= new_sev <= 3:
-                    self.selected_node.severity = new_sev
-                    self.update_views()
-                else:
-                    messagebox.showerror("Error", "Severity must be between 1 and 3.")
-            except Exception:
-                messagebox.showerror("Error", "Invalid input.")
-        else:
-            messagebox.showwarning("Edit Severity", "Select a Top Event node.")
+        messagebox.showinfo(
+            "Severity",
+            "Severity is determined from the HARA and cannot be edited here.",
+        )
 
     def edit_controllability(self):
-        if self.selected_node and self.selected_node.node_type.upper() == "TOP EVENT":
-            try:
-                new_c = simpledialog.askfloat("Edit Controllability", "Enter new controllability (1-3):", initialvalue=self.selected_node.controllability)
-                if new_c is not None and 1 <= new_c <= 3:
-                    self.selected_node.controllability = new_c
-                    self.update_views()
-                else:
-                    messagebox.showerror("Error", "Controllability must be between 1 and 3.")
-            except Exception:
-                messagebox.showerror("Error", "Invalid input.")
-        else:
-            messagebox.showwarning("Edit Controllability", "Select a Top Event node.")
+        messagebox.showinfo(
+            "Controllability",
+            "Controllability is determined from the HARA and cannot be edited here.",
+        )
 
     def edit_page_flag(self):
         if not self.selected_node:
@@ -11508,8 +11549,9 @@ class FaultTreeNode:
         self.x = 50
         self.y = 50
         # Severity and controllability now use a 1-3 scale
-        self.severity = 3 if node_type.upper() == "TOP EVENT" else None
-        self.controllability = 3 if node_type.upper() == "TOP EVENT" else None
+        # Default to the lowest level until linked to a HARA entry
+        self.severity = 1 if node_type.upper() == "TOP EVENT" else None
+        self.controllability = 1 if node_type.upper() == "TOP EVENT" else None
         self.input_subtype = None
         self.display_label = ""
         self.equation = ""
@@ -11622,8 +11664,8 @@ class FaultTreeNode:
         node.rationale = data.get("rationale", "")
         node.x = data.get("x", 50)
         node.y = data.get("y", 50)
-        node.severity = data.get("severity", 3) if node.node_type.upper() == "TOP EVENT" else None
-        node.controllability = data.get("controllability", 3) if node.node_type.upper() == "TOP EVENT" else None
+        node.severity = data.get("severity", 1) if node.node_type.upper() == "TOP EVENT" else None
+        node.controllability = data.get("controllability", 1) if node.node_type.upper() == "TOP EVENT" else None
         node.input_subtype = data.get("input_subtype", None)
         node.is_page = boolify(data.get("is_page", False), False)
         node.is_primary_instance = boolify(data.get("is_primary_instance", True), True)
