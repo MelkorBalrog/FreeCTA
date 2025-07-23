@@ -582,7 +582,8 @@ class ReviewToolbox(tk.Toplevel):
         if not self.app.review_data:
             messagebox.showwarning("Document", "No review selected")
             return
-        ReviewDocumentDialog(self, self.app, self.app.review_data)
+        dlg = ReviewDocumentDialog(self, self.app, self.app.review_data)
+        dlg.lift()
 
     def open_comment(self, event):
         selection = self.comment_list.curselection()
