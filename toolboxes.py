@@ -370,6 +370,38 @@ class ReliabilityWindow(tk.Toplevel):
         self.app.reliability_analyses.append(ra)
         messagebox.showinfo("Save", "Analysis saved")
 
+    def load_analysis(self):
+        """Load a previously saved reliability analysis."""
+        if not self.app.reliability_analyses:
+            messagebox.showwarning("Load", "No saved analyses")
+            return
+        win = tk.Toplevel(self)
+        win.title("Select Analysis")
+        lb = tk.Listbox(win, height=8, width=40)
+        lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        for ra in self.app.reliability_analyses:
+            lb.insert(tk.END, ra.name)
+
+        def do_load():
+            sel = lb.curselection()
+            if not sel:
+                return
+            ra = self.app.reliability_analyses[sel[0]]
+            self.standard_var.set(ra.standard)
+            self.profile_var.set(ra.profile)
+            self.components = copy.deepcopy(ra.components)
+            self.app.reliability_total_fit = ra.total_fit
+            self.app.spfm = ra.spfm
+            self.app.lpfm = ra.lpfm
+            self.app.reliability_dc = ra.dc
+            win.destroy()
+            self.refresh_tree()
+            self.formula_label.config(
+                text=f"Total FIT: {ra.total_fit:.2f}  DC: {ra.dc:.2f}  SPFM: {ra.spfm:.2f}  LPFM: {ra.lpfm:.2f}"
+            )
+
+        ttk.Button(win, text="Load", command=do_load).pack(side=tk.RIGHT, padx=5, pady=5)
+
 
 class FI2TCWindow(tk.Toplevel):
     COLS = [
