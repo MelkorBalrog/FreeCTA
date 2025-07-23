@@ -12,6 +12,7 @@ Launch the review features from the **Review** menu:
 * **Merge Review Comments** – combine feedback from another saved model into the current one so parallel reviews can be consolidated.
 * **Compare Versions** – view earlier approved versions. Differences are listed with a short description and small before/after images of changed FTA nodes. Requirement allocations are compared in the diagrams and logs.
 * **Set Current User** – choose who you are when adding comments. The toolbox also provides a drop-down selector.
+* **Update Decomposition** – after splitting a requirement into two, select either child and use the new button in the node dialog to pick a different ASIL pair.
 * The target selector within the toolbox only lists nodes and FMEA items that were chosen when the review was created, so comments can only be attached to the scoped elements.
 
 Nodes with unresolved comments show a small yellow circle to help locate feedback quickly.
