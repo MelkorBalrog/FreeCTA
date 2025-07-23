@@ -1069,11 +1069,11 @@ class EditNodeDialog(simpledialog.Dialog):
     def get_requirement_allocation_names(self, req_id):
         """Return a list of node or FMEA entry names where the requirement appears."""
         names = []
-        for n in self.get_all_nodes(self.root_node):
+        for n in self.app.get_all_nodes(self.app.root_node):
             reqs = getattr(n, "safety_requirements", [])
             if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
                 names.append(n.user_name or f"Node {n.unique_id}")
-        for fmea in self.fmeas:
+        for fmea in self.app.fmeas:
             for e in fmea.get("entries", []):
                 reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
                 if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
@@ -1093,11 +1093,11 @@ class EditNodeDialog(simpledialog.Dialog):
     def get_requirement_goal_names(self, req_id):
         """Return a list of safety goal names linked to the requirement."""
         goals = set()
-        for n in self.get_all_nodes(self.root_node):
+        for n in self.app.get_all_nodes(self.app.root_node):
             reqs = getattr(n, "safety_requirements", [])
             if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
                 self._collect_goal_names(n, goals)
-        for fmea in self.fmeas:
+        for fmea in self.app.fmeas:
             for e in fmea.get("entries", []):
                 reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
                 if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
@@ -1107,7 +1107,7 @@ class EditNodeDialog(simpledialog.Dialog):
                         parent_list = getattr(e, "parents", []) or []
                     parent = parent_list[0] if parent_list else None
                     if isinstance(parent, dict) and "unique_id" in parent:
-                        node = self.find_node_by_id_all(parent["unique_id"])
+                        node = self.app.find_node_by_id_all(parent["unique_id"])
                     else:
                         node = parent if hasattr(parent, "unique_id") else None
                     if node:
@@ -1130,7 +1130,7 @@ class EditNodeDialog(simpledialog.Dialog):
         self._collect_goal_names(node, goals)
         asil = "QM"
         for g in goals:
-            a = self.get_safety_goal_asil(g)
+            a = self.app.get_safety_goal_asil(g)
             if ASIL_ORDER.get(a, 0) > ASIL_ORDER.get(asil, 0):
                 asil = a
         return asil
@@ -1140,7 +1140,7 @@ class EditNodeDialog(simpledialog.Dialog):
         goals = self.get_requirement_goal_names(req_id)
         asil = "QM"
         for g in goals:
-            a = self.get_safety_goal_asil(g)
+            a = self.app.get_safety_goal_asil(g)
             if ASIL_ORDER.get(a, 0) > ASIL_ORDER.get(asil, 0):
                 asil = a
         return asil
