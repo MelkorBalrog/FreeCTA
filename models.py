@@ -104,6 +104,7 @@ class HaraDoc:
     name: str
     hazop: str
     entries: list
+    approved: bool = False
 
 COMPONENT_ATTR_TEMPLATES = {
     "capacitor": {
