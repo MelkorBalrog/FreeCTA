@@ -368,8 +368,13 @@ class HazopEntry:
     function: str
     malfunction: str
     mtype: str
+    scenario: str
+    conditions: str
+    hazard: str
     safety: bool
     rationale: str
+    covered: bool
+    covered_by: str
     component: str = ""
 
 
@@ -10747,11 +10752,26 @@ class FaultTreeApp:
             self.title("HAZOP Analysis")
             self.geometry("600x400")
 
-            columns = ("function", "malfunction", "type", "safety", "rationale")
+            columns = (
+                "function",
+                "malfunction",
+                "type",
+                "scenario",
+                "conditions",
+                "hazard",
+                "safety",
+                "rationale",
+                "covered",
+                "covered_by",
+            )
             self.tree = ttk.Treeview(self, columns=columns, show="headings")
             for col in columns:
                 self.tree.heading(col, text=col.capitalize())
-                self.tree.column(col, width=120 if col != "rationale" else 200)
+                if col in ("rationale", "hazard"):
+                    width = 200
+                else:
+                    width = 120
+                self.tree.column(col, width=width)
             self.tree.pack(fill=tk.BOTH, expand=True)
 
             btn = ttk.Frame(self)
@@ -10765,12 +10785,34 @@ class FaultTreeApp:
         def refresh(self):
             self.tree.delete(*self.tree.get_children())
             for row in self.app.hazop_entries:
-                vals = [row.function, row.malfunction, row.mtype, "Yes" if row.safety else "No", row.rationale]
+                vals = [
+                    row.function,
+                    row.malfunction,
+                    row.mtype,
+                    row.scenario,
+                    row.conditions,
+                    row.hazard,
+                    "Yes" if row.safety else "No",
+                    row.rationale,
+                    "Yes" if row.covered else "No",
+                    row.covered_by,
+                ]
                 self.tree.insert("", "end", values=vals)
 
         class RowDialog(simpledialog.Dialog):
             def __init__(self, parent, row=None):
-                self.row = row or HazopEntry("", "", "No/Not", False, "")
+                self.row = row or HazopEntry(
+                    "",
+                    "",
+                    "No/Not",
+                    "",
+                    "",
+                    "",
+                    False,
+                    "",
+                    False,
+                    "",
+                )
                 super().__init__(parent, title="Edit HAZOP Row")
 
             def body(self, master):
@@ -10787,25 +10829,55 @@ class FaultTreeApp:
                 ttk.Combobox(
                     master,
                     textvariable=self.typ,
-                    values=["No/Not", "Excessive", "Insufficient", "Unintended", "Reverse"],
+                    values=["No/Not", "Unintended", "Excessive", "Insufficient", "Reverse"],
                     state="readonly",
                 ).grid(row=2, column=1, padx=5, pady=5)
 
-                ttk.Label(master, text="Safety Relevant").grid(row=3, column=0, sticky="e", padx=5, pady=5)
-                self.safety = tk.BooleanVar(value=self.row.safety)
-                ttk.Checkbutton(master, variable=self.safety).grid(row=3, column=1, sticky="w", padx=5, pady=5)
+                ttk.Label(master, text="Scenario").grid(row=3, column=0, sticky="e", padx=5, pady=5)
+                scenarios = []
+                for lib in self.app.scenario_libraries:
+                    scenarios.extend(lib.get("scenarios", []))
+                self.scen = tk.StringVar(value=self.row.scenario)
+                ttk.Combobox(master, textvariable=self.scen, values=scenarios, state="readonly").grid(row=3, column=1, padx=5, pady=5)
 
-                ttk.Label(master, text="Rationale").grid(row=4, column=0, sticky="ne", padx=5, pady=5)
+                ttk.Label(master, text="Driving Conditions").grid(row=4, column=0, sticky="e", padx=5, pady=5)
+                self.cond = tk.StringVar(value=self.row.conditions)
+                ttk.Entry(master, textvariable=self.cond).grid(row=4, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Hazard").grid(row=5, column=0, sticky="ne", padx=5, pady=5)
+                self.haz = tk.Text(master, width=30, height=3)
+                self.haz.insert("1.0", self.row.hazard)
+                self.haz.grid(row=5, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Safety Relevant").grid(row=6, column=0, sticky="e", padx=5, pady=5)
+                self.safety = tk.StringVar(value="Yes" if self.row.safety else "No")
+                ttk.Combobox(master, textvariable=self.safety, values=["Yes", "No"], state="readonly").grid(row=6, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Rationale").grid(row=7, column=0, sticky="ne", padx=5, pady=5)
                 self.rat = tk.Text(master, width=30, height=3)
                 self.rat.insert("1.0", self.row.rationale)
-                self.rat.grid(row=4, column=1, padx=5, pady=5)
+                self.rat.grid(row=7, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Covered").grid(row=8, column=0, sticky="e", padx=5, pady=5)
+                self.cov = tk.StringVar(value="Yes" if self.row.covered else "No")
+                ttk.Combobox(master, textvariable=self.cov, values=["Yes", "No"], state="readonly").grid(row=8, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Covered By").grid(row=9, column=0, sticky="e", padx=5, pady=5)
+                malfs = [e.malfunction for e in self.app.hazop_entries]
+                self.cov_by = tk.StringVar(value=self.row.covered_by)
+                ttk.Combobox(master, textvariable=self.cov_by, values=malfs, state="readonly").grid(row=9, column=1, padx=5, pady=5)
 
             def apply(self):
                 self.row.function = self.func.get()
                 self.row.malfunction = self.mal.get()
                 self.row.mtype = self.typ.get()
-                self.row.safety = self.safety.get()
+                self.row.scenario = self.scen.get()
+                self.row.conditions = self.cond.get()
+                self.row.hazard = self.haz.get("1.0", "end-1c")
+                self.row.safety = self.safety.get() == "Yes"
                 self.row.rationale = self.rat.get("1.0", "end-1c")
+                self.row.covered = self.cov.get() == "Yes"
+                self.row.covered_by = self.cov_by.get()
 
         def add_row(self):
             dlg = self.RowDialog(self)
@@ -11715,7 +11787,22 @@ class FaultTreeApp:
                 )
             )
 
-        self.hazop_entries = [HazopEntry(**h) for h in data.get("hazop_entries", [])]
+        self.hazop_entries = [
+            HazopEntry(
+                h.get("function", ""),
+                h.get("malfunction", ""),
+                h.get("mtype", "No/Not"),
+                h.get("scenario", ""),
+                h.get("conditions", ""),
+                h.get("hazard", ""),
+                h.get("safety", False),
+                h.get("rationale", ""),
+                h.get("covered", False),
+                h.get("covered_by", ""),
+                h.get("component", ""),
+            )
+            for h in data.get("hazop_entries", [])
+        ]
         self.fi2tc_entries = data.get("fi2tc_entries", [])
         self.tc2fi_entries = data.get("tc2fi_entries", [])
         self.scenario_libraries = data.get("scenario_libraries", [])
