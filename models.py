@@ -310,22 +310,24 @@ ASIL_TARGETS = {
 # additional justification and analysis for the original level ``X``.
 # Decomposition of an ASIL A requirement is not defined.
 ASIL_DECOMP_SCHEMES = {
+    # Top-level decomposition logic updated per new guidelines
     "D": [
-        ("B", "B"),          # Valid: ASIL B + ASIL B
-        ("C", "QM(D)"),      # Conditional: ASIL C + QM(D)
-        ("B", "QM(D)"),      # Conditional: ASIL B + QM(D)
+        ("ASIL B(D)", "ASIL B(D)"),
+        ("ASIL C(D)", "ASIL QM(D)"),
+        ("ASIL A(D)", "ASIL C(D)"),
+        ("ASIL B(D)", "ASIL QM(D)"),
     ],
     "C": [
-        ("A", "A"),          # Valid: ASIL A + ASIL A
-        ("B", "QM(C)"),      # Conditional: ASIL B + QM(C)
-        ("A", "QM(C)"),      # Conditional: ASIL A + QM(C)
+        ("ASIL B(C)", "ASIL A(C)"),
+        ("ASIL C(C)", "ASIL QM(C)"),
     ],
     "B": [
-        ("QM", "QM"),        # Valid: QM + QM
-        ("A", "QM(B)"),      # Conditional: ASIL A + QM(B)
-        ("B", "QM(B)"),      # Conditional: ASIL B + QM(B)
+        ("ASIL A(B)", "ASIL A(B)"),
+        ("ASIL B(B)", "ASIL QM(B)"),
     ],
-    "A": [],  # No further decomposition defined for ASIL A
+    "A": [
+        ("ASIL A(A)", "ASIL QM(A)"),
+    ],
 }
 
 # ASIL determination table following the ISO 26262 risk graph used in the HARA
