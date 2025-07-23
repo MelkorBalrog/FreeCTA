@@ -10357,6 +10357,8 @@ class FaultTreeApp:
                 "fta_ids": r.fta_ids,
                 "fmea_names": r.fmea_names,
                 "fmeda_names": getattr(r, 'fmeda_names', []),
+                "hazop_names": getattr(r, 'hazop_names', []),
+                "hara_names": getattr(r, 'hara_names', []),
             })
         current_name = self.review_data.name if self.review_data else None
         data = {
@@ -10667,6 +10669,8 @@ class FaultTreeApp:
                         fta_ids=rd.get("fta_ids", []),
                         fmea_names=rd.get("fmea_names", []),
                         fmeda_names=rd.get("fmeda_names", []),
+                        hazop_names=rd.get("hazop_names", []),
+                        hara_names=rd.get("hara_names", []),
                     )
                 )
             current = data.get("current_review")
@@ -10696,6 +10700,8 @@ class FaultTreeApp:
                     fta_ids=rd.get("fta_ids", []),
                     fmea_names=rd.get("fmea_names", []),
                     fmeda_names=rd.get("fmeda_names", []),
+                    hazop_names=rd.get("hazop_names", []),
+                    hara_names=rd.get("hara_names", []),
                 )
                 self.reviews = [review]
                 self.review_data = review
@@ -11021,10 +11027,14 @@ class FaultTreeApp:
                 messagebox.showerror("Review", "Name already exists")
                 return
             scope = ReviewScopeDialog(self.root, self)
-            fta_ids, fmea_names, fmeda_names = scope.result if scope.result else ([], [], [])
+            fta_ids, fmea_names, fmeda_names, hazop_names, hara_names = (
+                scope.result if scope.result else ([], [], [], [], [])
+            )
             review = ReviewData(name=name, description=description, mode='peer', moderators=moderators,
                                participants=parts, comments=[],
-                               fta_ids=fta_ids, fmea_names=fmea_names, fmeda_names=fmeda_names, due_date=due_date)
+                               fta_ids=fta_ids, fmea_names=fmea_names, fmeda_names=fmeda_names,
+                               hazop_names=hazop_names, hara_names=hara_names,
+                               due_date=due_date)
             self.reviews.append(review)
             self.review_data = review
             self.current_user = moderators[0].name if moderators else parts[0].name
@@ -11056,7 +11066,9 @@ class FaultTreeApp:
                 messagebox.showerror("Review", "Name already exists")
                 return
             scope = ReviewScopeDialog(self.root, self)
-            fta_ids, fmea_names, fmeda_names = scope.result if scope.result else ([], [], [])
+            fta_ids, fmea_names, fmeda_names, hazop_names, hara_names = (
+                scope.result if scope.result else ([], [], [], [], [])
+            )
 
             # Ensure each selected element has an approved peer review
             for tid in fta_ids:
@@ -11073,7 +11085,9 @@ class FaultTreeApp:
                     return
             review = ReviewData(name=name, description=description, mode='joint', moderators=moderators,
                                participants=participants, comments=[],
-                               fta_ids=fta_ids, fmea_names=fmea_names, fmeda_names=fmeda_names, due_date=due_date)
+                               fta_ids=fta_ids, fmea_names=fmea_names, fmeda_names=fmeda_names,
+                               hazop_names=hazop_names, hara_names=hara_names,
+                               due_date=due_date)
             self.reviews.append(review)
             self.review_data = review
             self.current_user = moderators[0].name if moderators else participants[0].name
@@ -11121,6 +11135,16 @@ class FaultTreeApp:
         if review.fmea_names:
             lines.append("FMEAs:")
             for name in review.fmea_names:
+                lines.append(f" - {name}")
+            lines.append("")
+        if getattr(review, 'hazop_names', []):
+            lines.append("HAZOPs:")
+            for name in review.hazop_names:
+                lines.append(f" - {name}")
+            lines.append("")
+        if getattr(review, 'hara_names', []):
+            lines.append("HARAs:")
+            for name in review.hara_names:
                 lines.append(f" - {name}")
             lines.append("")
         content = "\n".join(lines)

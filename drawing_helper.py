@@ -1,4 +1,5 @@
 import math
+import tkinter.font as tkFont
 
 class FTADrawingHelper:
     """
