@@ -825,7 +825,7 @@ class EditNodeDialog(simpledialog.Dialog):
             if self.node.node_type.upper() == "TOP EVENT":
                 ttk.Label(master, text="Severity (1-3):").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
                 self.sev_combo = ttk.Combobox(master, values=["1", "2", "3"],
-                                              state="readonly", width=5, font=dialog_font)
+                                              state="disabled", width=5, font=dialog_font)
                 current_sev = self.node.severity if self.node.severity is not None else 3
                 self.sev_combo.set(str(int(current_sev)))
                 self.sev_combo.grid(row=row_next, column=1, padx=5, pady=5)
@@ -833,7 +833,7 @@ class EditNodeDialog(simpledialog.Dialog):
 
                 ttk.Label(master, text="Controllability (1-3):").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
                 self.cont_combo = ttk.Combobox(master, values=["1", "2", "3"],
-                                              state="readonly", width=5, font=dialog_font)
+                                              state="disabled", width=5, font=dialog_font)
                 current_cont = self.node.controllability if self.node.controllability is not None else 3
                 self.cont_combo.set(str(int(current_cont)))
                 self.cont_combo.grid(row=row_next, column=1, padx=5, pady=5)
@@ -852,7 +852,7 @@ class EditNodeDialog(simpledialog.Dialog):
                     master,
                     textvariable=self.sg_asil_var,
                     values=ASIL_LEVEL_OPTIONS,
-                    state="readonly",
+                    state="disabled",
                     width=8,
                 )
                 self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
@@ -1254,23 +1254,10 @@ class EditNodeDialog(simpledialog.Dialog):
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
             target_node.gate_type = self.gate_var.get().strip().upper()
             if self.node.node_type.upper() == "TOP EVENT":
-                try:
-                    sev = float(self.sev_combo.get().strip())
-                    if not (1 <= sev <= 3):
-                        raise ValueError
-                    target_node.severity = sev
-                except ValueError:
-                    messagebox.showerror("Invalid Input", "Select a severity between 1 and 3.")
-                try:
-                    cont = float(self.cont_combo.get().strip())
-                    if not (1 <= cont <= 3):
-                        raise ValueError
-                    target_node.controllability = cont
-                except ValueError:
-                    messagebox.showerror("Invalid Input", "Select a controllability between 1 and 3.")
+                # Severity, controllability and ASIL are managed via the HARA
+                # Keep existing values and only update descriptive fields
                 target_node.is_page = False
                 target_node.safety_goal_description = self.safety_goal_text.get("1.0", "end-1c")
-                target_node.safety_goal_asil = self.sg_asil_var.get().strip()
                 target_node.safe_state = self.safe_state_entry.get().strip()
             else:
                 target_node.is_page = self.is_page_var.get()
@@ -10151,32 +10138,16 @@ class FaultTreeApp:
             messagebox.showwarning("Edit Gate Type", "Select a gate-type node.")
 
     def edit_severity(self):
-        if self.selected_node and self.selected_node.node_type.upper() == "TOP EVENT":
-            try:
-                new_sev = simpledialog.askfloat("Edit Severity", "Enter new severity (1-3):", initialvalue=self.selected_node.severity)
-                if new_sev is not None and 1 <= new_sev <= 3:
-                    self.selected_node.severity = new_sev
-                    self.update_views()
-                else:
-                    messagebox.showerror("Error", "Severity must be between 1 and 3.")
-            except Exception:
-                messagebox.showerror("Error", "Invalid input.")
-        else:
-            messagebox.showwarning("Edit Severity", "Select a Top Event node.")
+        messagebox.showinfo(
+            "Severity",
+            "Severity is determined from the HARA and cannot be edited here.",
+        )
 
     def edit_controllability(self):
-        if self.selected_node and self.selected_node.node_type.upper() == "TOP EVENT":
-            try:
-                new_c = simpledialog.askfloat("Edit Controllability", "Enter new controllability (1-3):", initialvalue=self.selected_node.controllability)
-                if new_c is not None and 1 <= new_c <= 3:
-                    self.selected_node.controllability = new_c
-                    self.update_views()
-                else:
-                    messagebox.showerror("Error", "Controllability must be between 1 and 3.")
-            except Exception:
-                messagebox.showerror("Error", "Invalid input.")
-        else:
-            messagebox.showwarning("Edit Controllability", "Select a Top Event node.")
+        messagebox.showinfo(
+            "Controllability",
+            "Controllability is determined from the HARA and cannot be edited here.",
+        )
 
     def edit_page_flag(self):
         if not self.selected_node:
@@ -11428,8 +11399,9 @@ class FaultTreeNode:
         self.x = 50
         self.y = 50
         # Severity and controllability now use a 1-3 scale
-        self.severity = 3 if node_type.upper() == "TOP EVENT" else None
-        self.controllability = 3 if node_type.upper() == "TOP EVENT" else None
+        # Default to the lowest level until linked to a HARA entry
+        self.severity = 1 if node_type.upper() == "TOP EVENT" else None
+        self.controllability = 1 if node_type.upper() == "TOP EVENT" else None
         self.input_subtype = None
         self.display_label = ""
         self.equation = ""
@@ -11538,8 +11510,8 @@ class FaultTreeNode:
         node.rationale = data.get("rationale", "")
         node.x = data.get("x", 50)
         node.y = data.get("y", 50)
-        node.severity = data.get("severity", 3) if node.node_type.upper() == "TOP EVENT" else None
-        node.controllability = data.get("controllability", 3) if node.node_type.upper() == "TOP EVENT" else None
+        node.severity = data.get("severity", 1) if node.node_type.upper() == "TOP EVENT" else None
+        node.controllability = data.get("controllability", 1) if node.node_type.upper() == "TOP EVENT" else None
         node.input_subtype = data.get("input_subtype", None)
         node.is_page = boolify(data.get("is_page", False), False)
         node.is_primary_instance = boolify(data.get("is_primary_instance", True), True)
