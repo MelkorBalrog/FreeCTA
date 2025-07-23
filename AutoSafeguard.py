@@ -1604,6 +1604,7 @@ class FaultTreeApp:
             return {
                 "top_events": [t for t in data.get("top_events", []) if t["unique_id"] in review.fta_ids],
                 "fmeas": [f for f in data.get("fmeas", []) if f["name"] in review.fmea_names],
+                "fmedas": [d for d in data.get("fmedas", []) if d.get("name") in getattr(review, "fmeda_names", [])],
             }
 
         data1 = filter_data(base_data)
@@ -1635,6 +1636,30 @@ class FaultTreeApp:
                     if rid and rid not in reqs1:
                         reqs1[rid] = r
             for e in fmea2.get(name, {}).get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
+        for f in data1.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+        for f in data2.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
+        for f in data1.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+        for f in data2.get("fmedas", []):
+            for e in f.get("entries", []):
                 for r in e.get("safety_requirements", []):
                     rid = r.get("id")
                     if rid and rid not in reqs2:
@@ -1754,6 +1779,182 @@ class FaultTreeApp:
             return {
                 "top_events": [t for t in data.get("top_events", []) if t["unique_id"] in review.fta_ids],
                 "fmeas": [f for f in data.get("fmeas", []) if f["name"] in review.fmea_names],
+                "fmedas": [d for d in data.get("fmedas", []) if d.get("name") in getattr(review, "fmeda_names", [])],
+            }
+
+        data1 = filter_data(base_data)
+        data2 = filter_data(current)
+        map1 = self.node_map_from_data(data1["top_events"])
+        map2 = self.node_map_from_data(data2["top_events"])
+
+        def collect_reqs(node_dict, target):
+            for r in node_dict.get("safety_requirements", []):
+                rid = r.get("id")
+                if rid and rid not in target:
+                    target[rid] = r
+            for ch in node_dict.get("children", []):
+                collect_reqs(ch, target)
+
+        reqs1, reqs2 = {}, {}
+        for nid in review.fta_ids:
+            if nid in map1:
+                collect_reqs(map1[nid], reqs1)
+            if nid in map2:
+                collect_reqs(map2[nid], reqs2)
+
+        fmea1 = {f["name"]: f for f in data1.get("fmeas", [])}
+        fmea2 = {f["name"]: f for f in data2.get("fmeas", [])}
+        for name in review.fmea_names:
+            for e in fmea1.get(name, {}).get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+            for e in fmea2.get(name, {}).get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
+
+        import difflib, html
+
+        def html_diff(a, b):
+            matcher = difflib.SequenceMatcher(None, a, b)
+            parts = []
+            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+                if tag == "equal":
+                    parts.append(html.escape(a[i1:i2]))
+                elif tag == "delete":
+                    parts.append(f"<span style='color:red'>{html.escape(a[i1:i2])}</span>")
+                elif tag == "insert":
+                    parts.append(f"<span style='color:blue'>{html.escape(b[j1:j2])}</span>")
+                elif tag == "replace":
+                    parts.append(f"<span style='color:red'>{html.escape(a[i1:i2])}</span>")
+                    parts.append(f"<span style='color:blue'>{html.escape(b[j1:j2])}</span>")
+            return "".join(parts)
+
+        lines = []
+        all_ids = sorted(set(reqs1) | set(reqs2))
+        for rid in all_ids:
+            r1 = reqs1.get(rid)
+            r2 = reqs2.get(rid)
+            if r1 and not r2:
+                lines.append(f"Removed: {html.escape(self.format_requirement_with_trace(r1))}")
+            elif r2 and not r1:
+                lines.append(f"Added: {html.escape(self.format_requirement_with_trace(r2))}")
+            else:
+                if json.dumps(r1, sort_keys=True) != json.dumps(r2, sort_keys=True):
+                    lines.append("Updated: " + html_diff(self.format_requirement_with_trace(r1), self.format_requirement_with_trace(r2)))
+
+        for nid in review.fta_ids:
+            n1 = map1.get(nid, {})
+            n2 = map2.get(nid, {})
+            sg_old = f"{n1.get('safety_goal_description','')} [{n1.get('safety_goal_asil','')}]"
+            sg_new = f"{n2.get('safety_goal_description','')} [{n2.get('safety_goal_asil','')}]"
+            label = n2.get('user_name') or n1.get('user_name') or f"Node {nid}"
+            if sg_old != sg_new:
+                lines.append(
+                    f"Safety Goal for {html.escape(label)}: " + html_diff(sg_old, sg_new)
+                )
+            if n1.get('safe_state','') != n2.get('safe_state',''):
+                lines.append(
+                    f"Safe State for {html.escape(label)}: " + html_diff(n1.get('safe_state',''), n2.get('safe_state',''))
+                )
+
+        return "<br>".join(lines)
+
+    # --- Requirement Traceability Helpers used by reviews and matrix view ---
+    def get_requirement_allocation_names(self, req_id):
+        """Return a list of node or FMEA entry names where the requirement appears."""
+        names = []
+        for n in self.get_all_nodes(self.root_node):
+            reqs = getattr(n, "safety_requirements", [])
+            if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
+                names.append(n.user_name or f"Node {n.unique_id}")
+        for fmea in self.fmeas:
+            for e in fmea.get("entries", []):
+                reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
+                if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
+                    if isinstance(e, dict):
+                        name = e.get("description") or e.get("user_name", f"BE {e.get('unique_id','')}")
+                    else:
+                        name = getattr(e, "description", "") or getattr(e, "user_name", f"BE {getattr(e, 'unique_id', '')}")
+                    names.append(f"{fmea['name']}:{name}")
+        return names
+
+    def _collect_goal_names(self, node, acc):
+        if node.node_type.upper() == "TOP EVENT":
+            acc.add(node.safety_goal_description or (node.user_name or f"SG {node.unique_id}"))
+        for p in getattr(node, "parents", []):
+            self._collect_goal_names(p, acc)
+
+    def get_requirement_goal_names(self, req_id):
+        """Return a list of safety goal names linked to the requirement."""
+        goals = set()
+        for n in self.get_all_nodes(self.root_node):
+            reqs = getattr(n, "safety_requirements", [])
+            if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
+                self._collect_goal_names(n, goals)
+        for fmea in self.fmeas:
+            for e in fmea.get("entries", []):
+                reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
+                if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
+                    parent_list = e.get("parents", []) if isinstance(e, dict) else getattr(e, "parents", [])
+                    parent = parent_list[0] if parent_list else None
+                    if isinstance(parent, dict) and "unique_id" in parent:
+                        node = self.find_node_by_id_all(parent["unique_id"])
+                    else:
+                        node = parent if hasattr(parent, "unique_id") else None
+                    if node:
+                        self._collect_goal_names(node, goals)
+        return sorted(goals)
+
+    def format_requirement_with_trace(self, req):
+        """Return requirement text including allocation and safety goal lists."""
+        if isinstance(req, dict):
+            rid = req.get("id", "")
+            rtype = req.get("req_type", "")
+            asil = req.get("asil", "")
+            text = req.get("text", "")
+        else:
+            rid = getattr(req, "id", "")
+            rtype = getattr(req, "req_type", "")
+            asil = getattr(req, "asil", "")
+            text = getattr(req, "text", "")
+        alloc = ", ".join(self.get_requirement_allocation_names(rid))
+        goals = ", ".join(self.get_requirement_goal_names(rid))
+        return f"[{rid}] [{rtype}] [{asil}] {text} (Alloc: {alloc}; SGs: {goals})"
+
+    def build_requirement_diff_html(self, review):
+        """Return HTML highlighting requirement differences for the review."""
+        if not self.versions:
+            return ""
+        base_data = self.versions[-1]["data"]
+        current = self.export_model_data(include_versions=False)
+
+        def filter_data(data):
+            return {
+                "top_events": [
+                    t for t in data.get("top_events", []) if t["unique_id"] in review.fta_ids
+                ],
+                "fmeas": [
+                    f for f in data.get("fmeas", []) if f["name"] in review.fmea_names
+                ],
+                "fmedas": [
+                    d
+                    for d in data.get("fmedas", [])
+                    if d.get("name") in getattr(review, "fmeda_names", [])
+                ],
+                "hazops": [
+                    d
+                    for d in data.get("hazops", [])
+                    if d.get("name") in getattr(review, "hazop_names", [])
+                ],
+                "haras": [
+                    d
+                    for d in data.get("haras", [])
+                    if d.get("name") in getattr(review, "hara_names", [])
+                ],
             }
 
         data1 = filter_data(base_data)
@@ -1991,146 +2192,6 @@ class FaultTreeApp:
                     f"Safe State for {html.escape(label)}: " + html_diff(n1.get('safe_state',''), n2.get('safe_state',''))
                 )
 
-        return "<br>".join(lines)
-
-    # --- Requirement Traceability Helpers used by reviews and matrix view ---
-    def get_requirement_allocation_names(self, req_id):
-        """Return a list of node or FMEA entry names where the requirement appears."""
-        names = []
-        for n in self.get_all_nodes(self.root_node):
-            reqs = getattr(n, "safety_requirements", [])
-            if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
-                names.append(n.user_name or f"Node {n.unique_id}")
-        for fmea in self.fmeas:
-            for e in fmea.get("entries", []):
-                reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
-                if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
-                    if isinstance(e, dict):
-                        name = e.get("description") or e.get("user_name", f"BE {e.get('unique_id','')}")
-                    else:
-                        name = getattr(e, "description", "") or getattr(e, "user_name", f"BE {getattr(e, 'unique_id', '')}")
-                    names.append(f"{fmea['name']}:{name}")
-        return names
-
-    def _collect_goal_names(self, node, acc):
-        if node.node_type.upper() == "TOP EVENT":
-            acc.add(node.safety_goal_description or (node.user_name or f"SG {node.unique_id}"))
-        for p in getattr(node, "parents", []):
-            self._collect_goal_names(p, acc)
-
-    def get_requirement_goal_names(self, req_id):
-        """Return a list of safety goal names linked to the requirement."""
-        goals = set()
-        for n in self.get_all_nodes(self.root_node):
-            reqs = getattr(n, "safety_requirements", [])
-            if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
-                self._collect_goal_names(n, goals)
-        for fmea in self.fmeas:
-            for e in fmea.get("entries", []):
-                reqs = e.get("safety_requirements", []) if isinstance(e, dict) else getattr(e, "safety_requirements", [])
-                if any((r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) == req_id for r in reqs):
-                    parent_list = e.get("parents", []) if isinstance(e, dict) else getattr(e, "parents", [])
-                    parent = parent_list[0] if parent_list else None
-                    if isinstance(parent, dict) and "unique_id" in parent:
-                        node = self.find_node_by_id_all(parent["unique_id"])
-                    else:
-                        node = parent if hasattr(parent, "unique_id") else None
-                    if node:
-                        self._collect_goal_names(node, goals)
-        return sorted(goals)
-
-    def format_requirement_with_trace(self, req):
-        """Return requirement text including allocation and safety goal lists."""
-        if isinstance(req, dict):
-            rid = req.get("id", "")
-            rtype = req.get("req_type", "")
-            asil = req.get("asil", "")
-            text = req.get("text", "")
-        else:
-            rid = getattr(req, "id", "")
-            rtype = getattr(req, "req_type", "")
-            asil = getattr(req, "asil", "")
-            text = getattr(req, "text", "")
-        alloc = ", ".join(self.get_requirement_allocation_names(rid))
-        goals = ", ".join(self.get_requirement_goal_names(rid))
-        return f"[{rid}] [{rtype}] [{asil}] {text} (Alloc: {alloc}; SGs: {goals})"
-
-    def build_requirement_diff_html(self, review):
-        """Return HTML highlighting requirement differences for the review."""
-        if not self.versions:
-            return ""
-        base_data = self.versions[-1]["data"]
-        current = self.export_model_data(include_versions=False)
-
-        def filter_data(data):
-            return {
-                "top_events": [t for t in data.get("top_events", []) if t["unique_id"] in review.fta_ids],
-                "fmeas": [f for f in data.get("fmeas", []) if f["name"] in review.fmea_names],
-            }
-
-        data1 = filter_data(base_data)
-        data2 = filter_data(current)
-        map1 = self.node_map_from_data(data1["top_events"])
-        map2 = self.node_map_from_data(data2["top_events"])
-
-        def collect_reqs(node_dict, target):
-            for r in node_dict.get("safety_requirements", []):
-                rid = r.get("id")
-                if rid and rid not in target:
-                    target[rid] = r
-            for ch in node_dict.get("children", []):
-                collect_reqs(ch, target)
-
-        reqs1, reqs2 = {}, {}
-        for nid in review.fta_ids:
-            if nid in map1:
-                collect_reqs(map1[nid], reqs1)
-            if nid in map2:
-                collect_reqs(map2[nid], reqs2)
-
-        fmea1 = {f["name"]: f for f in data1.get("fmeas", [])}
-        fmea2 = {f["name"]: f for f in data2.get("fmeas", [])}
-        for name in review.fmea_names:
-            for e in fmea1.get(name, {}).get("entries", []):
-                for r in e.get("safety_requirements", []):
-                    rid = r.get("id")
-                    if rid and rid not in reqs1:
-                        reqs1[rid] = r
-            for e in fmea2.get(name, {}).get("entries", []):
-                for r in e.get("safety_requirements", []):
-                    rid = r.get("id")
-                    if rid and rid not in reqs2:
-                        reqs2[rid] = r
-
-        import difflib, html
-
-        def html_diff(a, b):
-            matcher = difflib.SequenceMatcher(None, a, b)
-            parts = []
-            for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-                if tag == "equal":
-                    parts.append(html.escape(a[i1:i2]))
-                elif tag == "delete":
-                    parts.append(f"<span style='color:red'>{html.escape(a[i1:i2])}</span>")
-                elif tag == "insert":
-                    parts.append(f"<span style='color:blue'>{html.escape(b[j1:j2])}</span>")
-                elif tag == "replace":
-                    parts.append(f"<span style='color:red'>{html.escape(a[i1:i2])}</span>")
-                    parts.append(f"<span style='color:blue'>{html.escape(b[j1:j2])}</span>")
-            return "".join(parts)
-
-        lines = []
-        all_ids = sorted(set(reqs1) | set(reqs2))
-        for rid in all_ids:
-            r1 = reqs1.get(rid)
-            r2 = reqs2.get(rid)
-            if r1 and not r2:
-                lines.append(f"Removed: {html.escape(self.format_requirement_with_trace(r1))}")
-            elif r2 and not r1:
-                lines.append(f"Added: {html.escape(self.format_requirement_with_trace(r2))}")
-            else:
-                if json.dumps(r1, sort_keys=True) != json.dumps(r2, sort_keys=True):
-                    lines.append("Updated: " + html_diff(self.format_requirement_with_trace(r1), self.format_requirement_with_trace(r2)))
         return "<br>".join(lines)
 
     def generate_recommendations_for_top_event(self, node):
@@ -11277,6 +11338,84 @@ class FaultTreeApp:
                 maintype="text",
                 subtype="csv",
                 filename=f"fmeda_{name}.csv",
+            )
+        for name in getattr(review, 'hazop_names', []):
+            doc = next((d for d in self.hazop_docs if d.name == name), None)
+            if not doc:
+                continue
+            out = StringIO()
+            writer = csv.writer(out)
+            columns = [
+                "Function",
+                "Malfunction",
+                "Type",
+                "Scenario",
+                "Conditions",
+                "Hazard",
+                "Safety",
+                "Rationale",
+                "Covered",
+                "Covered By",
+            ]
+            writer.writerow(columns)
+            for e in doc.entries:
+                writer.writerow([
+                    getattr(e, "function", e.get("function", "")),
+                    getattr(e, "malfunction", e.get("malfunction", "")),
+                    getattr(e, "mtype", e.get("mtype", "")),
+                    getattr(e, "scenario", e.get("scenario", "")),
+                    getattr(e, "conditions", e.get("conditions", "")),
+                    getattr(e, "hazard", e.get("hazard", "")),
+                    "Yes" if getattr(e, "safety", e.get("safety", False)) else "No",
+                    getattr(e, "rationale", e.get("rationale", "")),
+                    "Yes" if getattr(e, "covered", e.get("covered", False)) else "No",
+                    getattr(e, "covered_by", e.get("covered_by", "")),
+                ])
+            csv_bytes = out.getvalue().encode("utf-8")
+            out.close()
+            msg.add_attachment(
+                csv_bytes,
+                maintype="text",
+                subtype="csv",
+                filename=f"hazop_{name}.csv",
+            )
+        for name in getattr(review, 'hara_names', []):
+            doc = next((d for d in self.hara_docs if d.name == name), None)
+            if not doc:
+                continue
+            out = StringIO()
+            writer = csv.writer(out)
+            columns = [
+                "Malfunction",
+                "Severity",
+                "Severity Rationale",
+                "Controllability",
+                "Cont. Rationale",
+                "Exposure",
+                "Exp. Rationale",
+                "ASIL",
+                "Safety Goal",
+            ]
+            writer.writerow(columns)
+            for e in doc.entries:
+                writer.writerow([
+                    getattr(e, "malfunction", e.get("malfunction", "")),
+                    getattr(e, "severity", e.get("severity", "")),
+                    getattr(e, "sev_rationale", e.get("sev_rationale", "")),
+                    getattr(e, "controllability", e.get("controllability", "")),
+                    getattr(e, "cont_rationale", e.get("cont_rationale", "")),
+                    getattr(e, "exposure", e.get("exposure", "")),
+                    getattr(e, "exp_rationale", e.get("exp_rationale", "")),
+                    getattr(e, "asil", e.get("asil", "")),
+                    getattr(e, "safety_goal", e.get("safety_goal", "")),
+                ])
+            csv_bytes = out.getvalue().encode("utf-8")
+            out.close()
+            msg.add_attachment(
+                csv_bytes,
+                maintype="text",
+                subtype="csv",
+                filename=f"hara_{name}.csv",
             )
         try:
             port = cfg.get('port', 465)
