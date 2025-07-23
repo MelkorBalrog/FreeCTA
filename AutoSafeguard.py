@@ -2527,7 +2527,6 @@ class FaultTreeApp:
         self.tc2fi_entries = []
         self.scenario_libraries = []
         self.odd_elements = []
-
         # Provide the drawing helper to dialogs that may be opened later
         self.fta_drawing_helper = fta_drawing_helper
 
@@ -2563,12 +2562,8 @@ class FaultTreeApp:
         edit_menu.add_command(label="Add Robustness", command=lambda: self.add_node_of_type("Robustness Score"), accelerator="Ctrl+Shift+R")
         edit_menu.add_command(label="Add Gate", command=lambda: self.add_node_of_type("GATE"), accelerator="Ctrl+Shift+G")
         edit_menu.add_command(label="Add Basic Event", command=lambda: self.add_node_of_type("Basic Event"), accelerator="Ctrl+Shift+B")
-        menu.add_command(label="Add Triggering Condition", command=lambda: self.context_add("Triggering Condition"))
-        menu.add_command(label="Add Functional Insufficiency", command=lambda: self.context_add("Functional Insufficiency"))
-
         edit_menu.add_command(label="Add Triggering Condition", command=lambda: self.add_node_of_type("Triggering Condition"))
         edit_menu.add_command(label="Add Functional Insufficiency", command=lambda: self.add_node_of_type("Functional Insufficiency"))
-
         edit_menu.add_command(label="Add FMEA/FMEDA Event", command=self.add_basic_event_from_fmea)
         edit_menu.add_command(label="Edit Selected", command=self.edit_selected)
         edit_menu.add_command(label="Remove Connection", command=lambda: self.remove_connection(self.selected_node) if self.selected_node else None)
@@ -2628,7 +2623,6 @@ class FaultTreeApp:
         sotif_menu.add_command(label="Scenario Libraries", command=self.manage_scenario_libraries)
         sotif_menu.add_command(label="Import ODD Table", command=self.import_odd_table)
         menubar.add_cascade(label="SOTIF", menu=sotif_menu)
-
         root.config(menu=menubar)
         root.bind("<Control-n>", lambda event: self.new_model())
         root.bind("<Control-s>", lambda event: self.save_model())
@@ -2649,7 +2643,6 @@ class FaultTreeApp:
         root.bind("<Control-Shift-b>", lambda event: self.add_node_of_type("Basic Event"))
         root.bind("<Control-Shift-t>", lambda event: self.add_node_of_type("Triggering Condition"))
         root.bind("<Control-Shift-f>", lambda event: self.add_node_of_type("Functional Insufficiency"))
-
         root.bind("<Control-c>", lambda event: self.copy_node())
         root.bind("<Control-x>", lambda event: self.cut_node())
         root.bind("<Control-v>", lambda event: self.paste_node())
@@ -7719,6 +7712,7 @@ class FaultTreeApp:
     def get_all_basic_events(self):
         """Return a list of all basic events across all top-level trees."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]
+      
     def get_all_triggering_conditions(self):
         """Return all triggering condition nodes."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "TRIGGERING CONDITION"]
@@ -7726,7 +7720,6 @@ class FaultTreeApp:
     def get_all_functional_insufficiencies(self):
         """Return all functional insufficiency nodes."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "FUNCTIONAL INSUFFICIENCY"]
-
 
     def get_all_failure_modes(self):
         """Return list of all failure mode nodes from FTA, FMEAs and FMEDAs."""
@@ -8620,6 +8613,7 @@ class FaultTreeApp:
         ttk.Button(btn_frame, text="Open", command=open_selected).pack(fill=tk.X)
         ttk.Button(btn_frame, text="Add", command=add_fmeda).pack(fill=tk.X)
         ttk.Button(btn_frame, text="Delete", command=delete_fmeda).pack(fill=tk.X)
+        
     def show_triggering_condition_list(self):
         win = tk.Toplevel(self.root)
         win.title("Triggering Conditions")
@@ -8657,7 +8651,6 @@ class FaultTreeApp:
                     w.writerow([n.unique_id, n.user_name, n.description])
             messagebox.showinfo("Export","Functional insufficiencies exported.")
         ttk.Button(win, text="Export CSV", command=export_csv).pack(side=tk.RIGHT, padx=5, pady=5)
-
 
     class FMEARowDialog(simpledialog.Dialog):
         def __init__(self, parent, node, app, fmea_entries, mechanisms=None, hide_diagnostics=False):
@@ -10354,7 +10347,6 @@ class FaultTreeApp:
             reader=csv.DictReader(f); self.odd_elements=list(reader)
         messagebox.showinfo("Import","ODD table imported")
 
-
     def open_reliability_window(self):
         if hasattr(self, "_rel_window") and self._rel_window.winfo_exists():
             self._rel_window.lift()
@@ -11045,6 +11037,164 @@ class FaultTreeApp:
                     w.writerow([r.get("tc"),r.get("fi"),r.get("scenario"),r.get("hazard"),r.get("mitigation"),r.get("asil")])
             messagebox.showinfo("Export","TC2FI exported")
 
+        def __init__(self, app):
+            super().__init__(app.root)
+            self.app = app
+            self.title("FI2TC Analysis")
+            cols = ("fi","tc","scenario","hazard","mitigation","asil")
+            self.tree = ttk.Treeview(self, columns=cols, show="headings")
+            for c in cols:
+                self.tree.heading(c, text=c.capitalize())
+                self.tree.column(c, width=100)
+            self.tree.pack(fill=tk.BOTH, expand=True)
+            btn = ttk.Frame(self)
+            btn.pack()
+            ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Export CSV", command=self.export_csv).pack(side=tk.LEFT, padx=2, pady=2)
+            self.refresh()
+
+        def refresh(self):
+            self.tree.delete(*self.tree.get_children())
+            for row in self.app.fi2tc_entries:
+                self.tree.insert("", "end", values=(row.get("fi"), row.get("tc"), row.get("scenario"), row.get("hazard"), row.get("mitigation"), row.get("asil")))
+
+        class RowDialog(simpledialog.Dialog):
+            def __init__(self, parent, app, data=None):
+                self.app = app
+                self.data = data or {"fi":"","tc":"","scenario":"","hazard":"","mitigation":"","asil":""}
+                super().__init__(parent, title="Edit Row")
+            def body(self, master):
+                fi_names = [n.user_name or f"FI {n.unique_id}" for n in self.app.get_all_functional_insufficiencies()]
+                tc_names = [n.user_name or f"TC {n.unique_id}" for n in self.app.get_all_triggering_conditions()]
+                self.fi_var = tk.StringVar(value=self.data.get("fi"))
+                ttk.Combobox(master, textvariable=self.fi_var, values=fi_names, state="readonly").grid(row=0,column=1)
+                ttk.Label(master, text="Functional Insufficiency").grid(row=0,column=0,sticky="e")
+                self.tc_var = tk.StringVar(value=self.data.get("tc"))
+                ttk.Combobox(master, textvariable=self.tc_var, values=tc_names, state="readonly").grid(row=1,column=1)
+                ttk.Label(master, text="Triggering Condition").grid(row=1,column=0,sticky="e")
+                ttk.Label(master, text="Scenario").grid(row=2,column=0,sticky="e")
+                self.sc_var = tk.Entry(master)
+                self.sc_var.insert(0, self.data.get("scenario"))
+                self.sc_var.grid(row=2,column=1)
+                ttk.Label(master, text="Hazard").grid(row=3,column=0,sticky="e")
+                self.haz_var = tk.Entry(master)
+                self.haz_var.insert(0, self.data.get("hazard"))
+                self.haz_var.grid(row=3,column=1)
+                ttk.Label(master, text="Mitigation").grid(row=4,column=0,sticky="e")
+                self.mit_var = tk.Entry(master)
+                self.mit_var.insert(0, self.data.get("mitigation"))
+                self.mit_var.grid(row=4,column=1)
+                ttk.Label(master, text="ASIL").grid(row=5,column=0,sticky="e")
+                self.asil_var = tk.Entry(master)
+                self.asil_var.insert(0, self.data.get("asil"))
+                self.asil_var.grid(row=5,column=1)
+            def apply(self):
+                self.data["fi"] = self.fi_var.get()
+                self.data["tc"] = self.tc_var.get()
+                self.data["scenario"] = self.sc_var.get()
+                self.data["hazard"] = self.haz_var.get()
+                self.data["mitigation"] = self.mit_var.get()
+                self.data["asil"] = self.asil_var.get()
+
+        def add_row(self):
+            dlg = self.RowDialog(self, self.app)
+            self.app.fi2tc_entries.append(dlg.data)
+            self.refresh()
+        def edit_row(self):
+            sel = self.tree.focus()
+            if not sel: return
+            idx = self.tree.index(sel)
+            data = self.app.fi2tc_entries[idx]
+            dlg = self.RowDialog(self, self.app, data)
+            self.refresh()
+        def del_row(self):
+            sel = self.tree.selection()
+            for iid in sel:
+                idx = self.tree.index(iid)
+                if idx < len(self.app.fi2tc_entries):
+                    del self.app.fi2tc_entries[idx]
+            self.refresh()
+        def export_csv(self):
+            path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV","*.csv")])
+            if not path: return
+            with open(path,"w",newline="") as f:
+                w=csv.writer(f)
+                w.writerow(["Functional Insufficiency","Triggering Condition","Scenario","Hazard","Mitigation","ASIL"])
+                for r in self.app.fi2tc_entries:
+                    w.writerow([r.get("fi"),r.get("tc"),r.get("scenario"),r.get("hazard"),r.get("mitigation"),r.get("asil")])
+            messagebox.showinfo("Export","FI2TC exported")
+
+    class TC2FIWindow(tk.Toplevel):
+        def __init__(self, app):
+            super().__init__(app.root)
+            self.app = app
+            self.title("TC2FI Analysis")
+            cols = ("tc","fi","scenario","hazard","mitigation","asil")
+            self.tree = ttk.Treeview(self, columns=cols, show="headings")
+            for c in cols:
+                self.tree.heading(c, text=c.capitalize())
+                self.tree.column(c, width=100)
+            self.tree.pack(fill=tk.BOTH, expand=True)
+            btn = ttk.Frame(self)
+            btn.pack()
+            ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Export CSV", command=self.export_csv).pack(side=tk.LEFT, padx=2, pady=2)
+            self.refresh()
+        def refresh(self):
+            self.tree.delete(*self.tree.get_children())
+            for row in self.app.tc2fi_entries:
+                self.tree.insert("", "end", values=(row.get("tc"), row.get("fi"), row.get("scenario"), row.get("hazard"), row.get("mitigation"), row.get("asil")))
+        class RowDialog(simpledialog.Dialog):
+            def __init__(self, parent, app, data=None):
+                self.app=app
+                self.data=data or {"tc":"","fi":"","scenario":"","hazard":"","mitigation":"","asil":""}
+                super().__init__(parent, title="Edit Row")
+            def body(self, master):
+                tc_names=[n.user_name or f"TC {n.unique_id}" for n in self.app.get_all_triggering_conditions()]
+                fi_names=[n.user_name or f"FI {n.unique_id}" for n in self.app.get_all_functional_insufficiencies()]
+                self.tc_var=tk.StringVar(value=self.data.get("tc"))
+                ttk.Combobox(master,textvariable=self.tc_var,values=tc_names,state="readonly").grid(row=0,column=1)
+                ttk.Label(master,text="Triggering Condition").grid(row=0,column=0,sticky="e")
+                self.fi_var=tk.StringVar(value=self.data.get("fi"))
+                ttk.Combobox(master,textvariable=self.fi_var,values=fi_names,state="readonly").grid(row=1,column=1)
+                ttk.Label(master,text="Functional Insufficiency").grid(row=1,column=0,sticky="e")
+                ttk.Label(master,text="Scenario").grid(row=2,column=0,sticky="e")
+                self.sc_var=tk.Entry(master);self.sc_var.insert(0,self.data.get("scenario"));self.sc_var.grid(row=2,column=1)
+                ttk.Label(master,text="Hazard").grid(row=3,column=0,sticky="e")
+                self.haz_var=tk.Entry(master);self.haz_var.insert(0,self.data.get("hazard"));self.haz_var.grid(row=3,column=1)
+                ttk.Label(master,text="Mitigation").grid(row=4,column=0,sticky="e")
+                self.mit_var=tk.Entry(master);self.mit_var.insert(0,self.data.get("mitigation"));self.mit_var.grid(row=4,column=1)
+                ttk.Label(master,text="ASIL").grid(row=5,column=0,sticky="e")
+                self.asil_var=tk.Entry(master);self.asil_var.insert(0,self.data.get("asil"));self.asil_var.grid(row=5,column=1)
+            def apply(self):
+                self.data["tc"]=self.tc_var.get();self.data["fi"]=self.fi_var.get();self.data["scenario"]=self.sc_var.get();self.data["hazard"]=self.haz_var.get();self.data["mitigation"]=self.mit_var.get();self.data["asil"]=self.asil_var.get()
+        def add_row(self):
+            dlg=self.RowDialog(self,self.app)
+            self.app.tc2fi_entries.append(dlg.data);self.refresh()
+        def edit_row(self):
+            sel=self.tree.focus()
+            if not sel: return
+            idx=self.tree.index(sel);data=self.app.tc2fi_entries[idx];dlg=self.RowDialog(self,self.app,data);self.refresh()
+        def del_row(self):
+            sel=self.tree.selection()
+            for iid in sel:
+                idx=self.tree.index(iid)
+                if idx < len(self.app.tc2fi_entries):
+                    del self.app.tc2fi_entries[idx]
+            self.refresh()
+        def export_csv(self):
+            path=filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV","*.csv")])
+            if not path: return
+            with open(path,"w",newline="") as f:
+                w=csv.writer(f);w.writerow(["Triggering Condition","Functional Insufficiency","Scenario","Hazard","Mitigation","ASIL"]);
+                for r in self.app.tc2fi_entries:
+                    w.writerow([r.get("tc"),r.get("fi"),r.get("scenario"),r.get("hazard"),r.get("mitigation"),r.get("asil")])
+            messagebox.showinfo("Export","TC2FI exported")
+
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
             self.clipboard_node = self.selected_node
@@ -11424,6 +11574,10 @@ class FaultTreeApp:
                 for ra in self.reliability_analyses
             ],
             "hazop_entries": [asdict(e) for e in self.hazop_entries],
+            "fi2tc_entries": self.fi2tc_entries,
+            "tc2fi_entries": self.tc2fi_entries,
+            "scenario_libraries": self.scenario_libraries,
+            "odd_elements": self.odd_elements,
             "project_properties": self.project_properties,
             "global_requirements": global_requirements,
             "reviews": reviews,
@@ -11562,7 +11716,10 @@ class FaultTreeApp:
             )
 
         self.hazop_entries = [HazopEntry(**h) for h in data.get("hazop_entries", [])]
-
+        self.fi2tc_entries = data.get("fi2tc_entries", [])
+        self.tc2fi_entries = data.get("tc2fi_entries", [])
+        self.scenario_libraries = data.get("scenario_libraries", [])
+        self.odd_elements = data.get("odd_elements", [])
 
         self.fmedas = []
         for doc in data.get("fmedas", []):
@@ -12702,7 +12859,6 @@ class PageDiagram:
         menu.add_command(label="Add Basic Event", command=lambda: self.context_add("Basic Event"))
         menu.add_command(label="Add Triggering Condition", command=lambda: self.context_add("Triggering Condition"))
         menu.add_command(label="Add Functional Insufficiency", command=lambda: self.context_add("Functional Insufficiency"))
-
         menu.tk_popup(event.x_root, event.y_root)
 
     def context_edit(self, node):
