@@ -1387,7 +1387,14 @@ class ADRiskAssessmentHelper:
             return combined
 
     def calculate_probability_recursive(self, node, visited=None):
-        """Recursively propagate failure probabilities using classical FTA rules."""
+        """Return the probability of failure for ``node``.
+
+        The method traverses the fault tree bottom-up, combining child
+        probabilities according to the node's ``gate_type``.  For an AND gate
+        the probabilities are multiplied, while an OR gate uses the
+        ``1 - \u220f(1 - p)`` rule.  Basic events simply return their assigned
+        probability.
+        """
         if visited is None:
             visited = set()
 
@@ -8290,9 +8297,13 @@ class FaultTreeApp:
                 lpf += fit * (1 - dc)
         self.spfm = spf
         self.lpfm = lpf
-        pmhf = (spf + lpf) * 1e-9
+
+        pmhf = 0.0
         for te in self.top_events:
-            te.probability = pmhf
+            prob = self.calculate_probability_recursive(te)
+            te.probability = prob
+            pmhf += prob
+
         self.update_views()
         msg = f"PMHF = {pmhf:.2e}\nSPFM = {spf:.2f}\nLPFM = {lpf:.2f}"
         messagebox.showinfo("PMHF Calculation", msg)
