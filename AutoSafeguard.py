@@ -7712,7 +7712,7 @@ class FaultTreeApp:
     def get_all_basic_events(self):
         """Return a list of all basic events across all top-level trees."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]
-      
+
     def get_all_triggering_conditions(self):
         """Return all triggering condition nodes."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "TRIGGERING CONDITION"]
@@ -10740,6 +10740,102 @@ class FaultTreeApp:
             self.app.reliability_analyses.append(ra)
             messagebox.showinfo("Save", "Analysis saved")
 
+
+    class FI2TCWindow(tk.Toplevel):
+        COLS = [
+            "id","system_function","allocation","interfaces","insufficiency",
+            "scene","scenario","driver_behavior","occurrence","vehicle_effect",
+            "severity","design_measures","verification","measure_effectiveness",
+            "triggering_condition","worst_case","tc_effect","mitigation","acceptance"
+        ]
+        def __init__(self, app):
+            super().__init__(app.root)
+            self.app = app
+            self.title("FI2TC Analysis")
+            self.tree = ttk.Treeview(self, columns=self.COLS, show="headings")
+            for c in self.COLS:
+                self.tree.heading(c, text=c.replace("_"," ").title())
+                self.tree.column(c, width=120)
+            self.tree.pack(fill=tk.BOTH, expand=True)
+            btn = ttk.Frame(self)
+            btn.pack()
+            ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Export CSV", command=self.export_csv).pack(side=tk.LEFT, padx=2, pady=2)
+            self.refresh()
+
+        def refresh(self):
+            self.tree.delete(*self.tree.get_children())
+            for row in self.app.fi2tc_entries:
+                self.tree.insert("", "end", values=[row.get(k, "") for k in self.COLS])
+
+        class RowDialog(simpledialog.Dialog):
+            def __init__(self, parent, app, data=None):
+                self.app = app
+                default = {k: "" for k in FI2TCWindow.COLS}
+                self.data = data or default
+                super().__init__(parent, title="Edit Row")
+            def body(self, master):
+                fi_names = [n.user_name or f"FI {n.unique_id}" for n in self.app.get_all_functional_insufficiencies()]
+                tc_names = [n.user_name or f"TC {n.unique_id}" for n in self.app.get_all_triggering_conditions()]
+                self.widgets = {}
+                r = 0
+                for col in FI2TCWindow.COLS:
+                    ttk.Label(master, text=col.replace("_"," ").title()).grid(row=r, column=0, sticky="e")
+                    if col == "triggering_condition":
+                        var = tk.StringVar(value=self.data.get(col, ""))
+                        cb = ttk.Combobox(master, textvariable=var, values=tc_names, state="readonly")
+                        cb.grid(row=r, column=1)
+                        self.widgets[col] = var
+                    elif col == "insufficiency":
+                        var = tk.StringVar(value=self.data.get(col, ""))
+                        cb = ttk.Combobox(master, textvariable=var, values=fi_names, state="readonly")
+                        cb.grid(row=r, column=1)
+                        self.widgets[col] = var
+                    else:
+                        ent = tk.Entry(master)
+                        ent.insert(0, self.data.get(col, ""))
+                        ent.grid(row=r, column=1)
+                        self.widgets[col] = ent
+                    r += 1
+            def apply(self):
+                for col, widget in self.widgets.items():
+                    if isinstance(widget, tk.Entry):
+                        self.data[col] = widget.get()
+                    else:
+                        self.data[col] = widget.get()
+
+        def add_row(self):
+            dlg = self.RowDialog(self, self.app)
+            self.app.fi2tc_entries.append(dlg.data)
+            self.refresh()
+        def edit_row(self):
+            sel = self.tree.focus()
+            if not sel:
+                return
+            idx = self.tree.index(sel)
+            data = self.app.fi2tc_entries[idx]
+            dlg = self.RowDialog(self, self.app, data)
+            self.refresh()
+        def del_row(self):
+            sel = self.tree.selection()
+            for iid in sel:
+                idx = self.tree.index(iid)
+                if idx < len(self.app.fi2tc_entries):
+                    del self.app.fi2tc_entries[idx]
+            self.refresh()
+        def export_csv(self):
+            path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV","*.csv")])
+            if not path:
+                return
+            with open(path, "w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(self.COLS)
+                for r in self.app.fi2tc_entries:
+                    w.writerow([r.get(k, "") for k in self.COLS])
+            messagebox.showinfo("Export", "FI2TC exported")
+
     class HazopWindow(tk.Toplevel):
         def __init__(self, app):
             super().__init__(app.root)
@@ -10878,6 +10974,99 @@ class FaultTreeApp:
             )
             self.app.reliability_analyses.append(ra)
             messagebox.showinfo("Save", "Analysis saved")
+
+
+    class TC2FIWindow(tk.Toplevel):
+        COLS = [
+            "id","system_function","allocation","interfaces","triggering_condition",
+            "scene","scenario","driver_behavior","occurrence","vehicle_effect",
+            "severity","design_measures","verification","measure_effectiveness",
+            "functional_insufficiency","worst_case","fi_effect","mitigation","acceptance"
+        ]
+        def __init__(self, app):
+            super().__init__(app.root)
+            self.app = app
+            self.title("TC2FI Analysis")
+            self.tree = ttk.Treeview(self, columns=self.COLS, show="headings")
+            for c in self.COLS:
+                self.tree.heading(c, text=c.replace("_"," ").title())
+                self.tree.column(c, width=120)
+            self.tree.pack(fill=tk.BOTH, expand=True)
+            btn = ttk.Frame(self)
+            btn.pack()
+            ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Export CSV", command=self.export_csv).pack(side=tk.LEFT, padx=2, pady=2)
+            self.refresh()
+        def refresh(self):
+            self.tree.delete(*self.tree.get_children())
+            for row in self.app.tc2fi_entries:
+                self.tree.insert("", "end", values=[row.get(k, "") for k in self.COLS])
+        class RowDialog(simpledialog.Dialog):
+            def __init__(self, parent, app, data=None):
+                self.app = app
+                default = {k: "" for k in TC2FIWindow.COLS}
+                self.data = data or default
+                super().__init__(parent, title="Edit Row")
+            def body(self, master):
+                tc_names = [n.user_name or f"TC {n.unique_id}" for n in self.app.get_all_triggering_conditions()]
+                fi_names = [n.user_name or f"FI {n.unique_id}" for n in self.app.get_all_functional_insufficiencies()]
+                self.widgets = {}
+                r = 0
+                for col in TC2FIWindow.COLS:
+                    ttk.Label(master, text=col.replace("_"," ").title()).grid(row=r, column=0, sticky="e")
+                    if col == "functional_insufficiency":
+                        var = tk.StringVar(value=self.data.get(col, ""))
+                        cb = ttk.Combobox(master, textvariable=var, values=fi_names, state="readonly")
+                        cb.grid(row=r, column=1)
+                        self.widgets[col] = var
+                    elif col == "triggering_condition":
+                        var = tk.StringVar(value=self.data.get(col, ""))
+                        cb = ttk.Combobox(master, textvariable=var, values=tc_names, state="readonly")
+                        cb.grid(row=r, column=1)
+                        self.widgets[col] = var
+                    else:
+                        ent = tk.Entry(master)
+                        ent.insert(0, self.data.get(col, ""))
+                        ent.grid(row=r, column=1)
+                        self.widgets[col] = ent
+                    r += 1
+            def apply(self):
+                for col, widget in self.widgets.items():
+                    if isinstance(widget, tk.Entry):
+                        self.data[col] = widget.get()
+                    else:
+                        self.data[col] = widget.get()
+        def add_row(self):
+            dlg = self.RowDialog(self, self.app)
+            self.app.tc2fi_entries.append(dlg.data)
+            self.refresh()
+        def edit_row(self):
+            sel = self.tree.focus()
+            if not sel:
+                return
+            idx = self.tree.index(sel)
+            data = self.app.tc2fi_entries[idx]
+            dlg = self.RowDialog(self, self.app, data)
+            self.refresh()
+        def del_row(self):
+            sel = self.tree.selection()
+            for iid in sel:
+                idx = self.tree.index(iid)
+                if idx < len(self.app.tc2fi_entries):
+                    del self.app.tc2fi_entries[idx]
+            self.refresh()
+        def export_csv(self):
+            path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV","*.csv")])
+            if not path:
+                return
+            with open(path, "w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(self.COLS)
+                for r in self.app.tc2fi_entries:
+                    w.writerow([r.get(k, "") for k in self.COLS])
+            messagebox.showinfo("Export", "TC2FI exported")
 
         def __init__(self, app):
             super().__init__(app.root)
