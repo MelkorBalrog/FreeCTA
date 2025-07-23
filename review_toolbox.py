@@ -60,6 +60,8 @@ class ReviewData:
     fta_ids: List[int] = field(default_factory=list)
     fmea_names: List[str] = field(default_factory=list)
     fmeda_names: List[str] = field(default_factory=list)
+    hazop_names: List[str] = field(default_factory=list)
+    hara_names: List[str] = field(default_factory=list)
     due_date: str = ""
     closed: bool = False
     approved: bool = False
@@ -250,13 +252,33 @@ class ReviewScopeDialog(simpledialog.Dialog):
             cb = tk.Checkbutton(fmeda_frame, text=d['name'], variable=var, anchor="w")
             cb.pack(fill=tk.X, anchor="w")
             self.fmeda_vars.append((var, d['name']))
-        tk.Label(master, text="Check items to include in the review").grid(row=2, column=0, columnspan=3, pady=(2,5))
+        tk.Label(master, text="HAZOPs:").grid(row=0, column=3, padx=5, pady=5, sticky="w")
+        self.hazop_vars = []
+        hazop_frame = tk.Frame(master)
+        hazop_frame.grid(row=1, column=3, padx=5, pady=5, sticky="nsew")
+        for d in self.app.hazop_docs:
+            var = tk.BooleanVar()
+            cb = tk.Checkbutton(hazop_frame, text=d.name, variable=var, anchor="w")
+            cb.pack(fill=tk.X, anchor="w")
+            self.hazop_vars.append((var, d.name))
+        tk.Label(master, text="HARAs:").grid(row=0, column=4, padx=5, pady=5, sticky="w")
+        self.hara_vars = []
+        hara_frame = tk.Frame(master)
+        hara_frame.grid(row=1, column=4, padx=5, pady=5, sticky="nsew")
+        for d in self.app.hara_docs:
+            var = tk.BooleanVar()
+            cb = tk.Checkbutton(hara_frame, text=d.name, variable=var, anchor="w")
+            cb.pack(fill=tk.X, anchor="w")
+            self.hara_vars.append((var, d.name))
+        tk.Label(master, text="Check items to include in the review").grid(row=2, column=0, columnspan=5, pady=(2,5))
 
     def apply(self):
         fta_ids = [uid for var, uid in self.fta_vars if var.get()]
         fmea_names = [name for var, name in self.fmea_vars if var.get()]
         fmeda_names = [name for var, name in self.fmeda_vars if var.get()]
-        self.result = (fta_ids, fmea_names, fmeda_names)
+        hazop_names = [name for var, name in self.hazop_vars if var.get()]
+        hara_names = [name for var, name in self.hara_vars if var.get()]
+        self.result = (fta_ids, fmea_names, fmeda_names, hazop_names, hara_names)
 
 
 class UserSelectDialog(simpledialog.Dialog):
@@ -991,6 +1013,8 @@ class ReviewDocumentDialog(tk.Toplevel):
             return {
                 "top_events": [t for t in data.get("top_events", []) if t["unique_id"] in self.review.fta_ids],
                 "fmeas": [f for f in data.get("fmeas", []) if f.get("name") in self.review.fmea_names],
+                "hazops": [d for d in data.get("hazops", []) if d.get("name") in getattr(self.review, 'hazop_names', [])],
+                "haras": [d for d in data.get("haras", []) if d.get("name") in getattr(self.review, 'hara_names', [])],
             }
 
         data1 = filter_data(base_data)
@@ -1072,6 +1096,10 @@ class ReviewDocumentDialog(tk.Toplevel):
             f["name"]: {e["unique_id"]: e for e in f.get("entries", [])}
             for f in data2.get("fmeas", [])
         }
+        old_hazop = {d["name"]: d.get("entries", []) for d in data1.get("hazops", [])}
+        new_hazop = {d["name"]: d.get("entries", []) for d in data2.get("hazops", [])}
+        old_hara = {d["name"]: d.get("entries", []) for d in data1.get("haras", [])}
+        new_hara = {d["name"]: d.get("entries", []) for d in data2.get("haras", [])}
 
         reqs1 = {}
         reqs2 = {}
@@ -1213,6 +1241,58 @@ class ReviewDocumentDialog(tk.Toplevel):
                     req_ids,
                 ]
                 tree.insert("", "end", values=vals, tags=(st,))
+
+        row += 1
+        for name in getattr(self.review, 'hazop_names', []):
+            old_entries = old_hazop.get(name, [])
+            new_entries = new_hazop.get(name, [])
+            if not old_entries and not new_entries:
+                continue
+            tk.Label(self.inner, text=f"HAZOP: {name}", font=heading_font).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+            row += 1
+            frame = tk.Frame(self.inner)
+            frame.grid(row=row, column=0, sticky='nsew', padx=5, pady=5)
+            columns = ("function","malfunction","type","scenario","conditions","hazard","safety","rationale","covered","covered_by")
+            tree = ttk.Treeview(frame, columns=columns, show='headings', height=8)
+            vsb = ttk.Scrollbar(frame, orient='vertical', command=tree.yview)
+            hsb = ttk.Scrollbar(frame, orient='horizontal', command=tree.xview)
+            tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+            for col in columns:
+                tree.heading(col, text=col)
+                tree.column(col, width=100, anchor='center')
+            tree.grid(row=0, column=0, sticky='nsew')
+            vsb.grid(row=0, column=1, sticky='ns')
+            hsb.grid(row=1, column=0, sticky='ew')
+            frame.grid_columnconfigure(0, weight=1)
+            frame.grid_rowconfigure(0, weight=1)
+            for e in new_entries:
+                vals = [e.get("function",""), e.get("malfunction",""), e.get("mtype",""), e.get("scenario",""), e.get("conditions",""), e.get("hazard",""), "Yes" if e.get("safety") else "No", e.get("rationale",""), "Yes" if e.get("covered") else "No", e.get("covered_by","")]
+                tree.insert("", "end", values=vals)
+        for name in getattr(self.review, 'hara_names', []):
+            old_entries = old_hara.get(name, [])
+            new_entries = new_hara.get(name, [])
+            if not old_entries and not new_entries:
+                continue
+            tk.Label(self.inner, text=f"HARA: {name}", font=heading_font).grid(row=row, column=0, sticky='w', padx=5, pady=5)
+            row += 1
+            frame = tk.Frame(self.inner)
+            frame.grid(row=row, column=0, sticky='nsew', padx=5, pady=5)
+            columns = ("malfunction","severity","sev_rationale","controllability","cont_rationale","exposure","exp_rationale","asil","safety_goal")
+            tree = ttk.Treeview(frame, columns=columns, show='headings', height=8)
+            vsb = ttk.Scrollbar(frame, orient='vertical', command=tree.yview)
+            hsb = ttk.Scrollbar(frame, orient='horizontal', command=tree.xview)
+            tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+            for col in columns:
+                tree.heading(col, text=col)
+                tree.column(col, width=100, anchor='center')
+            tree.grid(row=0, column=0, sticky='nsew')
+            vsb.grid(row=0, column=1, sticky='ns')
+            hsb.grid(row=1, column=0, sticky='ew')
+            frame.grid_columnconfigure(0, weight=1)
+            frame.grid_rowconfigure(0, weight=1)
+            for e in new_entries:
+                vals = [e.get("malfunction",""), e.get("severity",""), e.get("sev_rationale",""), e.get("controllability",""), e.get("cont_rationale",""), e.get("exposure",""), e.get("exp_rationale",""), e.get("asil",""), e.get("safety_goal","")]
+                tree.insert("", "end", values=vals)
 
         row += 1
 
@@ -2022,6 +2102,24 @@ class VersionCompareDialog(tk.Toplevel):
                     entry.get("fmeda_mechanism", ""),
                 ]
                 self.fmeda_tree.insert("", "end", values=row, tags=(st,))
+
+        # ----- HAZOP diff -----
+        haz1 = {d["name"]: d for d in data1.get("hazops", [])}
+        haz2 = {d["name"]: d for d in data2.get("hazops", [])}
+        for name in sorted(set(haz1) | set(haz2)):
+            e1 = haz1.get(name, {}).get("entries", [])
+            e2 = haz2.get(name, {}).get("entries", [])
+            if e1 != e2:
+                self.log_text.insert(tk.END, f"HAZOP {name} changed\n", "added")
+
+        # ----- HARA diff -----
+        hr1 = {d["name"]: d for d in data1.get("haras", [])}
+        hr2 = {d["name"]: d for d in data2.get("haras", [])}
+        for name in sorted(set(hr1) | set(hr2)):
+            e1 = hr1.get(name, {}).get("entries", [])
+            e2 = hr2.get(name, {}).get("entries", [])
+            if e1 != e2:
+                self.log_text.insert(tk.END, f"HARA {name} changed\n", "added")
 
 
 
