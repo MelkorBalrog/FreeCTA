@@ -9256,10 +9256,15 @@ class FaultTreeApp:
     def manage_scenario_libraries(self):
         win = tk.Toplevel(self.root)
         win.title("Scenario Libraries")
-        lb = tk.Listbox(win, height=8, width=40)
-        lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        for lib in self.scenario_libraries:
-            lb.insert(tk.END, lib.get("name",""))
+        lib_lb = tk.Listbox(win, height=8, width=40)
+        lib_lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        def refresh_libs():
+            lib_lb.delete(0, tk.END)
+            for lib in self.scenario_libraries:
+                lib_lb.insert(tk.END, lib.get("name", ""))
+
+        refresh_libs()
 
         def add_lib():
             name = simpledialog.askstring("New Library", "Library name:")
@@ -9284,15 +9289,14 @@ class FaultTreeApp:
                                 elems.append(elem)
                         except Exception:
                             messagebox.showerror("Import", "Failed to read Excel file. openpyxl required.")
-            self.odd_libraries.append({"name": name, "elements": elems})
+            self.scenario_libraries.append({"name": name, "scenarios": elems})
             refresh_libs()
-            self.update_odd_elements()
 
         def edit_lib():
             sel = lib_lb.curselection()
             if not sel:
                 return
-            lib = self.odd_libraries[sel[0]]
+            lib = self.scenario_libraries[sel[0]]
             name = simpledialog.askstring("Edit Library", "Library name:", initialvalue=lib.get("name", ""))
             if name:
                 lib["name"] = name
@@ -9301,7 +9305,9 @@ class FaultTreeApp:
         def delete_lib():
             sel = lib_lb.curselection()
             if sel:
-                idx=sel[0]; del self.scenario_libraries[idx]; lb.delete(idx)
+                idx = sel[0]
+                del self.scenario_libraries[idx]
+                lib_lb.delete(idx)
         btn = ttk.Frame(win); btn.pack(side=tk.RIGHT, fill=tk.Y)
         ttk.Button(btn,text="Add",command=add_lib).pack(fill=tk.X)
         ttk.Button(btn,text="Delete",command=delete_lib).pack(fill=tk.X)
@@ -9311,7 +9317,9 @@ class FaultTreeApp:
         win.title("ODD Libraries")
         lib_lb = tk.Listbox(win, height=8, width=25)
         lib_lb.grid(row=0, column=0, rowspan=4, sticky="nsew")
-        elem_tree = ttk.Treeview(win, columns=("attrs",), show="headings")
+        elem_tree = ttk.Treeview(win, columns=("attrs",), show="tree headings")
+        elem_tree.heading("#0", text="Name")
+        elem_tree.column("#0", width=150)
         elem_tree.heading("attrs", text="Attributes")
         elem_tree.column("attrs", width=200)
         elem_tree.grid(row=0, column=1, columnspan=3, sticky="nsew")
