@@ -11877,6 +11877,34 @@ class FaultTreeApp:
                     req["status"] = status
 
 
+    def compute_requirement_asil(self, req_id):
+        """Return highest ASIL across all safety goals linked to the requirement."""
+        goals = self.get_requirement_goal_names(req_id)
+        asil = "QM"
+        for g in goals:
+            a = self.get_safety_goal_asil(g)
+            if ASIL_ORDER.get(a, 0) > ASIL_ORDER.get(asil, 0):
+                asil = a
+        return asil
+
+    def update_requirement_asil(self, req_id):
+        req = global_requirements.get(req_id)
+        if not req:
+            return
+        req["asil"] = self.compute_requirement_asil(req_id)
+
+    def update_all_requirement_asil(self):
+        for rid, req in global_requirements.items():
+            if req.get("parent_id"):
+                continue  # keep decomposition ASIL
+            self.update_requirement_asil(rid)
+
+    def ensure_asil_consistency(self):
+        """Sync safety goal ASILs from HARAs and update requirement ASILs."""
+        self.sync_hara_to_safety_goals()
+        self.update_all_requirement_asil()
+
+
     def add_version(self):
         name = f"v{len(self.versions)+1}"
         # Exclude the versions list when capturing a snapshot to avoid
