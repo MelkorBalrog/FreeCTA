@@ -1156,6 +1156,17 @@ class EditNodeDialog(simpledialog.Dialog):
             return
         req["asil"] = self.compute_requirement_asil(req_id)
 
+    def update_all_requirement_asil(self):
+        for rid, req in global_requirements.items():
+            if req.get("parent_id"):
+                continue  # keep decomposition ASIL
+            self.update_requirement_asil(rid)
+
+    def ensure_asil_consistency(self):
+        """Sync safety goal ASILs from HARAs and update requirement ASILs."""
+        self.sync_hara_to_safety_goals()
+        self.update_all_requirement_asil()
+
     
     def add_safety_requirement(self):
         """
@@ -2537,7 +2548,7 @@ class FaultTreeApp:
             status = "draft"
             for review in self.reviews:
                 if doc.name in getattr(review, "hara_names", []):
-                    if review.approved and self.review_is_closed_for(review):
+                    if review.mode == "joint" and review.approved and self.review_is_closed_for(review):
                         status = "closed"
                         break
                     else:
@@ -10665,6 +10676,7 @@ class FaultTreeApp:
                 "mode": r.mode,
                 "moderators": [asdict(m) for m in r.moderators],
                 "approved": r.approved,
+                "reviewed": getattr(r, 'reviewed', False),
                 "due_date": r.due_date,
                 "closed": r.closed,
                 "participants": [asdict(p) for p in r.participants],
@@ -10981,6 +10993,7 @@ class FaultTreeApp:
                         participants=participants,
                         comments=comments,
                         approved=rd.get("approved", False),
+                        reviewed=rd.get("reviewed", False),
                         due_date=rd.get("due_date", ""),
                         closed=rd.get("closed", False),
                         fta_ids=rd.get("fta_ids", []),
@@ -11012,6 +11025,7 @@ class FaultTreeApp:
                     participants=participants,
                     comments=comments,
                     approved=rd.get("approved", False),
+                    reviewed=rd.get("reviewed", False),
                     due_date=rd.get("due_date", ""),
                     closed=rd.get("closed", False),
                     fta_ids=rd.get("fta_ids", []),
@@ -11026,7 +11040,7 @@ class FaultTreeApp:
                 self.review_data = None
 
         self.update_hara_statuses()
-        self.sync_hara_to_safety_goals()
+        self.ensure_asil_consistency()
 
         self.versions = data.get("versions", [])
 
@@ -11395,7 +11409,7 @@ class FaultTreeApp:
             def peer_completed(pred):
                 return any(
                     r.mode == 'peer'
-                    and (r.approved or self.review_is_closed_for(r))
+                    and (getattr(r, 'reviewed', False) or self.review_is_closed_for(r))
                     and pred(r)
                     for r in self.reviews
                 )
@@ -11794,7 +11808,7 @@ class FaultTreeApp:
                     else:
                         status = "in review"
                 else:  # peer review
-                    if review.approved or closed:
+                    if getattr(review, "reviewed", False) or closed:
                         status = "peer reviewed"
                     else:
                         status = "in review"
