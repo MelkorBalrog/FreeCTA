@@ -56,7 +56,9 @@ interpreted:
   field and does not use the FIT rate or mission time.
 
 Mission profiles and the selected formula for each basic event are stored in the
-JSON model so results remain consistent when reloading the file.
+JSON model so results remain consistent when reloading the file. The reliability
+functions remain grouped under the **Reliability** menu, while hazard oriented
+features appear in their own **Hazard** menu.
 
 ### HAZOP Analysis
 
@@ -67,6 +69,15 @@ scenario, driving conditions and hazard, and whether it is safety relevant.
 Covered malfunctions may reference other entries as mitigation. When a function
 is allocated to an active component in a reliability analysis, its malfunctions
 become selectable failure modes in the FMEDA table.
+
+### HARA Analysis
+
+The **HARA Analysis** window derives ASIL ratings from the safety relevant
+malfunctions identified in the HAZOP. Each row records severity,
+controllability and exposure values with rationales and links the result to a
+project safety goal. The ASIL level of each safety goal is automatically
+propagated throughout the tool so the FTA top level events and documentation
+stay in sync with the latest HARA results.
 
 ## License
 
