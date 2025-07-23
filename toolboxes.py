@@ -427,7 +427,11 @@ class FI2TCWindow(tk.Toplevel):
         self.title("FI2TC Analysis")
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill=tk.BOTH, expand=True)
-        self.tree = ttk.Treeview(tree_frame, columns=self.COLS, show="headings")
+        style = ttk.Style(self)
+        style.configure("FI2TC.Treeview", rowheight=60)
+        self.tree = ttk.Treeview(
+            tree_frame, columns=self.COLS, show="headings", style="FI2TC.Treeview"
+        )
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
@@ -519,10 +523,10 @@ class FI2TCWindow(tk.Toplevel):
                     cb.grid(row=r, column=1)
                     self.widgets[col] = var
                 else:
-                    ent = tk.Entry(master)
-                    ent.insert(0, self.data.get(col, ""))
-                    ent.grid(row=r, column=1)
-                    self.widgets[col] = ent
+                    txt = tk.Text(master, width=30, height=3)
+                    txt.insert("1.0", self.data.get(col, ""))
+                    txt.grid(row=r, column=1)
+                    self.widgets[col] = txt
                 r += 1
             refresh_funcs()
             
@@ -530,6 +534,8 @@ class FI2TCWindow(tk.Toplevel):
             for col, widget in self.widgets.items():
                 if isinstance(widget, tk.Entry):
                     self.data[col] = widget.get()
+                elif isinstance(widget, tk.Text):
+                    self.data[col] = widget.get("1.0", "end-1c")
                 else:
                     self.data[col] = widget.get()
 
@@ -1052,7 +1058,11 @@ class TC2FIWindow(tk.Toplevel):
         self.title("TC2FI Analysis")
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill=tk.BOTH, expand=True)
-        self.tree = ttk.Treeview(tree_frame, columns=self.COLS, show="headings")
+        style = ttk.Style(self)
+        style.configure("TC2FI.Treeview", rowheight=60)
+        self.tree = ttk.Treeview(
+            tree_frame, columns=self.COLS, show="headings", style="TC2FI.Treeview"
+        )
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
@@ -1145,10 +1155,10 @@ class TC2FIWindow(tk.Toplevel):
                     cb.grid(row=r, column=1)
                     self.widgets[col] = var
                 else:
-                    ent = tk.Entry(master)
-                    ent.insert(0, self.data.get(col, ""))
-                    ent.grid(row=r, column=1)
-                    self.widgets[col] = ent
+                    txt = tk.Text(master, width=30, height=3)
+                    txt.insert("1.0", self.data.get(col, ""))
+                    txt.grid(row=r, column=1)
+                    self.widgets[col] = txt
                 r += 1
             refresh_funcs()
 
@@ -1156,6 +1166,8 @@ class TC2FIWindow(tk.Toplevel):
             for col, widget in self.widgets.items():
                 if isinstance(widget, tk.Entry):
                     self.data[col] = widget.get()
+                elif isinstance(widget, tk.Text):
+                    self.data[col] = widget.get("1.0", "end-1c")
                 else:
                     self.data[col] = widget.get()
 

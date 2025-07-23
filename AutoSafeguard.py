@@ -8460,7 +8460,7 @@ class FaultTreeApp:
         style.configure(
             "FMEA.Treeview",
             font=("Segoe UI", 10),
-            rowheight=22,
+            rowheight=60,
         )
         style.configure(
             "FMEA.Treeview.Heading",
