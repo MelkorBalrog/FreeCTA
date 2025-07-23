@@ -10568,10 +10568,21 @@ class FaultTreeApp:
 
         self.hazop_docs = []
         for d in data.get("hazops", []):
-            entries = [HazopEntry(**h) for h in d.get("entries", [])]
-            self.hazop_docs.append(HazopDoc(d.get("name", f"HAZOP {len(self.hazop_docs)+1}"), entries))
+            entries = []
+            for h in d.get("entries", []):
+                h["safety"] = boolify(h.get("safety", False), False)
+                h["covered"] = boolify(h.get("covered", False), False)
+                entries.append(HazopEntry(**h))
+            self.hazop_docs.append(
+                HazopDoc(d.get("name", f"HAZOP {len(self.hazop_docs)+1}"), entries)
+            )
         if not self.hazop_docs and "hazop_entries" in data:
-            self.hazop_docs.append(HazopDoc("Default", [HazopEntry(**h) for h in data.get("hazop_entries", [])]))
+            entries = []
+            for h in data.get("hazop_entries", []):
+                h["safety"] = boolify(h.get("safety", False), False)
+                h["covered"] = boolify(h.get("covered", False), False)
+                entries.append(HazopEntry(**h))
+            self.hazop_docs.append(HazopDoc("Default", entries))
         self.active_hazop = self.hazop_docs[0] if self.hazop_docs else None
         self.hazop_entries = self.active_hazop.entries if self.active_hazop else []
 

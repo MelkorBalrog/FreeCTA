@@ -909,13 +909,19 @@ class HaraWindow(tk.Toplevel):
             super().__init__(parent, title="Edit HARA Row")
 
         def body(self, master):
-            hazop_names = getattr(self.app.active_hara, "hazops", []) if self.app.active_hara else []
-            malfs = []
+            hazop_names = []
+            if self.app.active_hara:
+                hazop_names = getattr(self.app.active_hara, "hazops", []) or []
+            malfs = set()
+            if not hazop_names:
+                hazop_names = [d.name for d in self.app.hazop_docs]
             for hz_name in hazop_names:
                 hz = self.app.get_hazop_by_name(hz_name)
                 if hz:
-                    malfs.extend(e.malfunction for e in hz.entries if getattr(e, "safety", False))
-            malfs = sorted(set(malfs))
+                    for e in hz.entries:
+                        if getattr(e, "safety", False):
+                            malfs.add(e.malfunction)
+            malfs = sorted(malfs)
             goals = [te.safety_goal_description or (te.user_name or f"SG {te.unique_id}") for te in self.app.top_events]
             ttk.Label(master, text="Malfunction").grid(row=0,column=0,sticky="e")
             self.mal_var = tk.StringVar(value=self.row.malfunction)
