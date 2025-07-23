@@ -246,6 +246,7 @@ import copy
 import tkinter.font as tkFont
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 import os
+import types
 os.environ["GS_EXECUTABLE"] = r"C:\Program Files\gs\gs10.04.0\bin\gswin64c.exe"
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -335,6 +336,7 @@ class ReliabilityComponent:
     safety_req: str = ""
     fit: float = 0.0
     is_passive: bool = False
+    functions: list = field(default_factory=list)
     sub_boms: list = field(default_factory=list)
 
 
@@ -350,6 +352,16 @@ class ReliabilityAnalysis:
     spfm: float
     lpfm: float
     dc: float
+
+
+@dataclass
+class HazopEntry:
+    function: str
+    malfunction: str
+    mtype: str
+    safety: bool
+    rationale: str
+    component: str = ""
 
 
 
@@ -2493,6 +2505,7 @@ class FaultTreeApp:
         self.spfm = 0.0
         self.lpfm = 0.0
         self.reliability_dc = 0.0
+        self.hazop_entries = []
         self.top_events = []
         self.reviews = []
         self.review_data = None
@@ -2580,6 +2593,7 @@ class FaultTreeApp:
         reliability_menu = tk.Menu(menubar, tearoff=0)
         reliability_menu.add_command(label="Mission Profiles", command=self.manage_mission_profiles)
         reliability_menu.add_command(label="Mechanism Libraries", command=self.manage_mechanism_libraries)
+        reliability_menu.add_command(label="HAZOP Analysis", command=self.open_hazop_window)
         reliability_menu.add_command(label="Reliability Analysis", command=self.open_reliability_window)
         reliability_menu.add_command(label="FMEDA Analysis", command=self.open_fmeda_window)
         reliability_menu.add_command(label="FMEDA Manager", command=self.show_fmeda_list)
@@ -8601,6 +8615,10 @@ class FaultTreeApp:
                 be.description or (be.user_name or f"BE {be.unique_id}"): be
                 for be in basic_events + self.fmea_entries
             }
+            for e in self.app.hazop_entries:
+                label = f"{e.function}: {e.malfunction}"
+                obj = types.SimpleNamespace(description=e.malfunction, user_name=label, parents=[], fmea_component=e.component)
+                self.mode_map[label] = obj
             mode_names = list(self.mode_map.keys())
             self.mode_var = tk.StringVar(value=self.node.description or self.node.user_name)
             self.mode_combo = ttk.Combobox(master, textvariable=self.mode_var,
@@ -10224,6 +10242,12 @@ class FaultTreeApp:
 
     def open_fmeda_window(self):
         self.show_fmeda_list()
+
+    def open_hazop_window(self):
+        if hasattr(self, "_hazop_window") and self._hazop_window.winfo_exists():
+            self._hazop_window.lift()
+            return
+        self._hazop_window = self.HazopWindow(self)
     class ReliabilityWindow(tk.Toplevel):
         def __init__(self, app):
             super().__init__(app.root)
@@ -10457,6 +10481,7 @@ class FaultTreeApp:
             for k, v in template.items():
                 comp.attributes.setdefault(k, v[0] if isinstance(v, list) else v)
 
+            parent_win = self
             class ParamDialog(simpledialog.Dialog):
                 def body(self, master):
                     self.vars = {}
@@ -10472,9 +10497,26 @@ class FaultTreeApp:
                         self.vars[k] = var
                         row += 1
 
+                    if not comp.is_passive and parent_win.app.hazop_entries:
+                        funcs = sorted({e.function for e in parent_win.app.hazop_entries})
+                        ttk.Label(master, text="Functions").grid(row=row, column=0, padx=5, pady=5, sticky="ne")
+                        self.lb = tk.Listbox(master, selectmode=tk.MULTIPLE, height=4)
+                        for f in funcs:
+                            self.lb.insert(tk.END, f)
+                            if f in comp.functions:
+                                self.lb.selection_set(tk.END)
+                        self.lb.grid(row=row, column=1, padx=5, pady=5)
+                        row += 1
+
                 def apply(self):
                     for k, v in self.vars.items():
                         comp.attributes[k] = v.get()
+                    if not comp.is_passive and parent_win.app.hazop_entries:
+                        sel = [self.lb.get(i) for i in self.lb.curselection()]
+                        comp.functions = sel
+                        for entry in parent_win.app.hazop_entries:
+                            if entry.function in sel:
+                                entry.component = comp.name
 
             ParamDialog(self)
             self.refresh_tree()
@@ -10555,6 +10597,96 @@ class FaultTreeApp:
             )
             self.app.reliability_analyses.append(ra)
             messagebox.showinfo("Save", "Analysis saved")
+
+    class HazopWindow(tk.Toplevel):
+        def __init__(self, app):
+            super().__init__(app.root)
+            self.app = app
+            self.title("HAZOP Analysis")
+            self.geometry("600x400")
+
+            columns = ("function", "malfunction", "type", "safety", "rationale")
+            self.tree = ttk.Treeview(self, columns=columns, show="headings")
+            for col in columns:
+                self.tree.heading(col, text=col.capitalize())
+                self.tree.column(col, width=120 if col != "rationale" else 200)
+            self.tree.pack(fill=tk.BOTH, expand=True)
+
+            btn = ttk.Frame(self)
+            btn.pack(fill=tk.X)
+            ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
+
+            self.refresh()
+
+        def refresh(self):
+            self.tree.delete(*self.tree.get_children())
+            for row in self.app.hazop_entries:
+                vals = [row.function, row.malfunction, row.mtype, "Yes" if row.safety else "No", row.rationale]
+                self.tree.insert("", "end", values=vals)
+
+        class RowDialog(simpledialog.Dialog):
+            def __init__(self, parent, row=None):
+                self.row = row or HazopEntry("", "", "No/Not", False, "")
+                super().__init__(parent, title="Edit HAZOP Row")
+
+            def body(self, master):
+                ttk.Label(master, text="Function").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+                self.func = tk.StringVar(value=self.row.function)
+                ttk.Entry(master, textvariable=self.func).grid(row=0, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Malfunction").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+                self.mal = tk.StringVar(value=self.row.malfunction)
+                ttk.Entry(master, textvariable=self.mal).grid(row=1, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Type").grid(row=2, column=0, sticky="e", padx=5, pady=5)
+                self.typ = tk.StringVar(value=self.row.mtype)
+                ttk.Combobox(
+                    master,
+                    textvariable=self.typ,
+                    values=["No/Not", "Excessive", "Insufficient", "Unintended", "Reverse"],
+                    state="readonly",
+                ).grid(row=2, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Safety Relevant").grid(row=3, column=0, sticky="e", padx=5, pady=5)
+                self.safety = tk.BooleanVar(value=self.row.safety)
+                ttk.Checkbutton(master, variable=self.safety).grid(row=3, column=1, sticky="w", padx=5, pady=5)
+
+                ttk.Label(master, text="Rationale").grid(row=4, column=0, sticky="ne", padx=5, pady=5)
+                self.rat = tk.Text(master, width=30, height=3)
+                self.rat.insert("1.0", self.row.rationale)
+                self.rat.grid(row=4, column=1, padx=5, pady=5)
+
+            def apply(self):
+                self.row.function = self.func.get()
+                self.row.malfunction = self.mal.get()
+                self.row.mtype = self.typ.get()
+                self.row.safety = self.safety.get()
+                self.row.rationale = self.rat.get("1.0", "end-1c")
+
+        def add_row(self):
+            dlg = self.RowDialog(self)
+            if dlg.row.function:
+                self.app.hazop_entries.append(dlg.row)
+                self.refresh()
+
+        def edit_row(self):
+            sel = self.tree.focus()
+            if not sel:
+                return
+            idx = self.tree.index(sel)
+            row = self.app.hazop_entries[idx]
+            dlg = self.RowDialog(self, row)
+            self.refresh()
+
+        def del_row(self):
+            sel = self.tree.selection()
+            for iid in sel:
+                idx = self.tree.index(iid)
+                if idx < len(self.app.hazop_entries):
+                    del self.app.hazop_entries[idx]
+            self.refresh()
 
         def load_analysis(self):
             if not self.app.reliability_analyses:
@@ -10983,6 +11115,7 @@ class FaultTreeApp:
                 }
                 for ra in self.reliability_analyses
             ],
+            "hazop_entries": [asdict(e) for e in self.hazop_entries],
             "project_properties": self.project_properties,
             "global_requirements": global_requirements,
             "reviews": reviews,
@@ -11119,6 +11252,8 @@ class FaultTreeApp:
                     ra.get("dc", 0.0),
                 )
             )
+
+        self.hazop_entries = [HazopEntry(**h) for h in data.get("hazop_entries", [])]
 
 
         self.fmedas = []

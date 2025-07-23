@@ -58,6 +58,15 @@ interpreted:
 Mission profiles and the selected formula for each basic event are stored in the
 JSON model so results remain consistent when reloading the file.
 
+### HAZOP Analysis
+
+The **HAZOP Analysis** window lets you list system functions with one or more
+associated malfunctions. Each malfunction is categorized as *No/Not*,
+*Excessive*, *Insufficient*, *Unintended* or *Reverse* and can be marked as
+safety relevant along with a rationale. When a function is allocated to an
+active component in a reliability analysis, its malfunctions become selectable
+failure modes in the FMEDA table.
+
 ## License
 
 This project is licensed under the GNU General Public License version 3. See the [LICENSE](LICENSE) file for details.
