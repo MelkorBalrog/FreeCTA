@@ -1604,6 +1604,7 @@ class FaultTreeApp:
             return {
                 "top_events": [t for t in data.get("top_events", []) if t["unique_id"] in review.fta_ids],
                 "fmeas": [f for f in data.get("fmeas", []) if f["name"] in review.fmea_names],
+                "fmedas": [d for d in data.get("fmedas", []) if d.get("name") in getattr(review, "fmeda_names", [])],
             }
 
         data1 = filter_data(base_data)
@@ -1635,6 +1636,18 @@ class FaultTreeApp:
                     if rid and rid not in reqs1:
                         reqs1[rid] = r
             for e in fmea2.get(name, {}).get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
+        for f in data1.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+        for f in data2.get("fmedas", []):
+            for e in f.get("entries", []):
                 for r in e.get("safety_requirements", []):
                     rid = r.get("id")
                     if rid and rid not in reqs2:
@@ -1754,6 +1767,7 @@ class FaultTreeApp:
             return {
                 "top_events": [t for t in data.get("top_events", []) if t["unique_id"] in review.fta_ids],
                 "fmeas": [f for f in data.get("fmeas", []) if f["name"] in review.fmea_names],
+                "fmedas": [d for d in data.get("fmedas", []) if d.get("name") in getattr(review, "fmeda_names", [])],
             }
 
         data1 = filter_data(base_data)
@@ -11277,6 +11291,84 @@ class FaultTreeApp:
                 maintype="text",
                 subtype="csv",
                 filename=f"fmeda_{name}.csv",
+            )
+        for name in getattr(review, 'hazop_names', []):
+            doc = next((d for d in self.hazop_docs if d.name == name), None)
+            if not doc:
+                continue
+            out = StringIO()
+            writer = csv.writer(out)
+            columns = [
+                "Function",
+                "Malfunction",
+                "Type",
+                "Scenario",
+                "Conditions",
+                "Hazard",
+                "Safety",
+                "Rationale",
+                "Covered",
+                "Covered By",
+            ]
+            writer.writerow(columns)
+            for e in doc.entries:
+                writer.writerow([
+                    getattr(e, "function", e.get("function", "")),
+                    getattr(e, "malfunction", e.get("malfunction", "")),
+                    getattr(e, "mtype", e.get("mtype", "")),
+                    getattr(e, "scenario", e.get("scenario", "")),
+                    getattr(e, "conditions", e.get("conditions", "")),
+                    getattr(e, "hazard", e.get("hazard", "")),
+                    "Yes" if getattr(e, "safety", e.get("safety", False)) else "No",
+                    getattr(e, "rationale", e.get("rationale", "")),
+                    "Yes" if getattr(e, "covered", e.get("covered", False)) else "No",
+                    getattr(e, "covered_by", e.get("covered_by", "")),
+                ])
+            csv_bytes = out.getvalue().encode("utf-8")
+            out.close()
+            msg.add_attachment(
+                csv_bytes,
+                maintype="text",
+                subtype="csv",
+                filename=f"hazop_{name}.csv",
+            )
+        for name in getattr(review, 'hara_names', []):
+            doc = next((d for d in self.hara_docs if d.name == name), None)
+            if not doc:
+                continue
+            out = StringIO()
+            writer = csv.writer(out)
+            columns = [
+                "Malfunction",
+                "Severity",
+                "Severity Rationale",
+                "Controllability",
+                "Cont. Rationale",
+                "Exposure",
+                "Exp. Rationale",
+                "ASIL",
+                "Safety Goal",
+            ]
+            writer.writerow(columns)
+            for e in doc.entries:
+                writer.writerow([
+                    getattr(e, "malfunction", e.get("malfunction", "")),
+                    getattr(e, "severity", e.get("severity", "")),
+                    getattr(e, "sev_rationale", e.get("sev_rationale", "")),
+                    getattr(e, "controllability", e.get("controllability", "")),
+                    getattr(e, "cont_rationale", e.get("cont_rationale", "")),
+                    getattr(e, "exposure", e.get("exposure", "")),
+                    getattr(e, "exp_rationale", e.get("exp_rationale", "")),
+                    getattr(e, "asil", e.get("asil", "")),
+                    getattr(e, "safety_goal", e.get("safety_goal", "")),
+                ])
+            csv_bytes = out.getvalue().encode("utf-8")
+            out.close()
+            msg.add_attachment(
+                csv_bytes,
+                maintype="text",
+                subtype="csv",
+                filename=f"hara_{name}.csv",
             )
         try:
             port = cfg.get('port', 465)
