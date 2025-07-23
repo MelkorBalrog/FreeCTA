@@ -1007,14 +1007,39 @@ class ReviewDocumentDialog(tk.Toplevel):
     def populate(self):
         row = 0
         current = self.app.export_model_data(include_versions=False)
-        base_data = self.app.versions[-1]["data"] if self.app.versions else {"top_events": [], "fmeas": []}
+        base_data = (
+            self.app.versions[-1]["data"]
+            if self.app.versions
+            else {"top_events": [], "fmeas": [], "fmedas": []}
+        )
 
         def filter_data(data):
             return {
-                "top_events": [t for t in data.get("top_events", []) if t["unique_id"] in self.review.fta_ids],
-                "fmeas": [f for f in data.get("fmeas", []) if f.get("name") in self.review.fmea_names],
-                "hazops": [d for d in data.get("hazops", []) if d.get("name") in getattr(self.review, 'hazop_names', [])],
-                "haras": [d for d in data.get("haras", []) if d.get("name") in getattr(self.review, 'hara_names', [])],
+                "top_events": [
+                    t
+                    for t in data.get("top_events", [])
+                    if t["unique_id"] in self.review.fta_ids
+                ],
+                "fmeas": [
+                    f
+                    for f in data.get("fmeas", [])
+                    if f.get("name") in self.review.fmea_names
+                ],
+                "fmedas": [
+                    d
+                    for d in data.get("fmedas", [])
+                    if d.get("name") in self.review.fmeda_names
+                ],
+                "hazops": [
+                    d
+                    for d in data.get("hazops", [])
+                    if d.get("name") in getattr(self.review, "hazop_names", [])
+                ],
+                "haras": [
+                    d
+                    for d in data.get("haras", [])
+                    if d.get("name") in getattr(self.review, "hara_names", [])
+                ],
             }
 
         data1 = filter_data(base_data)
@@ -1096,6 +1121,8 @@ class ReviewDocumentDialog(tk.Toplevel):
             f["name"]: {e["unique_id"]: e for e in f.get("entries", [])}
             for f in data2.get("fmeas", [])
         }
+        old_fmeda = {d["name"]: d.get("entries", []) for d in data1.get("fmedas", [])}
+        new_fmeda = {d["name"]: d.get("entries", []) for d in data2.get("fmedas", [])}
         old_hazop = {d["name"]: d.get("entries", []) for d in data1.get("hazops", [])}
         new_hazop = {d["name"]: d.get("entries", []) for d in data2.get("hazops", [])}
         old_hara = {d["name"]: d.get("entries", []) for d in data1.get("haras", [])}
@@ -1125,6 +1152,17 @@ class ReviewDocumentDialog(tk.Toplevel):
                     if rid and rid not in reqs1:
                         reqs1[rid] = r
             for e in new_fmea.get(name, {}).values():
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
+        for name in getattr(self.review, "fmeda_names", []):
+            for e in old_fmeda.get(name, []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+            for e in new_fmeda.get(name, []):
                 for r in e.get("safety_requirements", []):
                     rid = r.get("id")
                     if rid and rid not in reqs2:
@@ -1363,6 +1401,7 @@ class VersionCompareDialog(tk.Toplevel):
         self.base_var = tk.StringVar()
         self.base_combo = ttk.Combobox(self, values=names, textvariable=self.base_var, state="readonly")
         self.base_combo.pack(fill=tk.X, padx=5)
+        self.base_combo.bind("<<ComboboxSelected>>", self.compare)
 
         tk.Label(self, text="Compare with:").pack(padx=5, pady=2)
         self.other_var = tk.StringVar()
@@ -1422,6 +1461,55 @@ class VersionCompareDialog(tk.Toplevel):
         self.fmeda_tree.tag_configure("removed", background="#f8d7da")
         self.fmeda_tree.tag_configure("existing", background="#e2e3e5")
 
+        columns_hazop = [
+            "HAZOP",
+            "Function",
+            "Malfunction",
+            "Type",
+            "Scenario",
+            "Conditions",
+            "Hazard",
+            "Safety",
+            "Rationale",
+            "Covered",
+            "Covered By",
+        ]
+        self.hazop_tree = ttk.Treeview(self, columns=columns_hazop, show="headings")
+        for col in columns_hazop:
+            self.hazop_tree.heading(col, text=col)
+            width = 100
+            if col in ["Function", "Malfunction", "Scenario", "Rationale"]:
+                width = 150
+            self.hazop_tree.column(col, width=width, anchor="center")
+        self.hazop_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.hazop_tree.tag_configure("added", background="#cce5ff")
+        self.hazop_tree.tag_configure("removed", background="#f8d7da")
+        self.hazop_tree.tag_configure("existing", background="#e2e3e5")
+
+        columns_hara = [
+            "HARA",
+            "Malfunction",
+            "Severity",
+            "Sev Rationale",
+            "Controllability",
+            "Cont Rationale",
+            "Exposure",
+            "Exp Rationale",
+            "ASIL",
+            "Safety Goal",
+        ]
+        self.hara_tree = ttk.Treeview(self, columns=columns_hara, show="headings")
+        for col in columns_hara:
+            self.hara_tree.heading(col, text=col)
+            width = 100
+            if col in ["Malfunction", "Sev Rationale", "Cont Rationale", "Exp Rationale", "Safety Goal"]:
+                width = 150
+            self.hara_tree.column(col, width=width, anchor="center")
+        self.hara_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.hara_tree.tag_configure("added", background="#cce5ff")
+        self.hara_tree.tag_configure("removed", background="#f8d7da")
+        self.hara_tree.tag_configure("existing", background="#e2e3e5")
+
         # box for requirement changes similar to ReviewDocument
         req_frame = tk.Frame(self)
         req_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -1454,6 +1542,14 @@ class VersionCompareDialog(tk.Toplevel):
         self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.log_text.tag_configure("added", foreground="blue")
         self.log_text.tag_configure("removed", foreground="red")
+
+        if names:
+            self.base_combo.current(0)
+            if len(names) > 1:
+                self.other_combo.current(1)
+            else:
+                self.other_combo.current(0)
+            self.compare()
 
     def insert_diff(self, old, new):
         """Insert a colorized diff between old and new strings."""
@@ -1887,6 +1983,18 @@ class VersionCompareDialog(tk.Toplevel):
                     rid = r.get("id")
                     if rid and rid not in reqs2:
                         reqs2[rid] = r
+        for f in data1.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+        for f in data2.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
 
         def fmt(r):
             return self.app.format_requirement_with_trace(r)
@@ -2104,22 +2212,86 @@ class VersionCompareDialog(tk.Toplevel):
                 self.fmeda_tree.insert("", "end", values=row, tags=(st,))
 
         # ----- HAZOP diff -----
+        self.hazop_tree.delete(*self.hazop_tree.get_children())
         haz1 = {d["name"]: d for d in data1.get("hazops", [])}
         haz2 = {d["name"]: d for d in data2.get("hazops", [])}
         for name in sorted(set(haz1) | set(haz2)):
             e1 = haz1.get(name, {}).get("entries", [])
             e2 = haz2.get(name, {}).get("entries", [])
-            if e1 != e2:
-                self.log_text.insert(tk.END, f"HAZOP {name} changed\n", "added")
+            seen = set()
+            for e in e2:
+                row = [
+                    name,
+                    e.get("function", ""),
+                    e.get("malfunction", ""),
+                    e.get("mtype", ""),
+                    e.get("scenario", ""),
+                    e.get("conditions", ""),
+                    e.get("hazard", ""),
+                    "Yes" if e.get("safety") else "No",
+                    e.get("rationale", ""),
+                    "Yes" if e.get("covered") else "No",
+                    e.get("covered_by", ""),
+                ]
+                tag = "existing" if e in e1 else "added"
+                self.hazop_tree.insert("", "end", values=row, tags=(tag,))
+                seen.add(json.dumps(e, sort_keys=True))
+            for e in e1:
+                if json.dumps(e, sort_keys=True) not in seen:
+                    row = [
+                        name,
+                        e.get("function", ""),
+                        e.get("malfunction", ""),
+                        e.get("mtype", ""),
+                        e.get("scenario", ""),
+                        e.get("conditions", ""),
+                        e.get("hazard", ""),
+                        "Yes" if e.get("safety") else "No",
+                        e.get("rationale", ""),
+                        "Yes" if e.get("covered") else "No",
+                        e.get("covered_by", ""),
+                    ]
+                    self.hazop_tree.insert("", "end", values=row, tags=("removed",))
 
         # ----- HARA diff -----
+        self.hara_tree.delete(*self.hara_tree.get_children())
         hr1 = {d["name"]: d for d in data1.get("haras", [])}
         hr2 = {d["name"]: d for d in data2.get("haras", [])}
         for name in sorted(set(hr1) | set(hr2)):
             e1 = hr1.get(name, {}).get("entries", [])
             e2 = hr2.get(name, {}).get("entries", [])
-            if e1 != e2:
-                self.log_text.insert(tk.END, f"HARA {name} changed\n", "added")
+            seen = set()
+            for e in e2:
+                row = [
+                    name,
+                    e.get("malfunction", ""),
+                    e.get("severity", ""),
+                    e.get("sev_rationale", ""),
+                    e.get("controllability", ""),
+                    e.get("cont_rationale", ""),
+                    e.get("exposure", ""),
+                    e.get("exp_rationale", ""),
+                    e.get("asil", ""),
+                    e.get("safety_goal", ""),
+                ]
+                tag = "existing" if e in e1 else "added"
+                self.hara_tree.insert("", "end", values=row, tags=(tag,))
+                seen.add(json.dumps(e, sort_keys=True))
+            for e in e1:
+                if json.dumps(e, sort_keys=True) not in seen:
+                    row = [
+                        name,
+                        e.get("malfunction", ""),
+                        e.get("severity", ""),
+                        e.get("sev_rationale", ""),
+                        e.get("controllability", ""),
+                        e.get("cont_rationale", ""),
+                        e.get("exposure", ""),
+                        e.get("exp_rationale", ""),
+                        e.get("asil", ""),
+                        e.get("safety_goal", ""),
+                    ]
+                    self.hara_tree.insert("", "end", values=row, tags=("removed",))
 
 
 
