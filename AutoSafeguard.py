@@ -6587,7 +6587,7 @@ class FaultTreeApp:
             for sc in lib.get("scenarios", []):
                 if isinstance(sc, dict):
                     name = sc.get("name", "")
-                    if sc.get("tcs") or sc.get("fis") or sc.get("type") == "sotif":
+                    if sc.get("tcs") or sc.get("fis") or sc.get("tc") or sc.get("fi") or sc.get("type") == "sotif":
                         sotif.append(name)
                     else:
                         use_case.append(name)
@@ -9429,61 +9429,262 @@ class FaultTreeApp:
     def manage_scenario_libraries(self):
         win = tk.Toplevel(self.root)
         win.title("Scenario Libraries")
-        lib_lb = tk.Listbox(win, height=8, width=40)
-        lib_lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        lib_lb = tk.Listbox(win, height=8, width=25)
+        lib_lb.grid(row=0, column=0, rowspan=4, sticky="nsew")
+        scen_tree = ttk.Treeview(
+            win,
+            columns=("beh", "sce", "tc", "fi", "desc"),
+            show="tree headings",
+        )
+        scen_tree.heading("#0", text="Name")
+        scen_tree.column("#0", width=150)
+        scen_tree.heading("beh", text="Other Users")
+        scen_tree.column("beh", width=140)
+        scen_tree.heading("sce", text="Scenery")
+        scen_tree.column("sce", width=140)
+        scen_tree.heading("tc", text="TC")
+        scen_tree.column("tc", width=80)
+        scen_tree.heading("fi", text="FI")
+        scen_tree.column("fi", width=80)
+        scen_tree.heading("desc", text="Description")
+        scen_tree.column("desc", width=200)
+        scen_tree.grid(row=0, column=1, columnspan=3, sticky="nsew")
+        win.grid_rowconfigure(0, weight=1)
+        win.grid_columnconfigure(1, weight=1)
 
         def refresh_libs():
             lib_lb.delete(0, tk.END)
             for lib in self.scenario_libraries:
                 lib_lb.insert(tk.END, lib.get("name", ""))
+            refresh_scenarios()
 
-        refresh_libs()
+        def refresh_scenarios(*_):
+            scen_tree.delete(*scen_tree.get_children())
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.scenario_libraries[sel[0]]
+            for sc in lib.get("scenarios", []):
+                if isinstance(sc, dict):
+                    name = sc.get("name", "")
+                    beh = sc.get("behavior", "")
+                    sce = sc.get("scenery", "")
+                    tc = sc.get("tc", "")
+                    fi = sc.get("fi", "")
+                    desc = sc.get("description", "")
+                else:
+                    name = str(sc)
+                    beh = sce = tc = fi = desc = ""
+                scen_tree.insert("", tk.END, text=name, values=(beh, sce, tc, fi, desc))
+
+        class LibraryDialog(simpledialog.Dialog):
+            def __init__(self, parent, app, data=None):
+                self.app = app
+                self.data = data or {"name": "", "odds": []}
+                super().__init__(parent, title="Edit Library")
+
+            def body(self, master):
+                ttk.Label(master, text="Name").grid(row=0, column=0, sticky="e")
+                self.name_var = tk.StringVar(value=self.data.get("name", ""))
+                ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, sticky="ew")
+                ttk.Label(master, text="ODD Libraries").grid(row=1, column=0, sticky="ne")
+                self.lb = tk.Listbox(master, selectmode=tk.MULTIPLE, height=5)
+                for i, lib in enumerate(self.app.odd_libraries):
+                    self.lb.insert(tk.END, lib.get("name", ""))
+                    if lib.get("name", "") in self.data.get("odds", []):
+                        self.lb.selection_set(i)
+                self.lb.grid(row=1, column=1, sticky="nsew")
+                master.grid_rowconfigure(1, weight=1)
+                master.grid_columnconfigure(1, weight=1)
+
+            def apply(self):
+                self.data["name"] = self.name_var.get()
+                sels = self.lb.curselection()
+                self.data["odds"] = [self.app.odd_libraries[i].get("name", "") for i in sels]
+
+        class ScenarioDialog(simpledialog.Dialog):
+            def __init__(self, parent, app, lib, data=None):
+                self.app = app
+                self.lib = lib
+                self.data = data or {
+                    "name": "",
+                    "behavior": "",
+                    "scenery": "",
+                    "tc": "",
+                    "fi": "",
+                    "description": "",
+                }
+                self.tag_counter = 0
+                super().__init__(parent, title="Edit Scenario")
+
+            def body(self, master):
+                ttk.Label(master, text="Name").grid(row=0, column=0, sticky="e")
+                self.name_var = tk.StringVar(value=self.data.get("name", ""))
+                ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, sticky="ew")
+
+                ttk.Label(master, text="Other Road Users").grid(row=1, column=0, sticky="e")
+                self.beh_var = tk.StringVar(value=self.data.get("behavior", ""))
+                ttk.Entry(master, textvariable=self.beh_var).grid(row=1, column=1, sticky="ew")
+
+                ttk.Label(master, text="Scenery").grid(row=2, column=0, sticky="e")
+                self.sce_var = tk.StringVar(value=self.data.get("scenery", ""))
+                ttk.Entry(master, textvariable=self.sce_var).grid(row=2, column=1, sticky="ew")
+
+                elems = []
+                for name in self.lib.get("odds", []):
+                    for l in self.app.odd_libraries:
+                        if l.get("name") == name:
+                            for el in l.get("elements", []):
+                                if isinstance(el, dict):
+                                    val = el.get("name") or el.get("element") or el.get("id")
+                                else:
+                                    val = str(el)
+                                if val:
+                                    elems.append(val)
+
+                ttk.Label(master, text="ODD Element").grid(row=3, column=0, sticky="e")
+                self.elem_var = tk.StringVar()
+                self.elem_combo = ttk.Combobox(master, textvariable=self.elem_var, values=elems, state="readonly")
+                self.elem_combo.grid(row=3, column=1, sticky="ew")
+                ttk.Button(master, text="To Scenery", command=self.insert_elem).grid(row=3, column=2, padx=2)
+                ttk.Button(master, text="To Desc", command=self.insert_desc_elem).grid(row=3, column=3, padx=2)
+
+                tc_names = [n.user_name or f"TC {n.unique_id}" for n in self.app.get_all_triggering_conditions()]
+                fi_names = [n.user_name or f"FI {n.unique_id}" for n in self.app.get_all_functional_insufficiencies()]
+                ttk.Label(master, text="Triggering Condition").grid(row=4, column=0, sticky="e")
+                self.tc_var = tk.StringVar(value=self.data.get("tc", ""))
+                ttk.Combobox(master, textvariable=self.tc_var, values=tc_names, state="readonly").grid(row=4, column=1, sticky="ew")
+                ttk.Label(master, text="Functional Insufficiency").grid(row=5, column=0, sticky="e")
+                self.fi_var = tk.StringVar(value=self.data.get("fi", ""))
+                ttk.Combobox(master, textvariable=self.fi_var, values=fi_names, state="readonly").grid(row=5, column=1, sticky="ew")
+
+                ttk.Label(master, text="Description").grid(row=6, column=0, sticky="ne")
+                self.desc = tk.Text(master, height=4, width=40, wrap="word")
+                self.desc.grid(row=6, column=1, columnspan=3, sticky="nsew")
+                self.load_desc_links()
+                master.grid_columnconfigure(1, weight=1)
+
+            def insert_elem(self):
+                el = self.elem_var.get()
+                if el:
+                    cur = self.sce_var.get().strip()
+                    if cur:
+                        self.sce_var.set(f"{cur}, {el}")
+                    else:
+                        self.sce_var.set(el)
+
+            def insert_desc_elem(self):
+                el = self.elem_var.get()
+                if not el:
+                    return
+                pos = self.desc.index(tk.INSERT)
+                text = f"[[{el}]]"
+                self.desc.insert(pos, text)
+                tag = f"link{self.tag_counter}"
+                self.tag_counter += 1
+                end = self.desc.index(f"{pos}+{len(text)}c")
+                self.desc.tag_add(tag, pos, end)
+                self.desc.tag_config(tag, foreground="blue", underline=1)
+                self.desc.tag_bind(tag, "<Button-1>", lambda e, n=el: self.show_elem(n))
+
+            def load_desc_links(self):
+                desc = self.data.get("description", "")
+                self.desc.insert("1.0", desc)
+                for m in re.finditer(r"\[\[(.+?)\]\]", desc):
+                    name = m.group(1)
+                    start = f"1.0+{m.start()}c"
+                    end = f"1.0+{m.end()}c"
+                    tag = f"link{self.tag_counter}"
+                    self.tag_counter += 1
+                    self.desc.tag_add(tag, start, end)
+                    self.desc.tag_config(tag, foreground="blue", underline=1)
+                    self.desc.tag_bind(tag, "<Button-1>", lambda e, n=name: self.show_elem(n))
+
+            def show_elem(self, name):
+                for lib_name in self.lib.get("odds", []):
+                    for l in self.app.odd_libraries:
+                        if l.get("name") == lib_name:
+                            for el in l.get("elements", []):
+                                val = el.get("name") or el.get("element") or el.get("id")
+                                if val == name:
+                                    msg = "\n".join(f"{k}: {v}" for k, v in el.items())
+                                    messagebox.showinfo("ODD Element", msg)
+                                    return
+                messagebox.showinfo("ODD Element", f"{name}")
+
+            def apply(self):
+                self.data["name"] = self.name_var.get()
+                self.data["behavior"] = self.beh_var.get()
+                self.data["scenery"] = self.sce_var.get()
+                self.data["tc"] = self.tc_var.get()
+                self.data["fi"] = self.fi_var.get()
+                self.data["description"] = self.desc.get("1.0", "end-1c")
 
         def add_lib():
-            name = simpledialog.askstring("New Library", "Library name:")
-            if not name:
-                return
-            elems = []
-            if messagebox.askyesno("Import", "Import elements from file?"):
-                path = filedialog.askopenfilename(filetypes=[("CSV/Excel", "*.csv *.xlsx")])
-                if path:
-                    if path.lower().endswith(".csv"):
-                        with open(path, newline="") as f:
-                            elems = list(csv.DictReader(f))
-                    elif path.lower().endswith(".xlsx"):
-                        try:
-                            if load_workbook is None:
-                                raise ImportError
-                            wb = load_workbook(path, read_only=True)
-                            ws = wb.active
-                            headers = [c.value for c in next(ws.iter_rows(max_row=1))]
-                            for row in ws.iter_rows(min_row=2, values_only=True):
-                                elem = {headers[i]: row[i] for i in range(len(headers))}
-                                elems.append(elem)
-                        except Exception:
-                            messagebox.showerror("Import", "Failed to read Excel file. openpyxl required.")
-            self.scenario_libraries.append({"name": name, "scenarios": elems})
-            refresh_libs()
+            dlg = LibraryDialog(win, self)
+            if dlg.data.get("name"):
+                self.scenario_libraries.append({"name": dlg.data["name"], "scenarios": [], "odds": dlg.data["odds"]})
+                refresh_libs()
 
         def edit_lib():
             sel = lib_lb.curselection()
             if not sel:
                 return
             lib = self.scenario_libraries[sel[0]]
-            name = simpledialog.askstring("Edit Library", "Library name:", initialvalue=lib.get("name", ""))
-            if name:
-                lib["name"] = name
-                refresh_libs()
+            dlg = LibraryDialog(win, self, lib)
+            lib.update(dlg.data)
+            refresh_libs()
 
         def delete_lib():
             sel = lib_lb.curselection()
             if sel:
                 idx = sel[0]
                 del self.scenario_libraries[idx]
-                lib_lb.delete(idx)
-        btn = ttk.Frame(win); btn.pack(side=tk.RIGHT, fill=tk.Y)
-        ttk.Button(btn,text="Add",command=add_lib).pack(fill=tk.X)
-        ttk.Button(btn,text="Delete",command=delete_lib).pack(fill=tk.X)
+                refresh_libs()
+
+        def add_scen():
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.scenario_libraries[sel[0]]
+            dlg = ScenarioDialog(win, self, lib)
+            if dlg.data.get("name"):
+                lib.setdefault("scenarios", []).append(dlg.data)
+                refresh_scenarios()
+
+        def edit_scen():
+            sel_lib = lib_lb.curselection()
+            sel_sc = scen_tree.selection()
+            if not sel_lib or not sel_sc:
+                return
+            lib = self.scenario_libraries[sel_lib[0]]
+            idx = scen_tree.index(sel_sc[0])
+            data = lib.get("scenarios", [])[idx]
+            dlg = ScenarioDialog(win, self, lib, data)
+            lib["scenarios"][idx] = dlg.data
+            refresh_scenarios()
+
+        def del_scen():
+            sel_lib = lib_lb.curselection()
+            sel_sc = scen_tree.selection()
+            if not sel_lib or not sel_sc:
+                return
+            lib = self.scenario_libraries[sel_lib[0]]
+            idx = scen_tree.index(sel_sc[0])
+            del lib.get("scenarios", [])[idx]
+            refresh_scenarios()
+
+        btnf = ttk.Frame(win)
+        btnf.grid(row=1, column=1, columnspan=3, sticky="ew")
+        ttk.Button(btnf, text="Add Lib", command=add_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Edit Lib", command=edit_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Del Lib", command=delete_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Add Scen", command=add_scen).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btnf, text="Edit Scen", command=edit_scen).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Del Scen", command=del_scen).pack(side=tk.LEFT)
+
+        lib_lb.bind("<<ListboxSelect>>", refresh_scenarios)
+        refresh_libs()
 
     def manage_odd_libraries(self):
         win = tk.Toplevel(self.root)
