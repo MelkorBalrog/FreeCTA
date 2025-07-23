@@ -691,6 +691,9 @@ class ReviewToolbox(tk.Toplevel):
                 r.closed = True
                 r.approved = True
                 self.app.update_hara_statuses()
+                self.app.update_requirement_statuses()
+                if hasattr(self.app, "_hara_window") and self.app._hara_window.winfo_exists():
+                    self.app._hara_window.refresh_docs()
                 self.refresh_reviews()
         else:
             approvers = [p for p in r.participants if p.role == 'approver']
@@ -700,7 +703,10 @@ class ReviewToolbox(tk.Toplevel):
                     r.closed = True
                     self.app.add_version()
                     self.app.update_hara_statuses()
+                    self.app.update_requirement_statuses()
                     self.app.sync_hara_to_safety_goals()
+                    if hasattr(self.app, "_hara_window") and self.app._hara_window.winfo_exists():
+                        self.app._hara_window.refresh_docs()
                 self.refresh_reviews()
 
     def refresh_targets(self):
