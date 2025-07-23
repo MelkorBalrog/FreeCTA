@@ -1047,10 +1047,15 @@ class EditNodeDialog(simpledialog.Dialog):
             for req_id in dialog.result:
                 req = global_requirements.get(req_id)
                 if req and not any(r["id"] == req_id for r in self.node.safety_requirements):
-                    # For clone semantics, we simply add the same dictionary reference.
                     self.node.safety_requirements.append(req)
-                    self.update_requirement_asil(req_id)
-                    self.safety_req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
+                    if self.node.node_type.upper() == "BASIC EVENT":
+                        req["asil"] = self.infer_requirement_asil_from_node(self.node)
+                    else:
+                        self.update_requirement_asil(req_id)
+                    self.safety_req_listbox.insert(
+                        tk.END,
+                        f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}",
+                    )
         else:
             messagebox.showinfo("No Selection", "No existing requirements were selected.")
    
@@ -1194,8 +1199,12 @@ class EditNodeDialog(simpledialog.Dialog):
             self.node.safety_requirements = []
         if not any(r["id"] == custom_id for r in self.node.safety_requirements):
             self.node.safety_requirements.append(req)
-            self.update_requirement_asil(custom_id)
-            self.safety_req_listbox.insert(tk.END, f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}")
+            if self.node.node_type.upper() != "BASIC EVENT":
+                self.update_requirement_asil(custom_id)
+            self.safety_req_listbox.insert(
+                tk.END,
+                f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}",
+            )
 
     def edit_safety_requirement(self):
         """
@@ -1222,7 +1231,7 @@ class EditNodeDialog(simpledialog.Dialog):
         current_req["req_type"] = dialog.result["req_type"]
         current_req["text"] = dialog.result["text"]
         if self.node.node_type.upper() == "BASIC EVENT":
-            current_req["asil"] = self.compute_requirement_asil(current_req.get("id"))
+            current_req["asil"] = self.infer_requirement_asil_from_node(self.node)
         else:
             current_req["asil"] = dialog.result.get("asil", "QM")
         current_req["custom_id"] = new_custom_id
@@ -1230,8 +1239,12 @@ class EditNodeDialog(simpledialog.Dialog):
         global_requirements[new_custom_id] = current_req
         self.node.safety_requirements[index] = current_req
         self.safety_req_listbox.delete(index)
-        self.update_requirement_asil(new_custom_id)
-        self.safety_req_listbox.insert(index, f"[{current_req['id']}] [{current_req['req_type']}] [{current_req.get('asil','')}] {current_req['text']}")
+        if self.node.node_type.upper() != "BASIC EVENT":
+            self.update_requirement_asil(new_custom_id)
+        self.safety_req_listbox.insert(
+            index,
+            f"[{current_req['id']}] [{current_req['req_type']}] [{current_req.get('asil','')}] {current_req['text']}",
+        )
 
     def delete_safety_requirement(self):
         selected = self.safety_req_listbox.curselection()
@@ -1241,7 +1254,8 @@ class EditNodeDialog(simpledialog.Dialog):
         index = selected[0]
         req_id = self.node.safety_requirements[index]["id"]
         del self.node.safety_requirements[index]
-        self.update_requirement_asil(req_id)
+        if self.node.node_type.upper() != "BASIC EVENT":
+            self.update_requirement_asil(req_id)
         self.safety_req_listbox.delete(index)
 
     def decompose_safety_requirement(self):
@@ -1281,11 +1295,18 @@ class EditNodeDialog(simpledialog.Dialog):
         del self.node.safety_requirements[index]
         self.node.safety_requirements.insert(index, r2)
         self.node.safety_requirements.insert(index, r1)
-        self.update_requirement_asil(req_id_a)
-        self.update_requirement_asil(req_id_b)
+        if self.node.node_type.upper() != "BASIC EVENT":
+            self.update_requirement_asil(req_id_a)
+            self.update_requirement_asil(req_id_b)
         self.safety_req_listbox.delete(index)
-        self.safety_req_listbox.insert(index, f"[{r1['id']}] [{r1['req_type']}] [{r1.get('asil','')}] {r1['text']}")
-        self.safety_req_listbox.insert(index+1, f"[{r2['id']}] [{r2['req_type']}] [{r2.get('asil','')}] {r2['text']}")
+        self.safety_req_listbox.insert(
+            index,
+            f"[{r1['id']}] [{r1['req_type']}] [{r1.get('asil','')}] {r1['text']}",
+        )
+        self.safety_req_listbox.insert(
+            index + 1,
+            f"[{r2['id']}] [{r2['req_type']}] [{r2.get('asil','')}] {r2['text']}",
+        )
 
     def buttonbox(self):
         box = tk.Frame(self)
