@@ -105,7 +105,6 @@ class HaraDoc:
     hazops: list
     entries: list
     approved: bool = False
-    status: str = "draft"
 
 COMPONENT_ATTR_TEMPLATES = {
     "capacitor": {
@@ -299,6 +298,16 @@ ASIL_TARGETS = {
     "B": {"spfm":0.90, "lpfm":0.60, "dc":0.90},
     "A": {"spfm":0.0, "lpfm":0.0, "dc":0.0},
     "QM": {"spfm":0.0, "lpfm":0.0, "dc":0.0},
+}
+
+# Mapping of ASIL decomposition schemes as allowed by ISO 26262. Each
+# parent ASIL level maps to a list of two-element tuples representing the
+# resulting ASIL assignments for the decomposed requirements.
+ASIL_DECOMP_SCHEMES = {
+    "D": [("B", "B"), ("C", "D")],
+    "C": [("B", "C"), ("A", "C")],
+    "B": [("A", "B"), ("QM", "B")],
+    "A": [("QM", "A")],
 }
 
 # Simplified ISO 26262 risk graph for ASIL determination
