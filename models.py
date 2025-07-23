@@ -92,6 +92,19 @@ class HaraEntry:
     asil: str
     safety_goal: str
 
+@dataclass
+class HazopDoc:
+    """Container for a HAZOP with a name and list of entries."""
+    name: str
+    entries: list
+
+@dataclass
+class HaraDoc:
+    """Container for a HARA linked to a specific HAZOP."""
+    name: str
+    hazop: str
+    entries: list
+
 COMPONENT_ATTR_TEMPLATES = {
     "capacitor": {
         "dielectric": ["ceramic", "electrolytic", "tantalum"],

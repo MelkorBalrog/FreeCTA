@@ -242,6 +242,10 @@ from dataclasses import asdict
 from mechanisms import DiagnosticMechanism, MechanismLibrary, ANNEX_D_MECHANISMS
 import json
 import csv
+try:
+    from openpyxl import load_workbook
+except Exception:  # openpyxl may not be installed
+    load_workbook = None
 from drawing_helper import FTADrawingHelper, fta_drawing_helper
 from risk_assessment import DERIVED_MATURITY_TABLE, ASSURANCE_AGGREGATION_AND, AND_DECOMPOSITION_TABLE, OR_DECOMPOSITION_TABLE, boolify, ADRiskAssessmentHelper
 from models import (
@@ -250,6 +254,8 @@ from models import (
     ReliabilityAnalysis,
     HazopEntry,
     HaraEntry,
+    HazopDoc,
+    HaraDoc,
     QUALIFICATIONS,
     COMPONENT_ATTR_TEMPLATES,
     RELIABILITY_MODELS,
@@ -1088,22 +1094,6 @@ class EditNodeDialog(simpledialog.Dialog):
             f" (Alloc: {alloc}; SGs: {goals})"
         )
 
-    def get_safety_goal_asil(self, sg_name):
-        for e in self.hara_entries:
-            if sg_name and sg_name == e.safety_goal:
-                return e.asil
-        for te in self.top_events:
-            if sg_name and (sg_name == te.user_name or sg_name == te.safety_goal_description):
-                return te.safety_goal_asil or "QM"
-        return "QM"
-
-    def sync_hara_to_safety_goals(self):
-        """Propagate ASIL values from HARA entries to safety goals."""
-        asil_map = {e.safety_goal: e.asil for e in self.hara_entries if e.safety_goal}
-        for te in self.top_events:
-            name = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
-            if name in asil_map:
-                te.safety_goal_asil = asil_map[name]
     
     def add_safety_requirement(self):
         """
@@ -1319,7 +1309,11 @@ class FaultTreeApp:
         self.spfm = 0.0
         self.lpfm = 0.0
         self.reliability_dc = 0.0
-        self.hazop_entries = []
+        self.hazop_docs = []  # list of HazopDoc
+        self.hara_docs = []   # list of HaraDoc
+        self.active_hazop = None
+        self.active_hara = None
+        self.hazop_entries = []  # backwards compatibility for active doc
         self.hara_entries = []
         self.top_events = []
         self.reviews = []
@@ -1332,7 +1326,9 @@ class FaultTreeApp:
         self.fi2tc_entries = []
         self.tc2fi_entries = []
         self.scenario_libraries = []
+        self.odd_libraries = []
         self.odd_elements = []
+        self.update_odd_elements()
         # Provide the drawing helper to dialogs that may be opened later
         self.fta_drawing_helper = fta_drawing_helper
 
@@ -1418,6 +1414,11 @@ class FaultTreeApp:
         reliability_menu.add_command(label="FMEDA Analysis", command=self.open_fmeda_window)
         reliability_menu.add_command(label="FMEDA Manager", command=self.show_fmeda_list)
         menubar.add_cascade(label="Reliability", menu=reliability_menu)
+
+        hara_menu = tk.Menu(menubar, tearoff=0)
+        hara_menu.add_command(label="HAZOP Analysis", command=self.open_hazop_window)
+        hara_menu.add_command(label="HARA Analysis", command=self.open_hara_window)
+        menubar.add_cascade(label="HARA", menu=hara_menu)
         sotif_menu = tk.Menu(menubar, tearoff=0)
         sotif_menu.add_command(label="Triggering Conditions", command=self.show_triggering_condition_list)
         sotif_menu.add_command(label="Functional Insufficiencies", command=self.show_functional_insufficiency_list)
@@ -1426,7 +1427,7 @@ class FaultTreeApp:
         sotif_menu.add_command(label="TC2FI Analysis", command=self.open_tc2fi_window)
         sotif_menu.add_separator()
         sotif_menu.add_command(label="Scenario Libraries", command=self.manage_scenario_libraries)
-        sotif_menu.add_command(label="Import ODD Table", command=self.import_odd_table)
+        sotif_menu.add_command(label="ODD Libraries", command=self.manage_odd_libraries)
         menubar.add_cascade(label="SOTIF", menu=sotif_menu)
         root.config(menu=menubar)
         root.bind("<Control-n>", lambda event: self.new_model())
@@ -2191,15 +2192,45 @@ class FaultTreeApp:
 
         return None
 
+    def get_hazop_by_name(self, name):
+        for d in self.hazop_docs:
+            if d.name == name:
+                return d
+        return None
+
+    def get_hara_by_name(self, name):
+        for d in self.hara_docs:
+            if d.name == name:
+                return d
+        return None
+
     def get_safety_goal_asil(self, sg_name):
-        """Return the ASIL level for a safety goal name."""
-        for e in self.hara_entries:
-            if sg_name and sg_name == e.safety_goal:
-                return e.asil
+        """Return the highest ASIL level for a safety goal name across HARAs."""
+        best = "QM"
+        for doc in getattr(self, "hara_docs", []):
+            for e in doc.entries:
+                if sg_name and sg_name == e.safety_goal and ASIL_ORDER.get(e.asil, 0) > ASIL_ORDER.get(best, 0):
+                    best = e.asil
         for te in self.top_events:
             if sg_name and (sg_name == te.user_name or sg_name == te.safety_goal_description):
-                return te.safety_goal_asil or "QM"
-        return "QM"
+                if ASIL_ORDER.get(te.safety_goal_asil or "QM", 0) > ASIL_ORDER.get(best, 0):
+                    best = te.safety_goal_asil or "QM"
+        return best
+
+    def sync_hara_to_safety_goals(self):
+        """Propagate ASIL values from HARA entries to safety goals."""
+        asil_map = {}
+        for doc in getattr(self, "hara_docs", []):
+            for e in doc.entries:
+                if not e.safety_goal:
+                    continue
+                cur = asil_map.get(e.safety_goal, "QM")
+                if ASIL_ORDER.get(e.asil, 0) > ASIL_ORDER.get(cur, 0):
+                    asil_map[e.safety_goal] = e.asil
+        for te in self.top_events:
+            name = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
+            if name in asil_map:
+                te.safety_goal_asil = asil_map[name]
 
     def edit_selected(self):
         sel = self.treeview.selection()
@@ -6264,6 +6295,9 @@ class FaultTreeApp:
         AD_RiskAssessment_Helper.unique_node_id_counter = 1
         self.zoom = 1.0
         self.diagram_font.config(size=int(8 * self.zoom))
+        self.scenario_libraries = []
+        self.odd_libraries = []
+        self.update_odd_elements()
 
         # Close any open page diagrams.
         if hasattr(self, "page_diagram") and self.page_diagram is not None:
@@ -6545,14 +6579,45 @@ class FaultTreeApp:
     def get_all_scenery_names(self):
         """Return the list of scenery/ODD element names."""
         names = []
-        for el in self.odd_elements:
-            if isinstance(el, dict):
-                name = el.get("name") or el.get("element") or el.get("id")
-            else:
-                name = str(el)
-            if name:
-                names.append(name)
+        for lib in self.odd_libraries:
+            for el in lib.get("elements", []):
+                if isinstance(el, dict):
+                    name = el.get("name") or el.get("element") or el.get("id")
+                else:
+                    name = str(el)
+                if name:
+                    names.append(name)
         return names
+
+    def get_all_function_names(self):
+        """Return unique function names from HAZOP entries."""
+        names = set()
+        for doc in getattr(self, "hazop_docs", []):
+            for e in doc.entries:
+                if getattr(e, "function", ""):
+                    names.add(e.function)
+        return sorted(names)
+
+    def get_all_component_names(self):
+        """Return unique component names from HAZOP and reliability analyses."""
+        names = set()
+        for doc in getattr(self, "hazop_docs", []):
+            names.update(e.component for e in doc.entries if getattr(e, "component", ""))
+        names.update(c.name for c in self.reliability_components)
+        return sorted(n for n in names if n)
+
+    def get_all_malfunction_names(self):
+        """Return unique malfunction names from HAZOP entries."""
+        names = set()
+        for doc in getattr(self, "hazop_docs", []):
+            names.update(e.malfunction for e in doc.entries if getattr(e, "malfunction", ""))
+        return sorted(names)
+
+    def update_odd_elements(self):
+        """Aggregate elements from all ODD libraries into odd_elements list."""
+        self.odd_elements = []
+        for lib in self.odd_libraries:
+            self.odd_elements.extend(lib.get("elements", []))
 
     def get_all_failure_modes(self):
         """Return list of all failure mode nodes from FTA, FMEAs and FMEDAs."""
@@ -7525,10 +7590,16 @@ class FaultTreeApp:
                 be.description or (be.user_name or f"BE {be.unique_id}"): be
                 for be in basic_events + self.fmea_entries
             }
-            for e in self.app.hazop_entries:
-                label = f"{e.function}: {e.malfunction}"
-                obj = types.SimpleNamespace(description=e.malfunction, user_name=label, parents=[], fmea_component=e.component)
-                self.mode_map[label] = obj
+            for doc in self.app.hazop_docs:
+                for e in doc.entries:
+                    label = f"{e.function}: {e.malfunction}"
+                    obj = types.SimpleNamespace(
+                        description=e.malfunction,
+                        user_name=label,
+                        parents=[],
+                        fmea_component=e.component,
+                    )
+                    self.mode_map[label] = obj
             mode_names = list(self.mode_map.keys())
             self.mode_var = tk.StringVar(value=self.node.description or self.node.user_name)
             self.mode_combo = ttk.Combobox(master, textvariable=self.mode_var,
@@ -9173,12 +9244,158 @@ class FaultTreeApp:
         ttk.Button(btn,text="Add",command=add_lib).pack(fill=tk.X)
         ttk.Button(btn,text="Delete",command=delete_lib).pack(fill=tk.X)
 
-    def import_odd_table(self):
-        path = filedialog.askopenfilename(filetypes=[("CSV","*.csv")])
-        if not path: return
-        with open(path,newline="") as f:
-            reader=csv.DictReader(f); self.odd_elements=list(reader)
-        messagebox.showinfo("Import","ODD table imported")
+    def manage_odd_libraries(self):
+        win = tk.Toplevel(self.root)
+        win.title("ODD Libraries")
+        lib_lb = tk.Listbox(win, height=8, width=25)
+        lib_lb.grid(row=0, column=0, rowspan=4, sticky="nsew")
+        elem_tree = ttk.Treeview(win, columns=("attrs",), show="headings")
+        elem_tree.heading("attrs", text="Attributes")
+        elem_tree.column("attrs", width=200)
+        elem_tree.grid(row=0, column=1, columnspan=3, sticky="nsew")
+        win.grid_rowconfigure(0, weight=1)
+        win.grid_columnconfigure(1, weight=1)
+
+        def refresh_libs():
+            lib_lb.delete(0, tk.END)
+            for lib in self.odd_libraries:
+                lib_lb.insert(tk.END, lib.get("name", ""))
+            refresh_elems()
+
+        def refresh_elems(*_):
+            elem_tree.delete(*elem_tree.get_children())
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.odd_libraries[sel[0]]
+            for el in lib.get("elements", []):
+                name = el.get("name") or el.get("element") or el.get("id")
+                attrs = ", ".join(f"{k}={v}" for k, v in el.items() if k != "name")
+                elem_tree.insert("", tk.END, values=(attrs,), text=name)
+
+        class ElementDialog(simpledialog.Dialog):
+            def __init__(self, parent, data=None):
+                self.data = data or {"name": ""}
+                super().__init__(parent, title="Edit Element")
+
+            def add_attr_row(self, key="", val=""):
+                r = len(self.attr_rows)
+                k_var = tk.StringVar(value=key)
+                v_var = tk.StringVar(value=str(val))
+                ttk.Entry(self.attr_frame, textvariable=k_var).grid(row=r, column=0, padx=2, pady=2)
+                ttk.Entry(self.attr_frame, textvariable=v_var).grid(row=r, column=1, padx=2, pady=2)
+                self.attr_rows.append((k_var, v_var))
+
+            def body(self, master):
+                ttk.Label(master, text="Name").grid(row=0, column=0, sticky="e")
+                self.name_var = tk.StringVar(value=self.data.get("name", ""))
+                ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, sticky="ew")
+                self.attr_frame = ttk.Frame(master)
+                self.attr_frame.grid(row=1, column=0, columnspan=2, sticky="nsew")
+                self.attr_rows = []
+                for k, v in self.data.items():
+                    if k != "name":
+                        self.add_attr_row(k, v)
+                ttk.Button(master, text="Add Attribute", command=self.add_attr_row).grid(row=2, column=0, columnspan=2, pady=5)
+
+            def apply(self):
+                new_data = {"name": self.name_var.get()}
+                for k_var, v_var in self.attr_rows:
+                    key = k_var.get().strip()
+                    if key:
+                        new_data[key] = v_var.get()
+                self.data = new_data
+
+        def add_lib():
+            name = simpledialog.askstring("New Library", "Library name:")
+            if not name:
+                return
+            elems = []
+            if messagebox.askyesno("Import", "Import elements from file?"):
+                path = filedialog.askopenfilename(filetypes=[("CSV/Excel", "*.csv *.xlsx")])
+                if path:
+                    if path.lower().endswith(".csv"):
+                        with open(path, newline="") as f:
+                            elems = list(csv.DictReader(f))
+                    elif path.lower().endswith(".xlsx"):
+                        try:
+                            if load_workbook is None:
+                                raise ImportError
+                            wb = load_workbook(path, read_only=True)
+                            ws = wb.active
+                            headers = [c.value for c in next(ws.iter_rows(max_row=1))]
+                            for row in ws.iter_rows(min_row=2, values_only=True):
+                                elem = {headers[i]: row[i] for i in range(len(headers))}
+                                elems.append(elem)
+                        except Exception:
+                            messagebox.showerror("Import", "Failed to read Excel file. openpyxl required.")
+            self.odd_libraries.append({"name": name, "elements": elems})
+            refresh_libs()
+            self.update_odd_elements()
+
+        def edit_lib():
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.odd_libraries[sel[0]]
+            name = simpledialog.askstring("Edit Library", "Library name:", initialvalue=lib.get("name", ""))
+            if name:
+                lib["name"] = name
+                refresh_libs()
+
+        def delete_lib():
+            sel = lib_lb.curselection()
+            if sel:
+                idx = sel[0]
+                del self.odd_libraries[idx]
+                refresh_libs()
+                self.update_odd_elements()
+
+        def add_elem():
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.odd_libraries[sel[0]]
+            dlg = ElementDialog(win)
+            lib.setdefault("elements", []).append(dlg.data)
+            refresh_elems()
+            self.update_odd_elements()
+
+        def edit_elem():
+            sel_lib = lib_lb.curselection()
+            sel_elem = elem_tree.selection()
+            if not sel_lib or not sel_elem:
+                return
+            lib = self.odd_libraries[sel_lib[0]]
+            idx = elem_tree.index(sel_elem[0])
+            data = lib.get("elements", [])[idx]
+            dlg = ElementDialog(win, data)
+            lib["elements"][idx] = dlg.data
+            refresh_elems()
+            self.update_odd_elements()
+
+        def del_elem():
+            sel_lib = lib_lb.curselection()
+            sel_elem = elem_tree.selection()
+            if not sel_lib or not sel_elem:
+                return
+            lib = self.odd_libraries[sel_lib[0]]
+            idx = elem_tree.index(sel_elem[0])
+            del lib.get("elements", [])[idx]
+            refresh_elems()
+            self.update_odd_elements()
+
+        btnf = ttk.Frame(win)
+        btnf.grid(row=1, column=1, columnspan=3, sticky="ew")
+        ttk.Button(btnf, text="Add Lib", command=add_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Edit Lib", command=edit_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Del Lib", command=delete_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Add Elem", command=add_elem).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btnf, text="Edit Elem", command=edit_elem).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Del Elem", command=del_elem).pack(side=tk.LEFT)
+
+        lib_lb.bind("<<ListboxSelect>>", refresh_elems)
+        refresh_libs()
 
     def open_reliability_window(self):
         if hasattr(self, "_rel_window") and self._rel_window.winfo_exists():
@@ -9525,6 +9742,8 @@ class FaultTreeApp:
         self.root.destroy()
 
     def export_model_data(self, include_versions=True):
+        # Ensure aggregated ODD elements are up to date
+        self.update_odd_elements()
         reviews = []
         for r in self.reviews:
             reviews.append({
@@ -9591,11 +9810,26 @@ class FaultTreeApp:
                 }
                 for ra in self.reliability_analyses
             ],
+            "hazops": [
+                {
+                    "name": doc.name,
+                    "entries": [asdict(e) for e in doc.entries],
+                }
+                for doc in self.hazop_docs
+            ],
+            "haras": [
+                {
+                    "name": doc.name,
+                    "hazop": doc.hazop,
+                    "entries": [asdict(e) for e in doc.entries],
+                }
+                for doc in self.hara_docs
+            ],
             "hazop_entries": [asdict(e) for e in self.hazop_entries],
             "fi2tc_entries": self.fi2tc_entries,
             "tc2fi_entries": self.tc2fi_entries,
             "scenario_libraries": self.scenario_libraries,
-            "odd_elements": self.odd_elements,
+            "odd_libraries": self.odd_libraries,
             "project_properties": self.project_properties,
             "global_requirements": global_requirements,
             "reviews": reviews,
@@ -9733,11 +9967,32 @@ class FaultTreeApp:
                 )
             )
 
-        self.hazop_entries = [HazopEntry(**h) for h in data.get("hazop_entries", [])]
+        self.hazop_docs = []
+        for d in data.get("hazops", []):
+            entries = [HazopEntry(**h) for h in d.get("entries", [])]
+            self.hazop_docs.append(HazopDoc(d.get("name", f"HAZOP {len(self.hazop_docs)+1}"), entries))
+        if not self.hazop_docs and "hazop_entries" in data:
+            self.hazop_docs.append(HazopDoc("Default", [HazopEntry(**h) for h in data.get("hazop_entries", [])]))
+        self.active_hazop = self.hazop_docs[0] if self.hazop_docs else None
+        self.hazop_entries = self.active_hazop.entries if self.active_hazop else []
+
+        self.hara_docs = []
+        for d in data.get("haras", []):
+            entries = [HaraEntry(**e) for e in d.get("entries", [])]
+            self.hara_docs.append(HaraDoc(d.get("name", f"HARA {len(self.hara_docs)+1}"), d.get("hazop", ""), entries))
+        if not self.hara_docs and "hara_entries" in data:
+            hazop_name = self.hazop_docs[0].name if self.hazop_docs else ""
+            self.hara_docs.append(HaraDoc("Default", hazop_name, [HaraEntry(**e) for e in data.get("hara_entries", [])]))
+        self.active_hara = self.hara_docs[0] if self.hara_docs else None
+        self.hara_entries = self.active_hara.entries if self.active_hara else []
+
         self.fi2tc_entries = data.get("fi2tc_entries", [])
         self.tc2fi_entries = data.get("tc2fi_entries", [])
         self.scenario_libraries = data.get("scenario_libraries", [])
-        self.odd_elements = data.get("odd_elements", [])
+        self.odd_libraries = data.get("odd_libraries", [])
+        if not self.odd_libraries and "odd_elements" in data:
+            self.odd_libraries = [{"name": "Default", "elements": data.get("odd_elements", [])}]
+        self.update_odd_elements()
 
         self.fmedas = []
         for doc in data.get("fmedas", []):
@@ -9759,6 +10014,10 @@ class FaultTreeApp:
         # *** Add this loop to update your global_requirements database ***
         for event in self.top_events:
             self.update_global_requirements_from_nodes(event)
+
+        # Propagate ASIL values from HARA entries to loaded safety goals
+        if hasattr(self, "hara_entries"):
+            self.sync_hara_to_safety_goals()
         
         # Load project properties.
         self.project_properties = data.get("project_properties", self.project_properties)
