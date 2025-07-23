@@ -2153,23 +2153,23 @@ class VersionCompareDialog(tk.Toplevel):
                     else:
                         prefix = "Added" if st == "added" else "Removed"
                     self.log_text.insert(tk.END, f"{prefix} FMEA entry {failure}\n", st)
-                if prefix == "Updated":
-                    e1 = entries1[uid]
-                    e2 = entries2[uid]
-                    for fld in [
-                        "description",
-                        "fmea_effect",
-                        "fmea_cause",
-                        "fmea_severity",
-                        "fmea_occurrence",
-                        "fmea_detection",
-                    ]:
-                        v1 = str(e1.get(fld, ""))
-                        v2 = str(e2.get(fld, ""))
-                        if v1 != v2:
-                            self.log_text.insert(tk.END, f"  {fld}: ")
-                            self.insert_diff(v1, v2)
-                            self.log_text.insert(tk.END, "\n")
+                    if prefix == "Updated":
+                        e1 = entries1[uid]
+                        e2 = entries2[uid]
+                        for fld in [
+                            "description",
+                            "fmea_effect",
+                            "fmea_cause",
+                            "fmea_severity",
+                            "fmea_occurrence",
+                            "fmea_detection",
+                        ]:
+                            v1 = str(e1.get(fld, ""))
+                            v2 = str(e2.get(fld, ""))
+                            if v1 != v2:
+                                self.log_text.insert(tk.END, f"  {fld}: ")
+                                self.insert_diff(v1, v2)
+                                self.log_text.insert(tk.END, "\n")
 
         # ----- FMEDA diff -----
         self.fmeda_tree.delete(*self.fmeda_tree.get_children())
