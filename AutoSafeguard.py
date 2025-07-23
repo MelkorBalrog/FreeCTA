@@ -1026,7 +1026,7 @@ class EditNodeDialog(simpledialog.Dialog):
    
     def add_new_requirement(self,custom_id, req_type, text, asil="QM"):
         # When a requirement is created, register it in the global registry.
-        req = {"id": custom_id, "req_type": req_type, "text": text, "custom_id": custom_id, "asil": asil}
+        req = {"id": custom_id, "req_type": req_type, "text": text, "custom_id": custom_id, "asil": asil, "status": "draft", "parent_id": ""}
         global_requirements[custom_id] = req
         print(f"Added new requirement: {req}")
         return req
@@ -1120,7 +1120,9 @@ class EditNodeDialog(simpledialog.Dialog):
                 "req_type": dialog.result["req_type"],
                 "text": dialog.result["text"],
                 "custom_id": custom_id,
-                "asil": dialog.result.get("asil", "QM")
+                "asil": dialog.result.get("asil", "QM"),
+                "status": "draft",
+                "parent_id": ""
             }
             global_requirements[custom_id] = req
 
@@ -1394,6 +1396,7 @@ class FaultTreeApp:
         view_menu.add_command(label="Zoom Out", command=self.zoom_out, accelerator="Ctrl+-")
         view_menu.add_command(label="Auto Arrange", command=self.auto_arrange, accelerator="Ctrl+A")
         view_menu.add_command(label="Requirements Matrix", command=self.show_requirements_matrix)
+        view_menu.add_command(label="Requirements Editor", command=self.show_requirements_editor)
         view_menu.add_command(label="FTA-FMEA Traceability", command=self.show_traceability_matrix)
         view_menu.add_command(label="Safety Goals Matrix", command=self.show_safety_goals_matrix)
         view_menu.add_command(label="FTA Cut Sets", command=self.show_cut_sets)
@@ -7321,6 +7324,7 @@ class FaultTreeApp:
 
     def show_requirements_matrix(self):
         """Display a matrix table of requirements vs. basic events."""
+        self.update_requirement_statuses()
         basic_events = [n for n in self.get_all_nodes(self.root_node)
                         if n.node_type.upper() == "BASIC EVENT"]
         reqs = list(global_requirements.values())
@@ -7333,6 +7337,8 @@ class FaultTreeApp:
             "Req ID",
             "ASIL",
             "Type",
+            "Status",
+            "Parent",
             "Text",
         ] + [be.user_name or f"BE {be.unique_id}" for be in basic_events]
         tree = ttk.Treeview(win, columns=columns, show="headings")
@@ -7347,6 +7353,8 @@ class FaultTreeApp:
                 req.get("id", ""),
                 req.get("asil", ""),
                 req.get("req_type", ""),
+                req.get("status", "draft"),
+                req.get("parent_id", ""),
                 req.get("text", ""),
             ]
             for be in basic_events:
@@ -7469,6 +7477,171 @@ class FaultTreeApp:
             else:
                 text.insert(tk.END, goals)
             text.insert(tk.END, "\n\n")
+
+        tk.Button(win, text="Open Requirements Editor", command=self.show_requirements_editor).pack(pady=5)
+
+    def show_requirements_editor(self):
+        """Open an editor to manage global requirements and traceability."""
+        self.update_requirement_statuses()
+        win = tk.Toplevel(self.root)
+        win.title("Requirements Editor")
+
+        columns = ["ID", "ASIL", "Type", "Status", "Parent", "Text"]
+        tree = ttk.Treeview(win, columns=columns, show="headings", selectmode="browse")
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=120 if col != "Text" else 300, anchor="center")
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        def refresh_tree():
+            tree.delete(*tree.get_children())
+            for req in global_requirements.values():
+                tree.insert("", "end", iid=req.get("id"), values=[
+                    req.get("id", ""),
+                    req.get("asil", ""),
+                    req.get("req_type", ""),
+                    req.get("status", "draft"),
+                    req.get("parent_id", ""),
+                    req.get("text", ""),
+                ])
+
+        class ReqDialog(simpledialog.Dialog):
+            def __init__(self, parent, title, initial=None):
+                self.initial = initial or {}
+                super().__init__(parent, title=title)
+
+            def body(self, master):
+                ttk.Label(master, text="ID:").grid(row=0, column=0, sticky="e")
+                self.id_var = tk.StringVar(value=self.initial.get("id", ""))
+                tk.Entry(master, textvariable=self.id_var).grid(row=0, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Type:").grid(row=1, column=0, sticky="e")
+                self.type_var = tk.StringVar(value=self.initial.get("req_type", "vehicle"))
+                ttk.Combobox(master, textvariable=self.type_var, values=["vehicle", "operational"], state="readonly").grid(row=1, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="ASIL:").grid(row=2, column=0, sticky="e")
+                self.asil_var = tk.StringVar(value=self.initial.get("asil", "QM"))
+                ttk.Combobox(master, textvariable=self.asil_var, values=ASIL_LEVEL_OPTIONS, state="readonly", width=8).grid(row=2, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Parent ID:").grid(row=3, column=0, sticky="e")
+                self.parent_var = tk.StringVar(value=self.initial.get("parent_id", ""))
+                tk.Entry(master, textvariable=self.parent_var).grid(row=3, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Status:").grid(row=4, column=0, sticky="e")
+                self.status_var = tk.StringVar(value=self.initial.get("status", "draft"))
+                ttk.Combobox(master, textvariable=self.status_var,
+                             values=["draft", "in review", "peer reviewed", "pending approval", "approved"],
+                             state="readonly").grid(row=4, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Text:").grid(row=5, column=0, sticky="e")
+                self.text_var = tk.StringVar(value=self.initial.get("text", ""))
+                tk.Entry(master, textvariable=self.text_var, width=40).grid(row=5, column=1, padx=5, pady=5)
+                return master
+
+            def apply(self):
+                self.result = {
+                    "id": self.id_var.get().strip() or str(uuid.uuid4()),
+                    "req_type": self.type_var.get().strip(),
+                    "asil": self.asil_var.get().strip(),
+                    "parent_id": self.parent_var.get().strip(),
+                    "status": self.status_var.get().strip(),
+                    "text": self.text_var.get().strip(),
+                }
+
+            def validate(self):
+                rid = self.id_var.get().strip()
+                if rid and rid != self.initial.get("id") and rid in global_requirements:
+                    messagebox.showerror("ID", "ID already exists")
+                    return False
+                return True
+
+        class TraceDialog(simpledialog.Dialog):
+            def __init__(self, parent, app, requirement):
+                self.requirement = requirement
+                self.app = app
+                super().__init__(parent, title="Edit Traceability")
+
+            def body(self, master):
+                self.vars = {}
+                canvas = tk.Canvas(master)
+                frame = tk.Frame(canvas)
+                vsb = tk.Scrollbar(master, orient="vertical", command=canvas.yview)
+                canvas.configure(yscrollcommand=vsb.set)
+                canvas.pack(side="left", fill="both", expand=True)
+                vsb.pack(side="right", fill="y")
+                canvas.create_window((0, 0), window=frame, anchor="nw")
+
+                def on_config(event):
+                    canvas.configure(scrollregion=canvas.bbox("all"))
+
+                frame.bind("<Configure>", on_config)
+
+                for n in [n for n in self.app.get_all_nodes(self.app.root_node) if n.node_type.upper() == "BASIC EVENT"]:
+                    var = tk.BooleanVar(value=any(r.get("id") == self.requirement.get("id") for r in getattr(n, "safety_requirements", [])))
+                    self.vars[n] = var
+                    ttk.Checkbutton(frame, text=n.user_name or f"BE {n.unique_id}", variable=var).pack(anchor="w")
+                return frame
+
+            def apply(self):
+                self.result = {n: v.get() for n, v in self.vars.items()}
+
+        def add_req():
+            dlg = ReqDialog(win, "Add Requirement")
+            if dlg.result:
+                global_requirements[dlg.result["id"]] = dlg.result
+                refresh_tree()
+
+        def edit_req():
+            sel = tree.selection()
+            if not sel:
+                return
+            rid = sel[0]
+            dlg = ReqDialog(win, "Edit Requirement", global_requirements.get(rid))
+            if dlg.result:
+                global_requirements[rid].update(dlg.result)
+                refresh_tree()
+
+        def del_req():
+            sel = tree.selection()
+            if not sel:
+                return
+            rid = sel[0]
+            if messagebox.askyesno("Delete", "Delete requirement?"):
+                del global_requirements[rid]
+                for n in self.get_all_nodes(self.root_node):
+                    reqs = getattr(n, "safety_requirements", [])
+                    n.safety_requirements = [r for r in reqs if r.get("id") != rid]
+                for fmea in self.fmeas:
+                    for e in fmea.get("entries", []):
+                        reqs = e.get("safety_requirements", [])
+                        e["safety_requirements"] = [r for r in reqs if r.get("id") != rid]
+                refresh_tree()
+
+        def edit_trace():
+            sel = tree.selection()
+            if not sel:
+                return
+            rid = sel[0]
+            req = global_requirements.get(rid)
+            dlg = TraceDialog(win, self, req)
+            if dlg.result is not None:
+                for node, val in dlg.result.items():
+                    reqs = getattr(node, "safety_requirements", [])
+                    present = any(r.get("id") == rid for r in reqs)
+                    if val and not present:
+                        reqs.append(req)
+                    if not val and present:
+                        node.safety_requirements = [r for r in reqs if r.get("id") != rid]
+                refresh_tree()
+
+        btn = tk.Frame(win)
+        btn.pack(fill=tk.X)
+        tk.Button(btn, text="Add", command=add_req).pack(side=tk.LEFT)
+        tk.Button(btn, text="Edit", command=edit_req).pack(side=tk.LEFT)
+        tk.Button(btn, text="Delete", command=del_req).pack(side=tk.LEFT)
+        tk.Button(btn, text="Traceability", command=edit_trace).pack(side=tk.LEFT)
+
+        refresh_tree()
 
 
     def show_fmea_list(self):
@@ -10728,6 +10901,71 @@ class FaultTreeApp:
             except ValueError:
                 pass
         return False
+
+    def review_is_closed_for(self, review):
+        if not review:
+            return False
+        if getattr(review, "closed", False):
+            return True
+        if review.due_date:
+            try:
+                due = datetime.datetime.strptime(review.due_date, "%Y-%m-%d").date()
+                if datetime.date.today() > due:
+                    return True
+            except ValueError:
+                pass
+        return False
+
+    def get_requirements_for_review(self, review):
+        """Return a set of requirement IDs included in the given review."""
+        req_ids = set()
+        for tid in getattr(review, "fta_ids", []):
+            node = self.find_node_by_id_all(tid)
+            if not node:
+                continue
+            for n in self.get_all_nodes(node):
+                for r in getattr(n, "safety_requirements", []):
+                    req_ids.add(r.get("id"))
+        for name in getattr(review, "fmea_names", []):
+            fmea = next((f for f in self.fmeas if f["name"] == name), None)
+            if not fmea:
+                continue
+            for e in fmea.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    req_ids.add(r.get("id"))
+        return req_ids
+
+    def update_requirement_statuses(self):
+        status_order = {
+            "draft": 0,
+            "in review": 1,
+            "peer reviewed": 2,
+            "pending approval": 3,
+            "approved": 4,
+        }
+        for req in global_requirements.values():
+            req.setdefault("status", "draft")
+        for review in self.reviews:
+            ids = self.get_requirements_for_review(review)
+            closed = self.review_is_closed_for(review)
+            for rid in ids:
+                req = global_requirements.get(rid)
+                if not req:
+                    continue
+                if review.mode == "joint":
+                    if review.approved:
+                        status = "approved"
+                    elif closed:
+                        status = "pending approval"
+                    else:
+                        status = "in review"
+                else:  # peer review
+                    if review.approved or closed:
+                        status = "peer reviewed"
+                    else:
+                        status = "in review"
+                if status_order[status] > status_order.get(req.get("status", "draft"), 0):
+                    req["status"] = status
 
 
     def add_version(self):
