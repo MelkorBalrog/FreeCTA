@@ -2364,9 +2364,17 @@ class EditNodeDialog(simpledialog.Dialog):
 
     def update_probability(self, *_):
         if hasattr(self, "prob_entry") and hasattr(self, "fm_var"):
+            formula = self.formula_var.get() if hasattr(self, "formula_var") else None
+            if str(formula).strip().lower() == "constant":
+                if not self.prob_entry.get().strip():
+                    try:
+                        val = float(getattr(self.node, "failure_prob", 0.0))
+                    except (TypeError, ValueError):
+                        val = 0.0
+                    self.prob_entry.insert(0, str(val))
+                return
             label = self.fm_var.get().strip()
             ref = self.fm_map.get(label)
-            formula = self.formula_var.get() if hasattr(self, "formula_var") else None
             prob = self.app.compute_failure_prob(self.node, failure_mode_ref=ref, formula=formula)
             self.prob_entry.delete(0, tk.END)
             self.prob_entry.insert(0, f"{prob:.10g}")
@@ -2406,8 +2414,14 @@ class EditNodeDialog(simpledialog.Dialog):
             ref = self.fm_map.get(label)
             target_node.failure_mode_ref = ref
             target_node.prob_formula = self.formula_var.get()
-            target_node.failure_prob = self.app.compute_failure_prob(
-                target_node, failure_mode_ref=ref, formula=target_node.prob_formula)
+            if target_node.prob_formula == "constant":
+                try:
+                    target_node.failure_prob = float(self.prob_entry.get().strip())
+                except ValueError:
+                    target_node.failure_prob = 0.0
+            else:
+                target_node.failure_prob = self.app.compute_failure_prob(
+                    target_node, failure_mode_ref=ref, formula=target_node.prob_formula)
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
             target_node.gate_type = self.gate_var.get().strip().upper()
             if self.node.node_type.upper() == "TOP EVENT":
@@ -7737,7 +7751,12 @@ class FaultTreeApp:
             be.failure_prob = self.compute_failure_prob(be)
 
     def compute_failure_prob(self, node, failure_mode_ref=None, formula=None):
-        """Return probability of failure for ``node`` based on FIT rate."""
+        """Return probability of failure for ``node`` based on FIT rate.
+
+        When the constant formula is selected the ``failure_prob`` value
+        stored on the node is returned directly so users can specify an
+        arbitrary probability.
+        """
         tau = 1.0
         if self.mission_profiles:
             tau = self.mission_profiles[0].tau
@@ -7745,16 +7764,19 @@ class FaultTreeApp:
             tau = 1.0
         fm = self.find_node_by_id_all(failure_mode_ref) if failure_mode_ref else self.get_failure_mode_node(node)
         fit = getattr(fm, "fmeda_fit", getattr(node, "fmeda_fit", 0.0))
-        if fit <= 0:
-            return 0.0
         t = tau
         formula = formula or getattr(node, "prob_formula", getattr(fm, "prob_formula", "linear"))
         f = str(formula).strip().lower()
+        if f == "constant":
+            try:
+                return float(getattr(node, "failure_prob", 0.0))
+            except (TypeError, ValueError):
+                return 0.0
+        if fit <= 0:
+            return 0.0
         lam = fit / 1e9
         if f == "exponential":
             return 1 - math.exp(-lam * t)
-        elif f == "constant":
-            return fit
         else:
             return lam * t
 

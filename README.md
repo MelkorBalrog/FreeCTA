@@ -52,8 +52,8 @@ interpreted:
 * **linear** – probability is calculated as `λ × τ` where `λ` is the FIT value
   expressed as failures per hour and `τ` comes from the selected mission profile.
 * **exponential** – uses the exponential model `1 − exp(−λ × τ)`.
-* **constant** – the FIT value is treated directly as the probability
-  independent of mission time.
+* **constant** – probability comes from the basic event's *Failure Probability*
+  field and does not use the FIT rate or mission time.
 
 Mission profiles and the selected formula for each basic event are stored in the
 JSON model so results remain consistent when reloading the file.
