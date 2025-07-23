@@ -817,6 +817,8 @@ class HaraWindow(tk.Toplevel):
         self.doc_cb.bind("<<ComboboxSelected>>", self.select_doc)
         self.hazop_lbl = ttk.Label(top, text="")
         self.hazop_lbl.pack(side=tk.LEFT, padx=10)
+        self.status_lbl = ttk.Label(top, text="")
+        self.status_lbl.pack(side=tk.LEFT, padx=10)
 
         self.tree = ttk.Treeview(self, columns=self.COLS, show="headings")
         for c in self.COLS:
@@ -828,7 +830,6 @@ class HaraWindow(tk.Toplevel):
         ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
-        ttk.Button(btn, text="Approve", command=self.approve_doc).pack(side=tk.LEFT, padx=2, pady=2)
         self.refresh_docs()
         self.refresh()
 
@@ -840,6 +841,7 @@ class HaraWindow(tk.Toplevel):
             self.doc_var.set(self.app.active_hara.name)
             hazops = ", ".join(getattr(self.app.active_hara, "hazops", []))
             self.hazop_lbl.config(text=f"HAZOPs: {hazops}")
+
         elif names:
             self.doc_var.set(names[0])
             doc = self.app.hara_docs[0]
@@ -884,10 +886,11 @@ class HaraWindow(tk.Toplevel):
         if not getattr(dlg, "result", None):
             return
         name, hazops = dlg.result
-        doc = HaraDoc(name, hazops, [], False)
+        doc = HaraDoc(name, hazops, [], False, "draft")
         self.app.hara_docs.append(doc)
         self.app.active_hara = doc
         self.app.hara_entries = doc.entries
+        self.status_lbl.config(text=f"Status: {doc.status}")
         self.refresh_docs()
         self.refresh()
 
@@ -1009,7 +1012,9 @@ class HaraWindow(tk.Toplevel):
     def approve_doc(self):
         if not self.app.active_hara:
             return
+        self.app.active_hara.status = "closed"
         self.app.active_hara.approved = True
+        self.app.update_hara_statuses()
         self.app.sync_hara_to_safety_goals()
         messagebox.showinfo("HARA", "HARA approved")
 
