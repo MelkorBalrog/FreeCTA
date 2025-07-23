@@ -61,11 +61,12 @@ JSON model so results remain consistent when reloading the file.
 ### HAZOP Analysis
 
 The **HAZOP Analysis** window lets you list system functions with one or more
-associated malfunctions. Each malfunction is categorized as *No/Not*,
-*Excessive*, *Insufficient*, *Unintended* or *Reverse* and can be marked as
-safety relevant along with a rationale. When a function is allocated to an
-active component in a reliability analysis, its malfunctions become selectable
-failure modes in the FMEDA table.
+associated malfunctions. Each entry records the malfunction guideword
+(*No/Not*, *Unintended*, *Excessive*, *Insufficient* or *Reverse*), the related
+scenario, driving conditions and hazard, and whether it is safety relevant.
+Covered malfunctions may reference other entries as mitigation. When a function
+is allocated to an active component in a reliability analysis, its malfunctions
+become selectable failure modes in the FMEDA table.
 
 ## License
 
