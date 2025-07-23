@@ -1231,7 +1231,13 @@ class EditNodeDialog(simpledialog.Dialog):
         current_req["req_type"] = dialog.result["req_type"]
         current_req["text"] = dialog.result["text"]
         if self.node.node_type.upper() == "BASIC EVENT":
-            current_req["asil"] = self.infer_requirement_asil_from_node(self.node)
+            # Preserve the decomposed requirement's ASIL when editing within a
+            # base event. Previously this always recalculated the ASIL from the
+            # associated safety goals which overwrote decomposition levels.
+            current_req["asil"] = initial_req.get(
+                "asil",
+                self.infer_requirement_asil_from_node(self.node),
+            )
         else:
             current_req["asil"] = dialog.result.get("asil", "QM")
         current_req["custom_id"] = new_custom_id
