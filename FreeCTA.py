@@ -7763,8 +7763,8 @@ class FaultTreeApp:
             if getattr(be, "failure_mode_ref", None) == fm_node.unique_id:
                 be.fmeda_fit = fm_node.fmeda_fit
                 be.fmeda_diag_cov = fm_node.fmeda_diag_cov
-                if not getattr(be, "prob_formula", None):
-                    be.prob_formula = fm_node.prob_formula
+                # Always propagate the formula so edits take effect
+                be.prob_formula = fm_node.prob_formula
                 be.failure_prob = self.compute_failure_prob(be)
 
     def insert_node_in_tree(self, parent_item, node):
