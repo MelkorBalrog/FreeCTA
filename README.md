@@ -1,4 +1,4 @@
-# FreeCTA
+# AutoSafeguard Analyzer
 
 This repository contains a graphical fault tree analysis tool. The latest update adds a **Review Toolbox** supporting peer and joint review workflows.
 
