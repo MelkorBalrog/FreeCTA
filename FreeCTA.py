@@ -7733,13 +7733,16 @@ class FaultTreeApp:
 
     def compute_failure_prob(self, node, failure_mode_ref=None, formula=None):
         """Return probability of failure for ``node`` based on FIT rate."""
-        if not self.mission_profiles:
-            return 0.0
+        tau = 1.0
+        if self.mission_profiles:
+            tau = self.mission_profiles[0].tau
+        if tau <= 0:
+            tau = 1.0
         fm = self.find_node_by_id_all(failure_mode_ref) if failure_mode_ref else self.get_failure_mode_node(node)
         fit = getattr(fm, "fmeda_fit", getattr(node, "fmeda_fit", 0.0))
         if fit <= 0:
             return 0.0
-        t = self.mission_profiles[0].tau
+        t = tau
         formula = formula or getattr(node, "prob_formula", getattr(fm, "prob_formula", "linear"))
         lam = fit / 1e9
         if formula == "exponential":
@@ -11766,7 +11769,7 @@ class FaultTreeNode:
         # --- FMEDA attributes ---
         self.fmeda_malfunction = ""
         self.fmeda_safety_goal = ""
-        self.fmeda_diag_cov = 1.0
+        self.fmeda_diag_cov = 0.0
         self.fmeda_fit = 0.0
         self.fmeda_spfm = 0.0
         self.fmeda_lpfm = 0.0
@@ -11864,7 +11867,7 @@ class FaultTreeNode:
         node.fmea_component = data.get("fmea_component", "")
         node.fmeda_malfunction = data.get("fmeda_malfunction", "")
         node.fmeda_safety_goal = data.get("fmeda_safety_goal", "")
-        node.fmeda_diag_cov = data.get("fmeda_diag_cov", 1.0)
+        node.fmeda_diag_cov = data.get("fmeda_diag_cov", 0.0)
         node.fmeda_fit = data.get("fmeda_fit", 0.0)
         node.fmeda_spfm = data.get("fmeda_spfm", 0.0)
         node.fmeda_lpfm = data.get("fmeda_lpfm", 0.0)
