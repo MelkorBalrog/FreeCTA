@@ -1192,6 +1192,30 @@ class EditNodeDialog(simpledialog.Dialog):
         self.update_all_requirement_asil()
         self.update_requirement_decomposition()
 
+    def invalidate_reviews_for_hara(self, name):
+        """Reopen reviews associated with the given HARA."""
+        for r in self.reviews:
+            if name in getattr(r, "hara_names", []):
+                r.closed = False
+                r.approved = False
+                r.reviewed = False
+                for p in r.participants:
+                    p.done = False
+                    p.approved = False
+        self.update_hara_statuses()
+
+    def invalidate_reviews_for_requirement(self, req_id):
+        """Reopen reviews that include the given requirement."""
+        for r in self.reviews:
+            if req_id in self.get_requirements_for_review(r):
+                r.closed = False
+                r.approved = False
+                r.reviewed = False
+                for p in r.participants:
+                    p.done = False
+                    p.approved = False
+        self.update_requirement_statuses()
+
     
     def add_safety_requirement(self):
         """
@@ -1266,6 +1290,7 @@ class EditNodeDialog(simpledialog.Dialog):
         new_custom_id = dialog.result["custom_id"].strip() or current_req.get("custom_id") or current_req.get("id") or str(uuid.uuid4())
         current_req["req_type"] = dialog.result["req_type"]
         current_req["text"] = dialog.result["text"]
+        current_req["status"] = "draft"
         if self.node.node_type.upper() == "BASIC EVENT":
             # Leave the ASIL untouched for decomposed requirements when
             # editing within a base event so the value set during
@@ -1276,10 +1301,12 @@ class EditNodeDialog(simpledialog.Dialog):
         current_req["custom_id"] = new_custom_id
         current_req["id"] = new_custom_id
         global_requirements[new_custom_id] = current_req
+        self.app.invalidate_reviews_for_requirement(new_custom_id)
         self.node.safety_requirements[index] = current_req
         self.safety_req_listbox.delete(index)
         if self.node.node_type.upper() != "BASIC EVENT":
             self.update_requirement_asil(new_custom_id)
+        self.app.ensure_asil_consistency()
         self.safety_req_listbox.insert(
             index,
             f"[{current_req['id']}] [{current_req['req_type']}] [{current_req.get('asil','')}] {current_req['text']}",
@@ -1329,6 +1356,8 @@ class EditNodeDialog(simpledialog.Dialog):
             "status": "draft",
             "parent_id": req.get("id"),
         }
+        req["status"] = "draft"
+        global_requirements[req.get("id")] = req
         global_requirements[req_id_a] = r1
         global_requirements[req_id_b] = r2
         del self.node.safety_requirements[index]
@@ -1337,6 +1366,10 @@ class EditNodeDialog(simpledialog.Dialog):
         if self.node.node_type.upper() != "BASIC EVENT":
             self.update_requirement_asil(req_id_a)
             self.update_requirement_asil(req_id_b)
+        self.app.ensure_asil_consistency()
+        self.app.invalidate_reviews_for_requirement(req.get("id"))
+        self.app.invalidate_reviews_for_requirement(req_id_a)
+        self.app.invalidate_reviews_for_requirement(req_id_b)
         self.safety_req_listbox.delete(index)
         self.safety_req_listbox.insert(
             index,
@@ -1372,14 +1405,19 @@ class EditNodeDialog(simpledialog.Dialog):
         req_b = self.node.safety_requirements[pair_indices[1]]
         req_a["asil"] = asil_a
         req_b["asil"] = asil_b
+        req_a["status"] = "draft"
+        req_b["status"] = "draft"
         global_requirements[req_a["id"]] = req_a
         global_requirements[req_b["id"]] = req_b
+        self.app.invalidate_reviews_for_requirement(req_a["id"])
+        self.app.invalidate_reviews_for_requirement(req_b["id"])
         for idx, r in zip(pair_indices, (req_a, req_b)):
             self.safety_req_listbox.delete(idx)
             self.safety_req_listbox.insert(idx, f"[{r['id']}] [{r['req_type']}] [{r.get('asil','')}] {r['text']}")
         if self.node.node_type.upper() != "BASIC EVENT":
             self.update_requirement_asil(req_a["id"])
             self.update_requirement_asil(req_b["id"])
+        self.app.ensure_asil_consistency()
 
     def buttonbox(self):
         box = tk.Frame(self)
