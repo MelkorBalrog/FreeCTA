@@ -326,19 +326,28 @@ class MissionProfile:
         """Return the total TAU for backward compatibility."""
         return self.tau_on + self.tau_off
 
-
 @dataclass
 class ReliabilityComponent:
     name: str
     comp_type: str
     quantity: int = 1
     attributes: dict = field(default_factory=dict)
-    safety_req: str = ""
+    qualification: str = ""
     fit: float = 0.0
     is_passive: bool = False
-    functions: list = field(default_factory=list)
     sub_boms: list = field(default_factory=list)
 
+QUALIFICATIONS = [
+    "AEC-Q100",
+    "AEC-Q101",
+    "AEC-Q200",
+    "IECQ",
+    "MIL-STD-883",
+    "MIL-PRF-38534",
+    "MIL-PRF-38535",
+    "Space",
+    "None",
+]
 
 @dataclass
 class ReliabilityAnalysis:
@@ -8984,11 +8993,21 @@ class FaultTreeApp:
                 ttk.Label(dlg, text="Quantity").grid(row=2, column=0, padx=5, pady=5, sticky="e")
                 qty_var = tk.IntVar(value=1)
                 ttk.Entry(dlg, textvariable=qty_var).grid(row=2, column=1, padx=5, pady=5)
+                ttk.Label(dlg, text="Qualification").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+                qual_var = tk.StringVar(value="None")
+                ttk.Combobox(dlg, textvariable=qual_var, values=QUALIFICATIONS, state="readonly").grid(row=3, column=1, padx=5, pady=5)
                 passive_var = tk.BooleanVar(value=False)
-                ttk.Checkbutton(dlg, text="Passive", variable=passive_var).grid(row=3, column=0, columnspan=2, pady=5)
+                ttk.Checkbutton(dlg, text="Passive", variable=passive_var).grid(row=4, column=0, columnspan=2, pady=5)
 
                 def ok():
-                    comp = ReliabilityComponent(name_var.get(), type_var.get(), qty_var.get(), is_passive=passive_var.get())
+                    comp = ReliabilityComponent(
+                        name_var.get(),
+                        type_var.get(),
+                        qty_var.get(),
+                        {},
+                        qual_var.get(),
+                        is_passive=passive_var.get(),
+                    )
                     template = COMPONENT_ATTR_TEMPLATES.get(comp.comp_type, {})
                     for k, v in template.items():
                         comp.attributes[k] = v[0] if isinstance(v, list) else v
@@ -8996,7 +9015,7 @@ class FaultTreeApp:
                     dlg.destroy()
                     refresh_tree()
 
-                ttk.Button(dlg, text="Add", command=ok).grid(row=4, column=0, columnspan=2, pady=5)
+                ttk.Button(dlg, text="Add", command=ok).grid(row=5, column=0, columnspan=2, pady=5)
                 dlg.grab_set()
                 dlg.wait_window()
 
@@ -10277,13 +10296,13 @@ class FaultTreeApp:
 
             self.tree = ttk.Treeview(
                 self,
-                columns=("name", "type", "qty", "fit", "safety"),
+                columns=("name", "type", "qty", "fit", "qualification"),
                 show="headings",
             )
-            for col in ("name", "type", "qty", "fit", "safety"):
-                heading = "Safety" if col == "safety" else col.capitalize()
+            for col in ("name", "type", "qty", "fit", "qualification"):
+                heading = "Qualification" if col == "qualification" else col.capitalize()
                 self.tree.heading(col, text=heading)
-                self.tree.column(col, width=120 if col == "safety" else 100)
+                self.tree.column(col, width=120 if col == "qualification" else 100)
             self.tree.pack(fill=tk.BOTH, expand=True)
             self.tree.bind("<<TreeviewSelect>>", self.show_formula)
 
@@ -10325,11 +10344,21 @@ class FaultTreeApp:
             ttk.Label(dialog, text="Quantity").grid(row=2, column=0, padx=5, pady=5, sticky="e")
             qty_var = tk.IntVar(value=1)
             ttk.Entry(dialog, textvariable=qty_var).grid(row=2, column=1, padx=5, pady=5)
+            ttk.Label(dialog, text="Qualification").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+            qual_var = tk.StringVar(value="None")
+            ttk.Combobox(dialog, textvariable=qual_var, values=QUALIFICATIONS, state="readonly").grid(row=3, column=1, padx=5, pady=5)
             passive_var = tk.BooleanVar(value=False)
-            ttk.Checkbutton(dialog, text="Passive", variable=passive_var).grid(row=3, column=0, columnspan=2, pady=5)
+            ttk.Checkbutton(dialog, text="Passive", variable=passive_var).grid(row=4, column=0, columnspan=2, pady=5)
 
             def ok():
-                comp = ReliabilityComponent(name_var.get(), type_var.get(), qty_var.get(), is_passive=passive_var.get())
+                comp = ReliabilityComponent(
+                    name_var.get(),
+                    type_var.get(),
+                    qty_var.get(),
+                    {},
+                    qual_var.get(),
+                    is_passive=passive_var.get(),
+                )
                 template = COMPONENT_ATTR_TEMPLATES.get(comp.comp_type, {})
                 for k, v in template.items():
                     comp.attributes[k] = v[0] if isinstance(v, list) else v
@@ -10337,7 +10366,7 @@ class FaultTreeApp:
                 self.refresh_tree()
                 dialog.destroy()
 
-            ttk.Button(dialog, text="Add", command=ok).grid(row=4, column=0, columnspan=2, pady=5)
+            ttk.Button(dialog, text="Add", command=ok).grid(row=5, column=0, columnspan=2, pady=5)
             dialog.grab_set()
             dialog.wait_window()
 
@@ -10355,20 +10384,30 @@ class FaultTreeApp:
             qty_var = tk.IntVar(value=1)
             ttk.Label(dlg, text="Quantity").grid(row=2, column=0, padx=5, pady=5, sticky="e")
             ttk.Entry(dlg, textvariable=qty_var).grid(row=2, column=1, padx=5, pady=5)
+            ttk.Label(dlg, text="Qualification").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+            qual_var = tk.StringVar(value="None")
+            ttk.Combobox(dlg, textvariable=qual_var, values=QUALIFICATIONS, state="readonly").grid(row=3, column=1, padx=5, pady=5)
             passive_var = tk.BooleanVar(value=False)
-            ttk.Checkbutton(dlg, text="Passive", variable=passive_var).grid(row=3, column=0, columnspan=2, pady=5)
+            ttk.Checkbutton(dlg, text="Passive", variable=passive_var).grid(row=4, column=0, columnspan=2, pady=5)
 
             def ok():
                 bom_idxs = lb.curselection()
                 boms = [self.app.reliability_analyses[i].components for i in bom_idxs]
-                comp = ReliabilityComponent(name_var.get(), "circuit", qty_var.get(), is_passive=passive_var.get())
+                comp = ReliabilityComponent(
+                    name_var.get(),
+                    "circuit",
+                    qty_var.get(),
+                    {},
+                    qual_var.get(),
+                    is_passive=passive_var.get(),
+                )
                 comp.sub_boms = copy.deepcopy(boms)
                 comp.fit = 0.0
                 self.components.append(comp)
                 self.refresh_tree()
                 dlg.destroy()
 
-            ttk.Button(dlg, text="Add", command=ok).grid(row=4, column=0, columnspan=2, pady=5)
+            ttk.Button(dlg, text="Add", command=ok).grid(row=5, column=0, columnspan=2, pady=5)
             dlg.grab_set()
             dlg.wait_window()
 
@@ -10399,7 +10438,7 @@ class FaultTreeApp:
                         comp.comp_type,
                         comp.quantity,
                         f"{comp.fit:.2f}",
-                        comp.safety_req,
+                        comp.qualification,
                     ),
                 )
             self.profile_combo.config(values=[mp.name for mp in self.app.mission_profiles])
@@ -10420,8 +10459,8 @@ class FaultTreeApp:
                         name = row.get(mapping["name"], "")
                         ctype = row.get(mapping["type"], "")
                         qty = int(row.get(mapping["qty"], 1) or 1)
-                        safety = row.get(mapping.get("safety"), "") if mapping.get("safety") else ""
-                        comp = ReliabilityComponent(name, ctype, qty, {}, safety)
+                        qual = row.get(mapping.get("qualification"), "") if mapping.get("qualification") else ""
+                        comp = ReliabilityComponent(name, ctype, qty, {}, qual)
                         template = COMPONENT_ATTR_TEMPLATES.get(ctype, {})
                         for k, v in template.items():
                             comp.attributes[k] = v[0] if isinstance(v, list) else v
@@ -10440,7 +10479,7 @@ class FaultTreeApp:
             win = tk.Toplevel(self)
             win.title("Map Columns")
             vars = {}
-            targets = ["name", "type", "qty", "safety"]
+            targets = ["name", "type", "qty", "qualification"]
             for i, tgt in enumerate(targets):
                 ttk.Label(win, text=tgt.capitalize()).grid(row=i, column=0, padx=5, pady=5, sticky="e")
                 var = tk.StringVar()
@@ -10481,11 +10520,20 @@ class FaultTreeApp:
             for k, v in template.items():
                 comp.attributes.setdefault(k, v[0] if isinstance(v, list) else v)
 
-            parent_win = self
             class ParamDialog(simpledialog.Dialog):
                 def body(self, master):
                     self.vars = {}
                     row = 0
+                    ttk.Label(master, text="Quantity").grid(row=row, column=0, padx=5, pady=5, sticky="e")
+                    qty_var = tk.IntVar(value=comp.quantity)
+                    ttk.Entry(master, textvariable=qty_var).grid(row=row, column=1, padx=5, pady=5)
+                    self.vars["__qty__"] = qty_var
+                    row += 1
+                    ttk.Label(master, text="Qualification").grid(row=row, column=0, padx=5, pady=5, sticky="e")
+                    qual_var = tk.StringVar(value=comp.qualification)
+                    ttk.Combobox(master, textvariable=qual_var, values=QUALIFICATIONS, state="readonly").grid(row=row, column=1, padx=5, pady=5)
+                    self.vars["__qual__"] = qual_var
+                    row += 1
                     for k, v in comp.attributes.items():
                         ttk.Label(master, text=k).grid(row=row, column=0, padx=5, pady=5, sticky="e")
                         if isinstance(template.get(k), list):
@@ -10497,26 +10545,13 @@ class FaultTreeApp:
                         self.vars[k] = var
                         row += 1
 
-                    if not comp.is_passive and parent_win.app.hazop_entries:
-                        funcs = sorted({e.function for e in parent_win.app.hazop_entries})
-                        ttk.Label(master, text="Functions").grid(row=row, column=0, padx=5, pady=5, sticky="ne")
-                        self.lb = tk.Listbox(master, selectmode=tk.MULTIPLE, height=4)
-                        for f in funcs:
-                            self.lb.insert(tk.END, f)
-                            if f in comp.functions:
-                                self.lb.selection_set(tk.END)
-                        self.lb.grid(row=row, column=1, padx=5, pady=5)
-                        row += 1
-
                 def apply(self):
+                    comp.quantity = int(self.vars["__qty__"].get())
+                    comp.qualification = self.vars["__qual__"].get()
                     for k, v in self.vars.items():
+                        if k.startswith("__"):
+                            continue
                         comp.attributes[k] = v.get()
-                    if not comp.is_passive and parent_win.app.hazop_entries:
-                        sel = [self.lb.get(i) for i in self.lb.curselection()]
-                        comp.functions = sel
-                        for entry in parent_win.app.hazop_entries:
-                            if entry.function in sel:
-                                entry.component = comp.name
 
             ParamDialog(self)
             self.refresh_tree()
@@ -11229,7 +11264,7 @@ class FaultTreeApp:
                     cdata.get("comp_type", ""),
                     cdata.get("quantity", 1),
                     cdata.get("attributes", {}),
-                    cdata.get("safety_req", ""),
+                    cdata.get("qualification", cdata.get("safety_req", "")),
                     cdata.get("fit", 0.0),
                     cdata.get("is_passive", False),
                 )
