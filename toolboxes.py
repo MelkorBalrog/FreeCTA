@@ -2,7 +2,18 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import csv
 import copy
-from models import ReliabilityComponent, ReliabilityAnalysis, HazopEntry, HaraEntry, QUALIFICATIONS, COMPONENT_ATTR_TEMPLATES, RELIABILITY_MODELS, calc_asil
+from models import (
+    ReliabilityComponent,
+    ReliabilityAnalysis,
+    HazopEntry,
+    HaraEntry,
+    HazopDoc,
+    HaraDoc,
+    QUALIFICATIONS,
+    COMPONENT_ATTR_TEMPLATES,
+    RELIABILITY_MODELS,
+    calc_asil,
+)
 
 class ReliabilityWindow(tk.Toplevel):
     def __init__(self, app):
@@ -505,6 +516,7 @@ class FI2TCWindow(tk.Toplevel):
                     self.widgets[col] = ent
                 r += 1
             refresh_funcs()
+            
         def apply(self):
             for col, widget in self.widgets.items():
                 if isinstance(widget, tk.Entry):
@@ -548,6 +560,14 @@ class HazopWindow(tk.Toplevel):
         self.app = app
         self.title("HAZOP Analysis")
         self.geometry("600x400")
+        top = ttk.Frame(self)
+        top.pack(fill=tk.X)
+        ttk.Label(top, text="HAZOP:").pack(side=tk.LEFT)
+        self.doc_var = tk.StringVar()
+        self.doc_cb = ttk.Combobox(top, textvariable=self.doc_var, state="readonly")
+        self.doc_cb.pack(side=tk.LEFT, padx=2)
+        ttk.Button(top, text="New", command=self.new_doc).pack(side=tk.LEFT)
+        self.doc_cb.bind("<<ComboboxSelected>>", self.select_doc)
 
         columns = ("function", "malfunction", "type", "safety", "rationale")
         self.tree = ttk.Treeview(self, columns=columns, show="headings")
@@ -566,6 +586,35 @@ class HazopWindow(tk.Toplevel):
         ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
 
+        self.refresh_docs()
+        self.refresh()
+
+    def refresh_docs(self):
+        names = [d.name for d in self.app.hazop_docs]
+        self.doc_cb["values"] = names
+        if self.app.active_hazop:
+            self.doc_var.set(self.app.active_hazop.name)
+        elif names:
+            self.doc_var.set(names[0])
+
+    def select_doc(self, *_):
+        name = self.doc_var.get()
+        for d in self.app.hazop_docs:
+            if d.name == name:
+                self.app.active_hazop = d
+                self.app.hazop_entries = d.entries
+                break
+        self.refresh()
+
+    def new_doc(self):
+        name = simpledialog.askstring("New HAZOP", "Name:")
+        if not name:
+            return
+        doc = HazopDoc(name, [])
+        self.app.hazop_docs.append(doc)
+        self.app.active_hazop = doc
+        self.app.hazop_entries = doc.entries
+        self.refresh_docs()
         self.refresh()
 
     def refresh(self):
@@ -749,6 +798,17 @@ class HaraWindow(tk.Toplevel):
         super().__init__(app.root)
         self.app = app
         self.title("HARA Analysis")
+        top = ttk.Frame(self)
+        top.pack(fill=tk.X)
+        ttk.Label(top, text="HARA:").pack(side=tk.LEFT)
+        self.doc_var = tk.StringVar()
+        self.doc_cb = ttk.Combobox(top, textvariable=self.doc_var, state="readonly")
+        self.doc_cb.pack(side=tk.LEFT, padx=2)
+        ttk.Button(top, text="New", command=self.new_doc).pack(side=tk.LEFT)
+        self.doc_cb.bind("<<ComboboxSelected>>", self.select_doc)
+        self.hazop_lbl = ttk.Label(top, text="")
+        self.hazop_lbl.pack(side=tk.LEFT, padx=10)
+
         self.tree = ttk.Treeview(self, columns=self.COLS, show="headings")
         for c in self.COLS:
             self.tree.heading(c, text=c.replace("_"," ").title())
@@ -759,6 +819,59 @@ class HaraWindow(tk.Toplevel):
         ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
+        self.refresh_docs()
+        self.refresh()
+
+    def refresh_docs(self):
+        names = [d.name for d in self.app.hara_docs]
+        self.doc_cb["values"] = names
+        if self.app.active_hara:
+            self.doc_var.set(self.app.active_hara.name)
+            self.hazop_lbl.config(text=f"HAZOP: {self.app.active_hara.hazop}")
+        elif names:
+            self.doc_var.set(names[0])
+            doc = self.app.hara_docs[0]
+            self.hazop_lbl.config(text=f"HAZOP: {doc.hazop}")
+            self.app.active_hara = doc
+            self.app.hara_entries = doc.entries
+
+    def select_doc(self, *_):
+        name = self.doc_var.get()
+        for d in self.app.hara_docs:
+            if d.name == name:
+                self.app.active_hara = d
+                self.app.hara_entries = d.entries
+                self.hazop_lbl.config(text=f"HAZOP: {d.hazop}")
+                break
+        self.refresh()
+
+    class NewHaraDialog(simpledialog.Dialog):
+        def __init__(self, parent, app):
+            self.app = app
+            super().__init__(parent, title="New HARA")
+
+        def body(self, master):
+            ttk.Label(master, text="Name").grid(row=0, column=0, sticky="e")
+            self.name_var = tk.StringVar()
+            ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1)
+            ttk.Label(master, text="HAZOP").grid(row=1, column=0, sticky="e")
+            names = [d.name for d in self.app.hazop_docs]
+            self.hazop_var = tk.StringVar()
+            ttk.Combobox(master, textvariable=self.hazop_var, values=names, state="readonly").grid(row=1, column=1)
+
+        def apply(self):
+            self.result = (self.name_var.get(), self.hazop_var.get())
+
+    def new_doc(self):
+        dlg = self.NewHaraDialog(self, self.app)
+        if not getattr(dlg, "result", None):
+            return
+        name, hazop = dlg.result
+        doc = HaraDoc(name, hazop, [])
+        self.app.hara_docs.append(doc)
+        self.app.active_hara = doc
+        self.app.hara_entries = doc.entries
+        self.refresh_docs()
         self.refresh()
 
     def refresh(self):
@@ -780,7 +893,10 @@ class HaraWindow(tk.Toplevel):
             super().__init__(parent, title="Edit HARA Row")
 
         def body(self, master):
-            malfs = [e.malfunction for e in self.app.hazop_entries if e.safety]
+            hazop_name = self.app.active_hara.hazop if self.app.active_hara else ""
+            hazop = self.app.get_hazop_by_name(hazop_name) if hazop_name else None
+            entries = hazop.entries if hazop else []
+            malfs = [e.malfunction for e in entries if getattr(e, "safety", False)]
             goals = [te.safety_goal_description or (te.user_name or f"SG {te.unique_id}") for te in self.app.top_events]
             ttk.Label(master, text="Malfunction").grid(row=0,column=0,sticky="e")
             self.mal_var = tk.StringVar(value=self.row.malfunction)

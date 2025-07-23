@@ -254,6 +254,8 @@ from models import (
     ReliabilityAnalysis,
     HazopEntry,
     HaraEntry,
+    HazopDoc,
+    HaraDoc,
     QUALIFICATIONS,
     COMPONENT_ATTR_TEMPLATES,
     RELIABILITY_MODELS,
@@ -1307,7 +1309,11 @@ class FaultTreeApp:
         self.spfm = 0.0
         self.lpfm = 0.0
         self.reliability_dc = 0.0
-        self.hazop_entries = []
+        self.hazop_docs = []  # list of HazopDoc
+        self.hara_docs = []   # list of HaraDoc
+        self.active_hazop = None
+        self.active_hara = None
+        self.hazop_entries = []  # backwards compatibility for active doc
         self.hara_entries = []
         self.top_events = []
         self.reviews = []
@@ -2186,15 +2192,45 @@ class FaultTreeApp:
 
         return None
 
+    def get_hazop_by_name(self, name):
+        for d in self.hazop_docs:
+            if d.name == name:
+                return d
+        return None
+
+    def get_hara_by_name(self, name):
+        for d in self.hara_docs:
+            if d.name == name:
+                return d
+        return None
+
     def get_safety_goal_asil(self, sg_name):
-        """Return the ASIL level for a safety goal name."""
-        for e in self.hara_entries:
-            if sg_name and sg_name == e.safety_goal:
-                return e.asil
+        """Return the highest ASIL level for a safety goal name across HARAs."""
+        best = "QM"
+        for doc in getattr(self, "hara_docs", []):
+            for e in doc.entries:
+                if sg_name and sg_name == e.safety_goal and ASIL_ORDER.get(e.asil, 0) > ASIL_ORDER.get(best, 0):
+                    best = e.asil
         for te in self.top_events:
             if sg_name and (sg_name == te.user_name or sg_name == te.safety_goal_description):
-                return te.safety_goal_asil or "QM"
-        return "QM"
+                if ASIL_ORDER.get(te.safety_goal_asil or "QM", 0) > ASIL_ORDER.get(best, 0):
+                    best = te.safety_goal_asil or "QM"
+        return best
+
+    def sync_hara_to_safety_goals(self):
+        """Propagate ASIL values from HARA entries to safety goals."""
+        asil_map = {}
+        for doc in getattr(self, "hara_docs", []):
+            for e in doc.entries:
+                if not e.safety_goal:
+                    continue
+                cur = asil_map.get(e.safety_goal, "QM")
+                if ASIL_ORDER.get(e.asil, 0) > ASIL_ORDER.get(cur, 0):
+                    asil_map[e.safety_goal] = e.asil
+        for te in self.top_events:
+            name = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
+            if name in asil_map:
+                te.safety_goal_asil = asil_map[name]
 
     def sync_hara_to_safety_goals(self):
         """Propagate ASIL values from HARA entries to safety goals."""
@@ -6577,25 +6613,42 @@ class FaultTreeApp:
                     names.append(name)
         return names
 
+    def get_all_scenery_names(self):
+        """Return the list of scenery/ODD element names."""
+        names = []
+        for lib in self.odd_libraries:
+            for el in lib.get("elements", []):
+                if isinstance(el, dict):
+                    name = el.get("name") or el.get("element") or el.get("id")
+                else:
+                    name = str(el)
+                if name:
+                    names.append(name)
+        return names
+
     def get_all_function_names(self):
         """Return unique function names from HAZOP entries."""
-        return sorted({e.function for e in self.hazop_entries if getattr(e, "function", "")})
+        names = set()
+        for doc in getattr(self, "hazop_docs", []):
+            for e in doc.entries:
+                if getattr(e, "function", ""):
+                    names.add(e.function)
+        return sorted(names)
 
     def get_all_component_names(self):
         """Return unique component names from HAZOP and reliability analyses."""
-        names = {e.component for e in self.hazop_entries if getattr(e, "component", "")}
+        names = set()
+        for doc in getattr(self, "hazop_docs", []):
+            names.update(e.component for e in doc.entries if getattr(e, "component", ""))
         names.update(c.name for c in self.reliability_components)
         return sorted(n for n in names if n)
 
     def get_all_malfunction_names(self):
         """Return unique malfunction names from HAZOP entries."""
-        return sorted({e.malfunction for e in self.hazop_entries if getattr(e, "malfunction", "")})
-
-    def update_odd_elements(self):
-        """Aggregate elements from all ODD libraries into odd_elements list."""
-        self.odd_elements = []
-        for lib in self.odd_libraries:
-            self.odd_elements.extend(lib.get("elements", []))
+        names = set()
+        for doc in getattr(self, "hazop_docs", []):
+            names.update(e.malfunction for e in doc.entries if getattr(e, "malfunction", ""))
+        return sorted(names)
 
     def update_odd_elements(self):
         """Aggregate elements from all ODD libraries into odd_elements list."""
@@ -7574,10 +7627,16 @@ class FaultTreeApp:
                 be.description or (be.user_name or f"BE {be.unique_id}"): be
                 for be in basic_events + self.fmea_entries
             }
-            for e in self.app.hazop_entries:
-                label = f"{e.function}: {e.malfunction}"
-                obj = types.SimpleNamespace(description=e.malfunction, user_name=label, parents=[], fmea_component=e.component)
-                self.mode_map[label] = obj
+            for doc in self.app.hazop_docs:
+                for e in doc.entries:
+                    label = f"{e.function}: {e.malfunction}"
+                    obj = types.SimpleNamespace(
+                        description=e.malfunction,
+                        user_name=label,
+                        parents=[],
+                        fmea_component=e.component,
+                    )
+                    self.mode_map[label] = obj
             mode_names = list(self.mode_map.keys())
             self.mode_var = tk.StringVar(value=self.node.description or self.node.user_name)
             self.mode_combo = ttk.Combobox(master, textvariable=self.mode_var,
@@ -9205,98 +9264,43 @@ class FaultTreeApp:
     def manage_scenario_libraries(self):
         win = tk.Toplevel(self.root)
         win.title("Scenario Libraries")
-
-        lib_lb = tk.Listbox(win, height=8, width=25)
-        lib_lb.grid(row=0, column=0, rowspan=4, sticky="nsew")
-        sc_tree = ttk.Treeview(win, columns=("type", "base", "tcs", "fis"), show="headings")
-        sc_tree.heading("type", text="Type")
-        sc_tree.heading("base", text="Base")
-        sc_tree.heading("tcs", text="TCs")
-        sc_tree.heading("fis", text="FIs")
-        sc_tree.column("type", width=70)
-        sc_tree.column("base", width=120)
-        sc_tree.column("tcs", width=120)
-        sc_tree.column("fis", width=120)
-        sc_tree.grid(row=0, column=1, columnspan=3, sticky="nsew")
-        win.grid_rowconfigure(0, weight=1)
-        win.grid_columnconfigure(1, weight=1)
-
-        def refresh_libs():
-            lib_lb.delete(0, tk.END)
-            for lib in self.scenario_libraries:
-                lib_lb.insert(tk.END, lib.get("name", ""))
-            refresh_scenarios()
-
-        def refresh_scenarios(*_):
-            sc_tree.delete(*sc_tree.get_children())
-            sel = lib_lb.curselection()
-            if not sel:
-                return
-            lib = self.scenario_libraries[sel[0]]
-            for sc in lib.get("scenarios", []):
-                if isinstance(sc, dict):
-                    name = sc.get("name", "")
-                    sc_type = "SOTIF" if sc.get("fis") or sc.get("tcs") else "Use Case"
-                    base = sc.get("base", "")
-                    tcs = ", ".join(sc.get("tcs", []))
-                    fis = ", ".join(sc.get("fis", []))
-                else:
-                    name = sc
-                    sc_type = "Use Case"
-                    base = ""
-                    tcs = ""
-                    fis = ""
-                sc_tree.insert("", tk.END, text=name, values=(sc_type, base, tcs, fis))
-
-        class ScenarioDialog(simpledialog.Dialog):
-            def __init__(self, parent, app, data=None):
-                self.app = app
-                self.data = data or {"name": "", "base": "", "tcs": [], "fis": []}
-                super().__init__(parent, title="Edit Scenario")
-
-            def body(self, master):
-                ttk.Label(master, text="Name").grid(row=0, column=0, sticky="e")
-                self.name_var = tk.StringVar(value=self.data.get("name", ""))
-                ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1)
-
-                ttk.Label(master, text="Base Use Case").grid(row=1, column=0, sticky="e")
-                names = self.app.get_all_scenario_names()
-                self.base_var = tk.StringVar(value=self.data.get("base", ""))
-                ttk.Combobox(master, textvariable=self.base_var, values=names, state="readonly").grid(row=1, column=1)
-
-                ttk.Label(master, text="Triggering Conditions").grid(row=2, column=0, sticky="e")
-                self.tc_var = tk.Entry(master)
-                self.tc_var.insert(0, ", ".join(self.data.get("tcs", [])))
-                self.tc_var.grid(row=2, column=1)
-
-                ttk.Label(master, text="Functional Insufficiencies").grid(row=3, column=0, sticky="e")
-                self.fi_var = tk.Entry(master)
-                self.fi_var.insert(0, ", ".join(self.data.get("fis", [])))
-                self.fi_var.grid(row=3, column=1)
-
-            def apply(self):
-                tcs = [t.strip() for t in self.tc_var.get().split(",") if t.strip()]
-                fis = [f.strip() for f in self.fi_var.get().split(",") if f.strip()]
-                self.data = {
-                    "name": self.name_var.get().strip(),
-                    "base": self.base_var.get().strip(),
-                    "tcs": tcs,
-                    "fis": fis,
-                    "type": "sotif" if (tcs or fis) else "use_case",
-                }
+        lb = tk.Listbox(win, height=8, width=40)
+        lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        for lib in self.scenario_libraries:
+            lb.insert(tk.END, lib.get("name",""))
 
         def add_lib():
             name = simpledialog.askstring("New Library", "Library name:")
             if not name:
                 return
-            self.scenario_libraries.append({"name": name, "scenarios": []})
+            elems = []
+            if messagebox.askyesno("Import", "Import elements from file?"):
+                path = filedialog.askopenfilename(filetypes=[("CSV/Excel", "*.csv *.xlsx")])
+                if path:
+                    if path.lower().endswith(".csv"):
+                        with open(path, newline="") as f:
+                            elems = list(csv.DictReader(f))
+                    elif path.lower().endswith(".xlsx"):
+                        try:
+                            if load_workbook is None:
+                                raise ImportError
+                            wb = load_workbook(path, read_only=True)
+                            ws = wb.active
+                            headers = [c.value for c in next(ws.iter_rows(max_row=1))]
+                            for row in ws.iter_rows(min_row=2, values_only=True):
+                                elem = {headers[i]: row[i] for i in range(len(headers))}
+                                elems.append(elem)
+                        except Exception:
+                            messagebox.showerror("Import", "Failed to read Excel file. openpyxl required.")
+            self.odd_libraries.append({"name": name, "elements": elems})
             refresh_libs()
+            self.update_odd_elements()
 
         def edit_lib():
             sel = lib_lb.curselection()
             if not sel:
                 return
-            lib = self.scenario_libraries[sel[0]]
+            lib = self.odd_libraries[sel[0]]
             name = simpledialog.askstring("Edit Library", "Library name:", initialvalue=lib.get("name", ""))
             if name:
                 lib["name"] = name
@@ -9305,64 +9309,18 @@ class FaultTreeApp:
         def delete_lib():
             sel = lib_lb.curselection()
             if sel:
-                idx = sel[0]
-                del self.scenario_libraries[idx]
-                refresh_libs()
-
-        def add_scenario():
-            sel = lib_lb.curselection()
-            if not sel:
-                return
-            lib = self.scenario_libraries[sel[0]]
-            dlg = ScenarioDialog(win, self)
-            lib.setdefault("scenarios", []).append(dlg.data)
-            refresh_scenarios()
-
-        def edit_scenario():
-            sel_lib = lib_lb.curselection()
-            sel_sc = sc_tree.selection()
-            if not sel_lib or not sel_sc:
-                return
-            lib = self.scenario_libraries[sel_lib[0]]
-            idx = sc_tree.index(sel_sc[0])
-            data = lib.get("scenarios", [])[idx]
-            if isinstance(data, str):
-                data = {"name": data, "base": "", "tcs": [], "fis": [], "type": "use_case"}
-            dlg = ScenarioDialog(win, self, data)
-            lib["scenarios"][idx] = dlg.data
-            refresh_scenarios()
-
-        def del_scenario():
-            sel_lib = lib_lb.curselection()
-            sel_sc = sc_tree.selection()
-            if not sel_lib or not sel_sc:
-                return
-            lib = self.scenario_libraries[sel_lib[0]]
-            idx = sc_tree.index(sel_sc[0])
-            del lib.get("scenarios", [])[idx]
-            refresh_scenarios()
-
-        btnf = ttk.Frame(win)
-        btnf.grid(row=1, column=1, columnspan=3, sticky="ew")
-        ttk.Button(btnf, text="Add Lib", command=add_lib).pack(side=tk.LEFT)
-        ttk.Button(btnf, text="Edit Lib", command=edit_lib).pack(side=tk.LEFT)
-        ttk.Button(btnf, text="Del Lib", command=delete_lib).pack(side=tk.LEFT)
-        ttk.Button(btnf, text="Add Scen", command=add_scenario).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btnf, text="Edit Scen", command=edit_scenario).pack(side=tk.LEFT)
-        ttk.Button(btnf, text="Del Scen", command=del_scenario).pack(side=tk.LEFT)
-
-        lib_lb.bind("<<ListboxSelect>>", refresh_scenarios)
-        refresh_libs()
+                idx=sel[0]; del self.scenario_libraries[idx]; lb.delete(idx)
+        btn = ttk.Frame(win); btn.pack(side=tk.RIGHT, fill=tk.Y)
+        ttk.Button(btn,text="Add",command=add_lib).pack(fill=tk.X)
+        ttk.Button(btn,text="Delete",command=delete_lib).pack(fill=tk.X)
 
     def manage_odd_libraries(self):
         win = tk.Toplevel(self.root)
         win.title("ODD Libraries")
         lib_lb = tk.Listbox(win, height=8, width=25)
         lib_lb.grid(row=0, column=0, rowspan=4, sticky="nsew")
-        elem_tree = ttk.Treeview(win, columns=("attrs",))
-        elem_tree.heading("#0", text="Name")
+        elem_tree = ttk.Treeview(win, columns=("attrs",), show="headings")
         elem_tree.heading("attrs", text="Attributes")
-        elem_tree.column("#0", width=150)
         elem_tree.column("attrs", width=200)
         elem_tree.grid(row=0, column=1, columnspan=3, sticky="nsew")
         win.grid_rowconfigure(0, weight=1)
@@ -9922,8 +9880,22 @@ class FaultTreeApp:
                 }
                 for ra in self.reliability_analyses
             ],
+            "hazops": [
+                {
+                    "name": doc.name,
+                    "entries": [asdict(e) for e in doc.entries],
+                }
+                for doc in self.hazop_docs
+            ],
+            "haras": [
+                {
+                    "name": doc.name,
+                    "hazop": doc.hazop,
+                    "entries": [asdict(e) for e in doc.entries],
+                }
+                for doc in self.hara_docs
+            ],
             "hazop_entries": [asdict(e) for e in self.hazop_entries],
-            "hara_entries": [asdict(e) for e in self.hara_entries],
             "fi2tc_entries": self.fi2tc_entries,
             "tc2fi_entries": self.tc2fi_entries,
             "scenario_libraries": self.scenario_libraries,
@@ -10065,24 +10037,28 @@ class FaultTreeApp:
                 )
             )
 
-        self.hazop_entries = [HazopEntry(**h) for h in data.get("hazop_entries", [])]
-        self.hara_entries = [HaraEntry(**h) for h in data.get("hara_entries", [])]
-        self.sync_hara_to_safety_goals()
+        self.hazop_docs = []
+        for d in data.get("hazops", []):
+            entries = [HazopEntry(**h) for h in d.get("entries", [])]
+            self.hazop_docs.append(HazopDoc(d.get("name", f"HAZOP {len(self.hazop_docs)+1}"), entries))
+        if not self.hazop_docs and "hazop_entries" in data:
+            self.hazop_docs.append(HazopDoc("Default", [HazopEntry(**h) for h in data.get("hazop_entries", [])]))
+        self.active_hazop = self.hazop_docs[0] if self.hazop_docs else None
+        self.hazop_entries = self.active_hazop.entries if self.active_hazop else []
+
+        self.hara_docs = []
+        for d in data.get("haras", []):
+            entries = [HaraEntry(**e) for e in d.get("entries", [])]
+            self.hara_docs.append(HaraDoc(d.get("name", f"HARA {len(self.hara_docs)+1}"), d.get("hazop", ""), entries))
+        if not self.hara_docs and "hara_entries" in data:
+            hazop_name = self.hazop_docs[0].name if self.hazop_docs else ""
+            self.hara_docs.append(HaraDoc("Default", hazop_name, [HaraEntry(**e) for e in data.get("hara_entries", [])]))
+        self.active_hara = self.hara_docs[0] if self.hara_docs else None
+        self.hara_entries = self.active_hara.entries if self.active_hara else []
+
         self.fi2tc_entries = data.get("fi2tc_entries", [])
         self.tc2fi_entries = data.get("tc2fi_entries", [])
         self.scenario_libraries = data.get("scenario_libraries", [])
-        # Normalize legacy scenario entries
-        for lib in self.scenario_libraries:
-            norm = []
-            for sc in lib.get("scenarios", []):
-                if isinstance(sc, str):
-                    norm.append({"name": sc, "base": "", "tcs": [], "fis": [], "type": "use_case"})
-                else:
-                    sc.setdefault("tcs", [])
-                    sc.setdefault("fis", [])
-                    sc["type"] = "sotif" if sc.get("tcs") or sc.get("fis") else sc.get("type", "use_case")
-                    norm.append(sc)
-            lib["scenarios"] = norm
         self.odd_libraries = data.get("odd_libraries", [])
         if not self.odd_libraries and "odd_elements" in data:
             self.odd_libraries = [{"name": "Default", "elements": data.get("odd_elements", [])}]
