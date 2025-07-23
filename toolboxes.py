@@ -837,11 +837,13 @@ class HaraWindow(tk.Toplevel):
         self.doc_cb["values"] = names
         if self.app.active_hara:
             self.doc_var.set(self.app.active_hara.name)
-            self.hazop_lbl.config(text=f"HAZOP: {self.app.active_hara.hazop}")
+            hazops = ", ".join(getattr(self.app.active_hara, "hazops", []))
+            self.hazop_lbl.config(text=f"HAZOPs: {hazops}")
         elif names:
             self.doc_var.set(names[0])
             doc = self.app.hara_docs[0]
-            self.hazop_lbl.config(text=f"HAZOP: {doc.hazop}")
+            hazops = ", ".join(getattr(doc, "hazops", []))
+            self.hazop_lbl.config(text=f"HAZOPs: {hazops}")
             self.app.active_hara = doc
             self.app.hara_entries = doc.entries
 
@@ -851,7 +853,8 @@ class HaraWindow(tk.Toplevel):
             if d.name == name:
                 self.app.active_hara = d
                 self.app.hara_entries = d.entries
-                self.hazop_lbl.config(text=f"HAZOP: {d.hazop}")
+                hazops = ", ".join(getattr(d, "hazops", []))
+                self.hazop_lbl.config(text=f"HAZOPs: {hazops}")
                 break
         self.refresh()
 
@@ -864,20 +867,23 @@ class HaraWindow(tk.Toplevel):
             ttk.Label(master, text="Name").grid(row=0, column=0, sticky="e")
             self.name_var = tk.StringVar()
             ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1)
-            ttk.Label(master, text="HAZOP").grid(row=1, column=0, sticky="e")
+            ttk.Label(master, text="HAZOPs").grid(row=1, column=0, sticky="ne")
             names = [d.name for d in self.app.hazop_docs]
-            self.hazop_var = tk.StringVar()
-            ttk.Combobox(master, textvariable=self.hazop_var, values=names, state="readonly").grid(row=1, column=1)
+            self.hazop_lb = tk.Listbox(master, selectmode="extended", height=5)
+            for n in names:
+                self.hazop_lb.insert(tk.END, n)
+            self.hazop_lb.grid(row=1, column=1)
 
         def apply(self):
-            self.result = (self.name_var.get(), self.hazop_var.get())
+            sel = [self.hazop_lb.get(i) for i in self.hazop_lb.curselection()]
+            self.result = (self.name_var.get(), sel)
 
     def new_doc(self):
         dlg = self.NewHaraDialog(self, self.app)
         if not getattr(dlg, "result", None):
             return
-        name, hazop = dlg.result
-        doc = HaraDoc(name, hazop, [], False)
+        name, hazops = dlg.result
+        doc = HaraDoc(name, hazops, [], False)
         self.app.hara_docs.append(doc)
         self.app.active_hara = doc
         self.app.hara_entries = doc.entries
@@ -903,10 +909,13 @@ class HaraWindow(tk.Toplevel):
             super().__init__(parent, title="Edit HARA Row")
 
         def body(self, master):
-            hazop_name = self.app.active_hara.hazop if self.app.active_hara else ""
-            hazop = self.app.get_hazop_by_name(hazop_name) if hazop_name else None
-            entries = hazop.entries if hazop else []
-            malfs = [e.malfunction for e in entries if getattr(e, "safety", False)]
+            hazop_names = getattr(self.app.active_hara, "hazops", []) if self.app.active_hara else []
+            malfs = []
+            for hz_name in hazop_names:
+                hz = self.app.get_hazop_by_name(hz_name)
+                if hz:
+                    malfs.extend(e.malfunction for e in hz.entries if getattr(e, "safety", False))
+            malfs = sorted(set(malfs))
             goals = [te.safety_goal_description or (te.user_name or f"SG {te.unique_id}") for te in self.app.top_events]
             ttk.Label(master, text="Malfunction").grid(row=0,column=0,sticky="e")
             self.mal_var = tk.StringVar(value=self.row.malfunction)
@@ -997,97 +1006,6 @@ class HaraWindow(tk.Toplevel):
         self.app.sync_hara_to_safety_goals()
         messagebox.showinfo("HARA", "HARA approved")
 
-
-
-
-    def __init__(self, app):
-        super().__init__(app.root)
-        self.app = app
-        self.title("FI2TC Analysis")
-        cols = ("fi","tc","scenario","hazard","mitigation","asil")
-        self.tree = ttk.Treeview(self, columns=cols, show="headings")
-        for c in cols:
-            self.tree.heading(c, text=c.capitalize())
-            self.tree.column(c, width=100)
-        self.tree.pack(fill=tk.BOTH, expand=True)
-        btn = ttk.Frame(self)
-        btn.pack()
-        ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
-        ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
-        ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
-        ttk.Button(btn, text="Export CSV", command=self.export_csv).pack(side=tk.LEFT, padx=2, pady=2)
-        self.refresh()
-
-    def refresh(self):
-        self.tree.delete(*self.tree.get_children())
-        for row in self.app.fi2tc_entries:
-            self.tree.insert("", "end", values=(row.get("fi"), row.get("tc"), row.get("scenario"), row.get("hazard"), row.get("mitigation"), row.get("asil")))
-
-    class RowDialog(simpledialog.Dialog):
-        def __init__(self, parent, app, data=None):
-            self.app = app
-            self.data = data or {"fi":"","tc":"","scenario":"","hazard":"","mitigation":"","asil":""}
-            super().__init__(parent, title="Edit Row")
-        def body(self, master):
-            fi_names = [n.user_name or f"FI {n.unique_id}" for n in self.app.get_all_functional_insufficiencies()]
-            tc_names = [n.user_name or f"TC {n.unique_id}" for n in self.app.get_all_triggering_conditions()]
-            self.fi_var = tk.StringVar(value=self.data.get("fi"))
-            ttk.Combobox(master, textvariable=self.fi_var, values=fi_names, state="readonly").grid(row=0,column=1)
-            ttk.Label(master, text="Functional Insufficiency").grid(row=0,column=0,sticky="e")
-            self.tc_var = tk.StringVar(value=self.data.get("tc"))
-            ttk.Combobox(master, textvariable=self.tc_var, values=tc_names, state="readonly").grid(row=1,column=1)
-            ttk.Label(master, text="Triggering Condition").grid(row=1,column=0,sticky="e")
-            ttk.Label(master, text="Scenario").grid(row=2,column=0,sticky="e")
-            self.sc_var = tk.Entry(master)
-            self.sc_var.insert(0, self.data.get("scenario"))
-            self.sc_var.grid(row=2,column=1)
-            ttk.Label(master, text="Hazard").grid(row=3,column=0,sticky="e")
-            self.haz_var = tk.Entry(master)
-            self.haz_var.insert(0, self.data.get("hazard"))
-            self.haz_var.grid(row=3,column=1)
-            ttk.Label(master, text="Mitigation").grid(row=4,column=0,sticky="e")
-            self.mit_var = tk.Entry(master)
-            self.mit_var.insert(0, self.data.get("mitigation"))
-            self.mit_var.grid(row=4,column=1)
-            ttk.Label(master, text="ASIL").grid(row=5,column=0,sticky="e")
-            self.asil_var = tk.Entry(master)
-            self.asil_var.insert(0, self.data.get("asil"))
-            self.asil_var.grid(row=5,column=1)
-        def apply(self):
-            self.data["fi"] = self.fi_var.get()
-            self.data["tc"] = self.tc_var.get()
-            self.data["scenario"] = self.sc_var.get()
-            self.data["hazard"] = self.haz_var.get()
-            self.data["mitigation"] = self.mit_var.get()
-            self.data["asil"] = self.asil_var.get()
-
-    def add_row(self):
-        dlg = self.RowDialog(self, self.app)
-        self.app.fi2tc_entries.append(dlg.data)
-        self.refresh()
-    def edit_row(self):
-        sel = self.tree.focus()
-        if not sel: return
-        idx = self.tree.index(sel)
-        data = self.app.fi2tc_entries[idx]
-        dlg = self.RowDialog(self, self.app, data)
-        self.refresh()
-    def del_row(self):
-        sel = self.tree.selection()
-        for iid in sel:
-            idx = self.tree.index(iid)
-            if idx < len(self.app.fi2tc_entries):
-                del self.app.fi2tc_entries[idx]
-        self.refresh()
-    def export_csv(self):
-        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV","*.csv")])
-        if not path: return
-        with open(path,"w",newline="") as f:
-            w=csv.writer(f)
-            w.writerow(["Functional Insufficiency","Triggering Condition","Scenario","Hazard","Mitigation","ASIL"])
-            for r in self.app.fi2tc_entries:
-                w.writerow([r.get("fi"),r.get("tc"),r.get("scenario"),r.get("hazard"),r.get("mitigation"),r.get("asil")])
-        messagebox.showinfo("Export","FI2TC exported")
 
 class TC2FIWindow(tk.Toplevel):
     COLS = [

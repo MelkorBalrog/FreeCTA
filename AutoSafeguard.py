@@ -10418,7 +10418,7 @@ class FaultTreeApp:
             "haras": [
                 {
                     "name": doc.name,
-                    "hazop": doc.hazop,
+                    "hazops": getattr(doc, "hazops", []),
                     "entries": [asdict(e) for e in doc.entries],
                     "approved": getattr(doc, "approved", False),
                 }
@@ -10578,17 +10578,23 @@ class FaultTreeApp:
         self.hara_docs = []
         for d in data.get("haras", []):
             entries = [HaraEntry(**e) for e in d.get("entries", [])]
+            hazops = d.get("hazops")
+            if not hazops:
+                hazop = d.get("hazop")
+                hazops = [hazop] if hazop else []
             self.hara_docs.append(
                 HaraDoc(
                     d.get("name", f"HARA {len(self.hara_docs)+1}"),
-                    d.get("hazop", ""),
+                    hazops,
                     entries,
                     d.get("approved", False),
                 )
             )
         if not self.hara_docs and "hara_entries" in data:
             hazop_name = self.hazop_docs[0].name if self.hazop_docs else ""
-            self.hara_docs.append(HaraDoc("Default", hazop_name, [HaraEntry(**e) for e in data.get("hara_entries", [])]))
+            self.hara_docs.append(
+                HaraDoc("Default", [hazop_name] if hazop_name else [], [HaraEntry(**e) for e in data.get("hara_entries", [])])
+            )
         self.active_hara = self.hara_docs[0] if self.hara_docs else None
         self.hara_entries = self.active_hara.entries if self.active_hara else []
 
