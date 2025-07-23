@@ -834,14 +834,14 @@ class HaraWindow(tk.Toplevel):
         self.refresh()
 
     def refresh_docs(self):
-        self.app.update_hara_statuses()
         names = [d.name for d in self.app.hara_docs]
-        self.doc_cb["values"] = names
+        # Explicitly configure the combobox values to ensure Tkinter updates
+        self.doc_cb.configure(values=names)
         if self.app.active_hara:
             self.doc_var.set(self.app.active_hara.name)
             hazops = ", ".join(getattr(self.app.active_hara, "hazops", []))
             self.hazop_lbl.config(text=f"HAZOPs: {hazops}")
-            self.status_lbl.config(text=f"Status: {getattr(self.app.active_hara, 'status', 'draft')}")
+
         elif names:
             self.doc_var.set(names[0])
             doc = self.app.hara_docs[0]
@@ -849,7 +849,6 @@ class HaraWindow(tk.Toplevel):
             self.hazop_lbl.config(text=f"HAZOPs: {hazops}")
             self.app.active_hara = doc
             self.app.hara_entries = doc.entries
-            self.status_lbl.config(text=f"Status: {getattr(doc, 'status', 'draft')}")
 
     def select_doc(self, *_):
         name = self.doc_var.get()
@@ -859,7 +858,6 @@ class HaraWindow(tk.Toplevel):
                 self.app.hara_entries = d.entries
                 hazops = ", ".join(getattr(d, "hazops", []))
                 self.hazop_lbl.config(text=f"HAZOPs: {hazops}")
-                self.status_lbl.config(text=f"Status: {getattr(d, 'status', 'draft')}")
                 break
         self.refresh()
 

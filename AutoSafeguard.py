@@ -11333,6 +11333,7 @@ class FaultTreeApp:
             fta_ids, fmea_names, fmeda_names, hazop_names, hara_names = (
                 scope.result if scope.result else ([], [], [], [], [])
             )
+
             # Ensure each selected element has a completed peer review
             def peer_completed(pred):
                 return any(
