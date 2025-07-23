@@ -36,6 +36,8 @@ class ReviewParticipant:
     email: str
     role: str  # 'reviewer', 'approver', or 'moderator'
     done: bool = False
+    approved: bool = False
+    reject_reason: str = ""
 
 @dataclass
 class ReviewComment:
@@ -380,6 +382,8 @@ class ReviewToolbox(tk.Toplevel):
         tk.Button(btn_frame, text="Open Document", command=self.open_document).pack(side=tk.LEFT)
         self.approve_btn = tk.Button(btn_frame, text="Approve", command=self.approve)
         self.approve_btn.pack(side=tk.LEFT)
+        self.reject_btn = tk.Button(btn_frame, text="Reject", command=self.reject)
+        self.reject_btn.pack(side=tk.LEFT)
         self.edit_btn = tk.Button(btn_frame, text="Edit Review", command=self.edit_review)
         self.edit_btn.pack(side=tk.LEFT)
 
@@ -542,6 +546,7 @@ class ReviewToolbox(tk.Toplevel):
         c.resolved = True
         c.resolution = resolution
         self.refresh_comments()
+        self.check_completion()
 
     def mark_done(self):
         if self.app.review_is_closed():
@@ -553,6 +558,7 @@ class ReviewToolbox(tk.Toplevel):
                 p.done = True
         messagebox.showinfo("Review", "Marked as done")
         self.update_buttons()
+        self.check_completion()
 
     def approve(self):
         if self.app.review_is_closed():
@@ -567,12 +573,31 @@ class ReviewToolbox(tk.Toplevel):
         if unresolved:
             messagebox.showwarning("Approve", "There are unresolved comments")
             return
-        self.app.review_data.approved = True
-        messagebox.showinfo("Approve", "Review approved")
-        self.app.add_version()
-        self.app.update_hara_statuses()
-        self.app.sync_hara_to_safety_goals()
-        self.refresh_reviews()
+        user = self.app.current_user
+        for p in self.app.review_data.participants:
+            if p.name == user and p.role == 'approver':
+                p.approved = True
+                p.reject_reason = ""
+                break
+        messagebox.showinfo("Approve", "Approval recorded")
+        self.check_completion()
+
+    def reject(self):
+        if self.app.review_is_closed():
+            messagebox.showwarning("Review", "This review is closed")
+            return
+        user = self.app.current_user
+        for p in self.app.review_data.participants:
+            if p.name == user and p.role == 'approver':
+                reason = simpledialog.askstring("Reject", "Enter rejection reason:")
+                if reason is None:
+                    return
+                p.approved = False
+                p.reject_reason = reason
+                p.done = True
+                break
+        messagebox.showinfo("Reject", "Rejection recorded")
+        self.check_completion()
 
     def edit_review(self):
         if not self.app.review_data:
@@ -643,8 +668,10 @@ class ReviewToolbox(tk.Toplevel):
             and not self.app.review_is_closed()
         ):
             self.approve_btn.pack(side=tk.LEFT)
+            self.reject_btn.pack(side=tk.LEFT)
         else:
             self.approve_btn.pack_forget()
+            self.reject_btn.pack_forget()
         if self.app.review_data and self.app.current_user in [m.name for m in self.app.review_data.moderators]:
             self.edit_btn.pack(side=tk.LEFT)
             if not self.app.review_is_closed():
@@ -654,6 +681,27 @@ class ReviewToolbox(tk.Toplevel):
         else:
             self.resolve_btn.pack_forget()
             self.edit_btn.pack_forget()
+
+    def check_completion(self):
+        r = self.app.review_data
+        if not r:
+            return
+        if r.mode == 'peer':
+            if all(p.done for p in r.participants) and all(c.resolved for c in r.comments):
+                r.closed = True
+                r.approved = True
+                self.app.update_hara_statuses()
+                self.refresh_reviews()
+        else:
+            approvers = [p for p in r.participants if p.role == 'approver']
+            if approvers and all(p.approved for p in approvers) and all(c.resolved for c in r.comments):
+                if not r.approved:
+                    r.approved = True
+                    r.closed = True
+                    self.app.add_version()
+                    self.app.update_hara_statuses()
+                    self.app.sync_hara_to_safety_goals()
+                self.refresh_reviews()
 
     def refresh_targets(self):
         items, self.target_map = self.app.get_review_targets()
