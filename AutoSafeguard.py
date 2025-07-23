@@ -242,6 +242,10 @@ from dataclasses import asdict
 from mechanisms import DiagnosticMechanism, MechanismLibrary, ANNEX_D_MECHANISMS
 import json
 import csv
+try:
+    from openpyxl import load_workbook
+except Exception:  # openpyxl may not be installed
+    load_workbook = None
 from drawing_helper import FTADrawingHelper, fta_drawing_helper
 from risk_assessment import DERIVED_MATURITY_TABLE, ASSURANCE_AGGREGATION_AND, AND_DECOMPOSITION_TABLE, OR_DECOMPOSITION_TABLE, boolify, ADRiskAssessmentHelper
 from models import (
@@ -1332,7 +1336,9 @@ class FaultTreeApp:
         self.fi2tc_entries = []
         self.tc2fi_entries = []
         self.scenario_libraries = []
+        self.odd_libraries = []
         self.odd_elements = []
+        self.update_odd_elements()
         # Provide the drawing helper to dialogs that may be opened later
         self.fta_drawing_helper = fta_drawing_helper
 
@@ -1426,7 +1432,7 @@ class FaultTreeApp:
         sotif_menu.add_command(label="TC2FI Analysis", command=self.open_tc2fi_window)
         sotif_menu.add_separator()
         sotif_menu.add_command(label="Scenario Libraries", command=self.manage_scenario_libraries)
-        sotif_menu.add_command(label="Import ODD Table", command=self.import_odd_table)
+        sotif_menu.add_command(label="ODD Libraries", command=self.manage_odd_libraries)
         menubar.add_cascade(label="SOTIF", menu=sotif_menu)
         root.config(menu=menubar)
         root.bind("<Control-n>", lambda event: self.new_model())
@@ -6264,6 +6270,9 @@ class FaultTreeApp:
         AD_RiskAssessment_Helper.unique_node_id_counter = 1
         self.zoom = 1.0
         self.diagram_font.config(size=int(8 * self.zoom))
+        self.scenario_libraries = []
+        self.odd_libraries = []
+        self.update_odd_elements()
 
         # Close any open page diagrams.
         if hasattr(self, "page_diagram") and self.page_diagram is not None:
@@ -6545,14 +6554,21 @@ class FaultTreeApp:
     def get_all_scenery_names(self):
         """Return the list of scenery/ODD element names."""
         names = []
-        for el in self.odd_elements:
-            if isinstance(el, dict):
-                name = el.get("name") or el.get("element") or el.get("id")
-            else:
-                name = str(el)
-            if name:
-                names.append(name)
+        for lib in self.odd_libraries:
+            for el in lib.get("elements", []):
+                if isinstance(el, dict):
+                    name = el.get("name") or el.get("element") or el.get("id")
+                else:
+                    name = str(el)
+                if name:
+                    names.append(name)
         return names
+
+    def update_odd_elements(self):
+        """Aggregate elements from all ODD libraries into odd_elements list."""
+        self.odd_elements = []
+        for lib in self.odd_libraries:
+            self.odd_elements.extend(lib.get("elements", []))
 
     def get_all_failure_modes(self):
         """Return list of all failure mode nodes from FTA, FMEAs and FMEDAs."""
@@ -9173,12 +9189,53 @@ class FaultTreeApp:
         ttk.Button(btn,text="Add",command=add_lib).pack(fill=tk.X)
         ttk.Button(btn,text="Delete",command=delete_lib).pack(fill=tk.X)
 
-    def import_odd_table(self):
-        path = filedialog.askopenfilename(filetypes=[("CSV","*.csv")])
-        if not path: return
-        with open(path,newline="") as f:
-            reader=csv.DictReader(f); self.odd_elements=list(reader)
-        messagebox.showinfo("Import","ODD table imported")
+    def manage_odd_libraries(self):
+        win = tk.Toplevel(self.root)
+        win.title("ODD Libraries")
+        lb = tk.Listbox(win, height=8, width=40)
+        lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        for lib in self.odd_libraries:
+            lb.insert(tk.END, lib.get("name", ""))
+
+        def add_lib():
+            name = simpledialog.askstring("New Library", "Library name:")
+            if not name:
+                return
+            elems = []
+            if messagebox.askyesno("Import", "Import elements from file?"):
+                path = filedialog.askopenfilename(filetypes=[("CSV/Excel", "*.csv *.xlsx")])
+                if path:
+                    if path.lower().endswith(".csv"):
+                        with open(path, newline="") as f:
+                            elems = list(csv.DictReader(f))
+                    elif path.lower().endswith(".xlsx"):
+                        try:
+                            if load_workbook is None:
+                                raise ImportError
+                            wb = load_workbook(path, read_only=True)
+                            ws = wb.active
+                            headers = [c.value for c in next(ws.iter_rows(max_row=1))]
+                            for row in ws.iter_rows(min_row=2, values_only=True):
+                                elem = {headers[i]: row[i] for i in range(len(headers))}
+                                elems.append(elem)
+                        except Exception:
+                            messagebox.showerror("Import", "Failed to read Excel file. openpyxl required.")
+            self.odd_libraries.append({"name": name, "elements": elems})
+            lb.insert(tk.END, name)
+            self.update_odd_elements()
+
+        def delete_lib():
+            sel = lb.curselection()
+            if sel:
+                idx = sel[0]
+                del self.odd_libraries[idx]
+                lb.delete(idx)
+                self.update_odd_elements()
+
+        btn = ttk.Frame(win)
+        btn.pack(side=tk.RIGHT, fill=tk.Y)
+        ttk.Button(btn, text="Add", command=add_lib).pack(fill=tk.X)
+        ttk.Button(btn, text="Delete", command=delete_lib).pack(fill=tk.X)
 
     def open_reliability_window(self):
         if hasattr(self, "_rel_window") and self._rel_window.winfo_exists():
@@ -9525,6 +9582,8 @@ class FaultTreeApp:
         self.root.destroy()
 
     def export_model_data(self, include_versions=True):
+        # Ensure aggregated ODD elements are up to date
+        self.update_odd_elements()
         reviews = []
         for r in self.reviews:
             reviews.append({
@@ -9595,7 +9654,7 @@ class FaultTreeApp:
             "fi2tc_entries": self.fi2tc_entries,
             "tc2fi_entries": self.tc2fi_entries,
             "scenario_libraries": self.scenario_libraries,
-            "odd_elements": self.odd_elements,
+            "odd_libraries": self.odd_libraries,
             "project_properties": self.project_properties,
             "global_requirements": global_requirements,
             "reviews": reviews,
@@ -9737,7 +9796,10 @@ class FaultTreeApp:
         self.fi2tc_entries = data.get("fi2tc_entries", [])
         self.tc2fi_entries = data.get("tc2fi_entries", [])
         self.scenario_libraries = data.get("scenario_libraries", [])
-        self.odd_elements = data.get("odd_elements", [])
+        self.odd_libraries = data.get("odd_libraries", [])
+        if not self.odd_libraries and "odd_elements" in data:
+            self.odd_libraries = [{"name": "Default", "elements": data.get("odd_elements", [])}]
+        self.update_odd_elements()
 
         self.fmedas = []
         for doc in data.get("fmedas", []):
@@ -9759,6 +9821,10 @@ class FaultTreeApp:
         # *** Add this loop to update your global_requirements database ***
         for event in self.top_events:
             self.update_global_requirements_from_nodes(event)
+
+        # Propagate ASIL values from HARA entries to loaded safety goals
+        if hasattr(self, "hara_entries"):
+            self.sync_hara_to_safety_goals()
         
         # Load project properties.
         self.project_properties = data.get("project_properties", self.project_properties)
