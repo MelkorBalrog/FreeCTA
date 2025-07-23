@@ -11220,18 +11220,35 @@ class FaultTreeApp:
                 scope.result if scope.result else ([], [], [], [], [])
             )
 
-            # Ensure each selected element has an approved peer review
+            # Ensure each selected element has a completed peer review
+            def peer_completed(pred):
+                return any(
+                    r.mode == 'peer'
+                    and (r.approved or self.review_is_closed_for(r))
+                    and pred(r)
+                    for r in self.reviews
+                )
+
             for tid in fta_ids:
-                if not any(r.mode == 'peer' and r.approved and tid in r.fta_ids for r in self.reviews):
-                    messagebox.showerror("Review", "Peer review must be approved before starting joint review")
+                if not peer_completed(lambda r: tid in r.fta_ids):
+                    messagebox.showerror(
+                        "Review",
+                        "Peer review must be approved or closed before starting joint review",
+                    )
                     return
             for name_fta in fmea_names:
-                if not any(r.mode == 'peer' and r.approved and name_fta in r.fmea_names for r in self.reviews):
-                    messagebox.showerror("Review", "Peer review must be approved before starting joint review")
+                if not peer_completed(lambda r: name_fta in r.fmea_names):
+                    messagebox.showerror(
+                        "Review",
+                        "Peer review must be approved or closed before starting joint review",
+                    )
                     return
             for name_fd in fmeda_names:
-                if not any(r.mode == 'peer' and r.approved and name_fd in r.fmeda_names for r in self.reviews):
-                    messagebox.showerror("Review", "Peer review must be approved before starting joint review")
+                if not peer_completed(lambda r: name_fd in r.fmeda_names):
+                    messagebox.showerror(
+                        "Review",
+                        "Peer review must be approved or closed before starting joint review",
+                    )
                     return
             review = ReviewData(name=name, description=description, mode='joint', moderators=moderators,
                                participants=participants, comments=[],
