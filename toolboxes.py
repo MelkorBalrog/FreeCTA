@@ -1004,6 +1004,12 @@ class HaraWindow(tk.Toplevel):
     def add_row(self):
         dlg = self.RowDialog(self, self.app)
         self.app.hara_entries.append(dlg.row)
+        if self.app.active_hara:
+            self.app.active_hara.status = "draft"
+            self.app.active_hara.approved = False
+            self.app.invalidate_reviews_for_hara(self.app.active_hara.name)
+            self.status_lbl.config(text=f"Status: {self.app.active_hara.status}")
+        self.app.ensure_asil_consistency()
         self.refresh()
 
     def edit_row(self):
@@ -1012,6 +1018,12 @@ class HaraWindow(tk.Toplevel):
             return
         idx = self.tree.index(sel)
         dlg = self.RowDialog(self, self.app, self.app.hara_entries[idx])
+        if self.app.active_hara:
+            self.app.active_hara.status = "draft"
+            self.app.active_hara.approved = False
+            self.app.invalidate_reviews_for_hara(self.app.active_hara.name)
+            self.status_lbl.config(text=f"Status: {self.app.active_hara.status}")
+        self.app.ensure_asil_consistency()
         self.refresh()
 
     def del_row(self):
@@ -1020,6 +1032,12 @@ class HaraWindow(tk.Toplevel):
             idx = self.tree.index(iid)
             if idx < len(self.app.hara_entries):
                 del self.app.hara_entries[idx]
+        if self.app.active_hara:
+            self.app.active_hara.status = "draft"
+            self.app.active_hara.approved = False
+            self.app.invalidate_reviews_for_hara(self.app.active_hara.name)
+            self.status_lbl.config(text=f"Status: {self.app.active_hara.status}")
+        self.app.ensure_asil_consistency()
         self.refresh()
 
     def approve_doc(self):
