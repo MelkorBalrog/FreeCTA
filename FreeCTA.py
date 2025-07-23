@@ -1926,7 +1926,6 @@ class EditNodeDialog(simpledialog.Dialog):
         elif self.node.node_type.upper() == "BASIC EVENT":
             ttk.Label(master, text="Failure Probability:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
             self.prob_entry = tk.Entry(master, font=dialog_font)
-            self.prob_entry.insert(0, str(self.node.failure_prob))
             self.prob_entry.grid(row=row_next, column=1, padx=5, pady=5)
             row_next += 1
 
@@ -1942,15 +1941,20 @@ class EditNodeDialog(simpledialog.Dialog):
             self.fm_var.set(current)
             self.fm_combo = ttk.Combobox(master, textvariable=self.fm_var, values=list(self.fm_map.keys()), state='readonly', width=40)
             self.fm_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky='w')
+            self.fm_combo.bind("<<ComboboxSelected>>", self.update_probability)
             row_next += 1
 
 
             ttk.Label(master, text="Probability Formula:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
             self.formula_var = tk.StringVar(value=getattr(self.node, 'prob_formula', 'linear'))
-            ttk.Combobox(master, textvariable=self.formula_var,
+            self.formula_combo = ttk.Combobox(master, textvariable=self.formula_var,
                          values=['linear', 'exponential', 'constant'],
-                         state='readonly', width=12).grid(row=row_next, column=1, padx=5, pady=5, sticky='w')
+                         state='readonly', width=12)
+            self.formula_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky='w')
+            self.formula_var.trace_add("write", lambda *a: self.update_probability())
             row_next += 1
+
+            self.update_probability()
 
             if not hasattr(self.node, "safety_requirements"):
                 self.node.safety_requirements = []
@@ -2351,6 +2355,15 @@ class EditNodeDialog(simpledialog.Dialog):
         event.widget.insert("insert", "\n")
         return "break"
 
+    def update_probability(self, *_):
+        if hasattr(self, "prob_entry") and hasattr(self, "fm_var"):
+            label = self.fm_var.get().strip()
+            ref = self.fm_map.get(label)
+            formula = self.formula_var.get() if hasattr(self, "formula_var") else None
+            prob = self.app.compute_failure_prob(self.node, failure_mode_ref=ref, formula=formula)
+            self.prob_entry.delete(0, tk.END)
+            self.prob_entry.insert(0, f"{prob:.6g}")
+
     def validate(self):
         if hasattr(self, 'fm_var'):
             label = self.fm_var.get().strip()
@@ -2382,17 +2395,12 @@ class EditNodeDialog(simpledialog.Dialog):
             except ValueError:
                 messagebox.showerror("Invalid Input", "Select a value between 1 and 5.")
         elif self.node.node_type.upper() == "BASIC EVENT":
-            try:
-                prob = float(self.prob_entry.get().strip())
-                if prob < 0:
-                    raise ValueError
-                target_node.failure_prob = prob
-                target_node.prob_formula = self.formula_var.get()
-                if hasattr(self, 'fm_var'):
-                    label = self.fm_var.get().strip()
-                    target_node.failure_mode_ref = self.fm_map.get(label)
-            except ValueError:
-                messagebox.showerror("Invalid Input", "Enter a valid probability")
+            label = self.fm_var.get().strip()
+            ref = self.fm_map.get(label)
+            target_node.failure_mode_ref = ref
+            target_node.prob_formula = self.formula_var.get()
+            target_node.failure_prob = self.app.compute_failure_prob(
+                target_node, failure_mode_ref=ref, formula=target_node.prob_formula)
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
             target_node.gate_type = self.gate_var.get().strip().upper()
             if self.node.node_type.upper() == "TOP EVENT":
@@ -3297,6 +3305,21 @@ class FaultTreeApp:
             result = self.find_node_by_id(top, unique_id)
             if result is not None:
                 return result
+
+        for entry in self.fmea_entries:
+            if getattr(entry, "unique_id", None) == unique_id:
+                return entry
+
+        for fmea in self.fmeas:
+            for e in fmea.get("entries", []):
+                if getattr(e, "unique_id", None) == unique_id:
+                    return e
+
+        for d in self.fmedas:
+            for e in d.get("entries", []):
+                if getattr(e, "unique_id", None) == unique_id:
+                    return e
+
         return None
 
     def get_safety_goal_asil(self, sg_name):
@@ -7705,21 +7728,39 @@ class FaultTreeApp:
         """
         if not self.mission_profiles:
             return
-        mp = self.mission_profiles[0]
-        t = mp.tau
         for be in self.get_all_basic_events():
-            fm = self.get_failure_mode_node(be)
-            fit = getattr(fm, "fmeda_fit", getattr(be, "fmeda_fit", 0.0))
-            if fit <= 0:
-                continue
-            lam = fit / 1e9
-            formula = getattr(be, "prob_formula", getattr(fm, "prob_formula", "linear"))
-            if formula == "exponential":
-                be.failure_prob = 1 - math.exp(-lam * t)
-            elif formula == "constant":
-                be.failure_prob = lam
-            else:
-                be.failure_prob = lam * t
+            be.failure_prob = self.compute_failure_prob(be)
+
+    def compute_failure_prob(self, node, failure_mode_ref=None, formula=None):
+        """Return probability of failure for ``node`` based on FIT rate."""
+        tau = 1.0
+        if self.mission_profiles:
+            tau = self.mission_profiles[0].tau
+        if tau <= 0:
+            tau = 1.0
+        fm = self.find_node_by_id_all(failure_mode_ref) if failure_mode_ref else self.get_failure_mode_node(node)
+        fit = getattr(fm, "fmeda_fit", getattr(node, "fmeda_fit", 0.0))
+        if fit <= 0:
+            return 0.0
+        t = tau
+        formula = formula or getattr(node, "prob_formula", getattr(fm, "prob_formula", "linear"))
+        lam = fit / 1e9
+        if formula == "exponential":
+            return 1 - math.exp(-lam * t)
+        elif formula == "constant":
+            return lam
+        else:
+            return lam * t
+
+    def propagate_failure_mode_attributes(self, fm_node):
+        """Update basic events referencing ``fm_node`` and recompute probability."""
+        for be in self.get_all_basic_events():
+            if getattr(be, "failure_mode_ref", None) == fm_node.unique_id:
+                be.fmeda_fit = fm_node.fmeda_fit
+                be.fmeda_diag_cov = fm_node.fmeda_diag_cov
+                if not getattr(be, "prob_formula", None):
+                    be.prob_formula = fm_node.prob_formula
+                be.failure_prob = self.compute_failure_prob(be)
 
     def insert_node_in_tree(self, parent_item, node):
         # If the node has no parent (i.e. it's a top-level event), display it.
@@ -8521,14 +8562,28 @@ class FaultTreeApp:
             ttk.Label(master, text="Failure Mode:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
             # Include failure modes from both the FTA and any FMEA specific
             # entries so the combo box always lists all available modes.
-            mode_names = [
-                be.description or (be.user_name or f"BE {be.unique_id}")
+            self.mode_map = {
+                be.description or (be.user_name or f"BE {be.unique_id}"): be
                 for be in basic_events + self.fmea_entries
-            ]
+            }
+            mode_names = list(self.mode_map.keys())
             self.mode_var = tk.StringVar(value=self.node.description or self.node.user_name)
             self.mode_combo = ttk.Combobox(master, textvariable=self.mode_var,
                                           values=mode_names, width=30)
             self.mode_combo.grid(row=1, column=1, padx=5, pady=5)
+
+            def mode_sel(_):
+                label = self.mode_var.get()
+                src = self.mode_map.get(label)
+                if src:
+                    if src.parents:
+                        comp_name = src.parents[0].user_name or f"Node {src.parents[0].unique_id}"
+                    else:
+                        comp_name = getattr(src, "fmea_component", "")
+                    if comp_name:
+                        self.comp_var.set(comp_name)
+
+            self.mode_combo.bind("<<ComboboxSelected>>", mode_sel)
 
             ttk.Label(master, text="Failure Effect:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
             self.effect_text = tk.Text(master, width=30, height=3)
@@ -8651,6 +8706,7 @@ class FaultTreeApp:
                 self.node.fmeda_fit = float(self.fit_var.get())
             except ValueError:
                 self.node.fmeda_fit = 0.0
+            self.app.propagate_failure_mode_attributes(self.node)
 
         def add_existing_requirement(self):
             global global_requirements
@@ -10493,6 +10549,23 @@ class FaultTreeApp:
                     node.equation = updated_node.equation
                     node.detailed_equation = updated_node.detailed_equation
                     node.is_page = updated_node.is_page
+                    node.failure_prob = updated_node.failure_prob
+                    node.prob_formula = updated_node.prob_formula
+                    node.failure_mode_ref = updated_node.failure_mode_ref
+                    node.fmea_effect = updated_node.fmea_effect
+                    node.fmea_cause = updated_node.fmea_cause
+                    node.fmea_severity = updated_node.fmea_severity
+                    node.fmea_occurrence = updated_node.fmea_occurrence
+                    node.fmea_detection = updated_node.fmea_detection
+                    node.fmea_component = updated_node.fmea_component
+                    node.fmeda_malfunction = updated_node.fmeda_malfunction
+                    node.fmeda_safety_goal = updated_node.fmeda_safety_goal
+                    node.fmeda_diag_cov = updated_node.fmeda_diag_cov
+                    node.fmeda_fit = updated_node.fmeda_fit
+                    node.fmeda_spfm = updated_node.fmeda_spfm
+                    node.fmeda_lpfm = updated_node.fmeda_lpfm
+                    node.fmeda_fault_type = updated_node.fmeda_fault_type
+                    node.fmeda_fault_fraction = updated_node.fmeda_fault_fraction
             else:
                 # Use the original pointer to compare.
                 if node.original and node.original.unique_id == updated_primary_id:
@@ -10509,6 +10582,23 @@ class FaultTreeApp:
                     node.detailed_equation = updated_node.detailed_equation
                     # **The key change: update the page flag on clones as well.**
                     node.is_page = updated_node.is_page
+                    node.failure_prob = updated_node.failure_prob
+                    node.prob_formula = updated_node.prob_formula
+                    node.failure_mode_ref = updated_node.failure_mode_ref
+                    node.fmea_effect = updated_node.fmea_effect
+                    node.fmea_cause = updated_node.fmea_cause
+                    node.fmea_severity = updated_node.fmea_severity
+                    node.fmea_occurrence = updated_node.fmea_occurrence
+                    node.fmea_detection = updated_node.fmea_detection
+                    node.fmea_component = updated_node.fmea_component
+                    node.fmeda_malfunction = updated_node.fmeda_malfunction
+                    node.fmeda_safety_goal = updated_node.fmeda_safety_goal
+                    node.fmeda_diag_cov = updated_node.fmeda_diag_cov
+                    node.fmeda_fit = updated_node.fmeda_fit
+                    node.fmeda_spfm = updated_node.fmeda_spfm
+                    node.fmeda_lpfm = updated_node.fmeda_lpfm
+                    node.fmeda_fault_type = updated_node.fmeda_fault_type
+                    node.fmeda_fault_fraction = updated_node.fmeda_fault_fraction
 
     def edit_user_name(self):
         if self.selected_node:
@@ -11679,7 +11769,7 @@ class FaultTreeNode:
         # --- FMEDA attributes ---
         self.fmeda_malfunction = ""
         self.fmeda_safety_goal = ""
-        self.fmeda_diag_cov = 1.0
+        self.fmeda_diag_cov = 0.0
         self.fmeda_fit = 0.0
         self.fmeda_spfm = 0.0
         self.fmeda_lpfm = 0.0
@@ -11777,7 +11867,7 @@ class FaultTreeNode:
         node.fmea_component = data.get("fmea_component", "")
         node.fmeda_malfunction = data.get("fmeda_malfunction", "")
         node.fmeda_safety_goal = data.get("fmeda_safety_goal", "")
-        node.fmeda_diag_cov = data.get("fmeda_diag_cov", 1.0)
+        node.fmeda_diag_cov = data.get("fmeda_diag_cov", 0.0)
         node.fmeda_fit = data.get("fmeda_fit", 0.0)
         node.fmeda_spfm = data.get("fmeda_spfm", 0.0)
         node.fmeda_lpfm = data.get("fmeda_lpfm", 0.0)
