@@ -71,11 +71,24 @@ become selectable failure modes in the FMEDA table.
 ### HARA Analysis
 
 The **HARA Analysis** view builds on the safety relevant malfunctions from the
-selected HAZOP. For every malfunction you can assign severity, controllability
-and exposure levels along with textual rationales. The tool automatically
-calculates the resulting ASIL and lets you link each entry to a defined safety
-goal. ASIL values from these HARA entries are propagated to the linked safety
-goals and appear in FTA top level events and related documentation.
+selected HAZOP. Each HARA table contains the following columns:
+
+1. **Malfunction** – combo box listing malfunctions flagged as safety relevant
+   in the chosen HAZOP document.
+2. **Severity** – ISO&nbsp;26262 severity level (1–3).
+3. **Severity Rationale** – free text explanation for the chosen severity.
+4. **Controllability** – ISO&nbsp;26262 controllability level (1–3).
+5. **Controllability Rationale** – free text explanation for the chosen
+   controllability.
+6. **Exposure** – ISO&nbsp;26262 exposure level (1–4).
+7. **Exposure Rationale** – free text explanation for the chosen exposure.
+8. **ASIL** – automatically calculated from severity, controllability and
+   exposure using the ISO&nbsp;26262 risk graph.
+9. **Safety Goal** – combo box listing all defined safety goals in the project.
+
+The calculated ASIL from each row is propagated to the referenced safety goal so
+that inherited ASIL levels appear consistently in all analyses and
+documentation, including FTA top level events.
 
 ## License
 

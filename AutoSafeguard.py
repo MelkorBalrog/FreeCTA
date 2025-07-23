@@ -2218,7 +2218,7 @@ class FaultTreeApp:
         return best
 
     def sync_hara_to_safety_goals(self):
-        """Propagate ASIL values from HARA entries to safety goals."""
+        """Propagate ASIL values from all HARA documents to safety goals."""
         asil_map = {}
         for doc in getattr(self, "hara_docs", []):
             for e in doc.entries:
@@ -2227,14 +2227,6 @@ class FaultTreeApp:
                 cur = asil_map.get(e.safety_goal, "QM")
                 if ASIL_ORDER.get(e.asil, 0) > ASIL_ORDER.get(cur, 0):
                     asil_map[e.safety_goal] = e.asil
-        for te in self.top_events:
-            name = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
-            if name in asil_map:
-                te.safety_goal_asil = asil_map[name]
-
-    def sync_hara_to_safety_goals(self):
-        """Propagate ASIL values from HARA entries to safety goals."""
-        asil_map = {e.safety_goal: e.asil for e in self.hara_entries if e.safety_goal}
         for te in self.top_events:
             name = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
             if name in asil_map:
