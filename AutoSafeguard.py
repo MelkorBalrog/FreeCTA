@@ -1418,11 +1418,6 @@ class FaultTreeApp:
         reliability_menu.add_command(label="FMEDA Analysis", command=self.open_fmeda_window)
         reliability_menu.add_command(label="FMEDA Manager", command=self.show_fmeda_list)
         menubar.add_cascade(label="Reliability", menu=reliability_menu)
-
-        hazard_menu = tk.Menu(menubar, tearoff=0)
-        hazard_menu.add_command(label="HAZOP Analysis", command=self.open_hazop_window)
-        hazard_menu.add_command(label="HARA Analysis", command=self.open_hara_window)
-        menubar.add_cascade(label="Hazard", menu=hazard_menu)
         sotif_menu = tk.Menu(menubar, tearoff=0)
         sotif_menu.add_command(label="Triggering Conditions", command=self.show_triggering_condition_list)
         sotif_menu.add_command(label="Functional Insufficiencies", command=self.show_functional_insufficiency_list)
@@ -6525,14 +6520,6 @@ class FaultTreeApp:
     def get_all_basic_events(self):
         """Return a list of all basic events across all top-level trees."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]
-    def get_all_triggering_conditions(self):
-        """Return all triggering condition nodes."""
-        return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "TRIGGERING CONDITION"]
-
-    def get_all_functional_insufficiencies(self):
-        """Return all functional insufficiency nodes."""
-        return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "FUNCTIONAL INSUFFICIENCY"]
-
 
     def get_all_triggering_conditions(self):
         """Return all triggering condition nodes."""
@@ -6541,6 +6528,31 @@ class FaultTreeApp:
     def get_all_functional_insufficiencies(self):
         """Return all functional insufficiency nodes."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "FUNCTIONAL INSUFFICIENCY"]
+
+    def get_all_scenario_names(self):
+        """Return the list of scenario names from all scenario libraries."""
+        names = []
+        for lib in self.scenario_libraries:
+            for sc in lib.get("scenarios", []):
+                if isinstance(sc, dict):
+                    name = sc.get("name", "")
+                else:
+                    name = sc
+                if name:
+                    names.append(name)
+        return names
+
+    def get_all_scenery_names(self):
+        """Return the list of scenery/ODD element names."""
+        names = []
+        for el in self.odd_elements:
+            if isinstance(el, dict):
+                name = el.get("name") or el.get("element") or el.get("id")
+            else:
+                name = str(el)
+            if name:
+                names.append(name)
+        return names
 
     def get_all_failure_modes(self):
         """Return list of all failure mode nodes from FTA, FMEAs and FMEDAs."""
@@ -9580,7 +9592,6 @@ class FaultTreeApp:
                 for ra in self.reliability_analyses
             ],
             "hazop_entries": [asdict(e) for e in self.hazop_entries],
-            "hara_entries": [asdict(e) for e in self.hara_entries],
             "fi2tc_entries": self.fi2tc_entries,
             "tc2fi_entries": self.tc2fi_entries,
             "scenario_libraries": self.scenario_libraries,
@@ -9722,42 +9733,11 @@ class FaultTreeApp:
                 )
             )
 
-        self.hazop_entries = [
-            HazopEntry(
-                h.get("function", ""),
-                h.get("malfunction", ""),
-                h.get("mtype", "No/Not"),
-                h.get("scenario", ""),
-                h.get("conditions", ""),
-                h.get("hazard", ""),
-                h.get("safety", False),
-                h.get("rationale", ""),
-                h.get("covered", False),
-                h.get("covered_by", ""),
-                h.get("component", ""),
-            )
-            for h in data.get("hazop_entries", [])
-        ]
-        self.hara_entries = [
-            HaraEntry(
-                h.get("malfunction", ""),
-                int(h.get("severity", 1)),
-                h.get("sev_rationale", ""),
-                int(h.get("controllability", 1)),
-                h.get("cont_rationale", ""),
-                int(h.get("exposure", 1)),
-                h.get("exp_rationale", ""),
-                h.get("asil", "QM"),
-                h.get("safety_goal", ""),
-            )
-            for h in data.get("hara_entries", [])
-        ]
+        self.hazop_entries = [HazopEntry(**h) for h in data.get("hazop_entries", [])]
         self.fi2tc_entries = data.get("fi2tc_entries", [])
         self.tc2fi_entries = data.get("tc2fi_entries", [])
         self.scenario_libraries = data.get("scenario_libraries", [])
         self.odd_elements = data.get("odd_elements", [])
-
-        self.sync_hara_to_safety_goals()
 
         self.fmedas = []
         for doc in data.get("fmedas", []):
