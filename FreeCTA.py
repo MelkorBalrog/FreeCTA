@@ -8300,7 +8300,7 @@ class FaultTreeApp:
 
         pmhf = 0.0
         for te in self.top_events:
-            prob = self.calculate_probability_recursive(te)
+            prob = AD_RiskAssessment_Helper.calculate_probability_recursive(te)
             te.probability = prob
             pmhf += prob
 
