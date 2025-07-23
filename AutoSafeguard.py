@@ -1092,22 +1092,6 @@ class EditNodeDialog(simpledialog.Dialog):
             f" (Alloc: {alloc}; SGs: {goals})"
         )
 
-    def get_safety_goal_asil(self, sg_name):
-        for e in self.hara_entries:
-            if sg_name and sg_name == e.safety_goal:
-                return e.asil
-        for te in self.top_events:
-            if sg_name and (sg_name == te.user_name or sg_name == te.safety_goal_description):
-                return te.safety_goal_asil or "QM"
-        return "QM"
-
-    def sync_hara_to_safety_goals(self):
-        """Propagate ASIL values from HARA entries to safety goals."""
-        asil_map = {e.safety_goal: e.asil for e in self.hara_entries if e.safety_goal}
-        for te in self.top_events:
-            name = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
-            if name in asil_map:
-                te.safety_goal_asil = asil_map[name]
     
     def add_safety_requirement(self):
         """
@@ -1424,6 +1408,7 @@ class FaultTreeApp:
         reliability_menu.add_command(label="FMEDA Analysis", command=self.open_fmeda_window)
         reliability_menu.add_command(label="FMEDA Manager", command=self.show_fmeda_list)
         menubar.add_cascade(label="Reliability", menu=reliability_menu)
+
         hara_menu = tk.Menu(menubar, tearoff=0)
         hara_menu.add_command(label="HAZOP Analysis", command=self.open_hazop_window)
         hara_menu.add_command(label="HARA Analysis", command=self.open_hara_window)
@@ -2210,6 +2195,14 @@ class FaultTreeApp:
             if sg_name and (sg_name == te.user_name or sg_name == te.safety_goal_description):
                 return te.safety_goal_asil or "QM"
         return "QM"
+
+    def sync_hara_to_safety_goals(self):
+        """Propagate ASIL values from HARA entries to safety goals."""
+        asil_map = {e.safety_goal: e.asil for e in self.hara_entries if e.safety_goal}
+        for te in self.top_events:
+            name = te.safety_goal_description or (te.user_name or f"SG {te.unique_id}")
+            if name in asil_map:
+                te.safety_goal_asil = asil_map[name]
 
     def edit_selected(self):
         sel = self.treeview.selection()
@@ -6567,6 +6560,26 @@ class FaultTreeApp:
                 if name:
                     names.append(name)
         return names
+
+    def get_all_function_names(self):
+        """Return unique function names from HAZOP entries."""
+        return sorted({e.function for e in self.hazop_entries if getattr(e, "function", "")})
+
+    def get_all_component_names(self):
+        """Return unique component names from HAZOP and reliability analyses."""
+        names = {e.component for e in self.hazop_entries if getattr(e, "component", "")}
+        names.update(c.name for c in self.reliability_components)
+        return sorted(n for n in names if n)
+
+    def get_all_malfunction_names(self):
+        """Return unique malfunction names from HAZOP entries."""
+        return sorted({e.malfunction for e in self.hazop_entries if getattr(e, "malfunction", "")})
+
+    def update_odd_elements(self):
+        """Aggregate elements from all ODD libraries into odd_elements list."""
+        self.odd_elements = []
+        for lib in self.odd_libraries:
+            self.odd_elements.extend(lib.get("elements", []))
 
     def update_odd_elements(self):
         """Aggregate elements from all ODD libraries into odd_elements list."""

@@ -442,10 +442,25 @@ class FI2TCWindow(tk.Toplevel):
         def body(self, master):
             fi_names = [n.user_name or f"FI {n.unique_id}" for n in self.app.get_all_functional_insufficiencies()]
             tc_names = [n.user_name or f"TC {n.unique_id}" for n in self.app.get_all_triggering_conditions()]
+            func_names = self.app.get_all_function_names()
+            comp_names = self.app.get_all_component_names()
+            scen_names = self.app.get_all_scenario_names()
+            scene_names = self.app.get_all_scenery_names()
             self.widgets = {}
             r = 0
+
+            def refresh_funcs(*_):
+                comp = self.widgets.get("allocation")
+                if isinstance(comp, tk.StringVar):
+                    func_opts = sorted({e.function for e in self.app.hazop_entries if not comp.get() or e.component == comp.get()})
+                else:
+                    func_opts = func_names
+                if "system_function" in self.widgets:
+                    w = self.widgets["system_function_widget"]
+                    w["values"] = func_opts
+
             for col in self.parent_win.COLS:
-                ttk.Label(master, text=col.replace("_"," ").title()).grid(row=r, column=0, sticky="e")
+                ttk.Label(master, text=col.replace("_", " ").title()).grid(row=r, column=0, sticky="e")
                 if col == "triggering_condition":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=tc_names, state="readonly")
@@ -456,12 +471,40 @@ class FI2TCWindow(tk.Toplevel):
                     cb = ttk.Combobox(master, textvariable=var, values=fi_names, state="readonly")
                     cb.grid(row=r, column=1)
                     self.widgets[col] = var
+                elif col == "system_function":
+                    var = tk.StringVar(value=self.data.get(col, ""))
+                    cb = ttk.Combobox(master, textvariable=var, values=func_names, state="readonly")
+                    cb.grid(row=r, column=1)
+                    self.widgets[col] = var
+                    self.widgets["system_function_widget"] = cb
+                elif col == "allocation":
+                    var = tk.StringVar(value=self.data.get(col, ""))
+                    cb = ttk.Combobox(master, textvariable=var, values=comp_names, state="readonly")
+                    cb.grid(row=r, column=1)
+                    cb.bind("<<ComboboxSelected>>", refresh_funcs)
+                    self.widgets[col] = var
+                elif col == "scene":
+                    var = tk.StringVar(value=self.data.get(col, ""))
+                    cb = ttk.Combobox(master, textvariable=var, values=scene_names, state="readonly")
+                    cb.grid(row=r, column=1)
+                    self.widgets[col] = var
+                elif col == "scenario":
+                    var = tk.StringVar(value=self.data.get(col, ""))
+                    cb = ttk.Combobox(master, textvariable=var, values=scen_names, state="readonly")
+                    cb.grid(row=r, column=1)
+                    self.widgets[col] = var
+                elif col == "severity":
+                    var = tk.StringVar(value=self.data.get(col, ""))
+                    cb = ttk.Combobox(master, textvariable=var, values=["1", "2", "3"], state="readonly")
+                    cb.grid(row=r, column=1)
+                    self.widgets[col] = var
                 else:
                     ent = tk.Entry(master)
                     ent.insert(0, self.data.get(col, ""))
                     ent.grid(row=r, column=1)
                     self.widgets[col] = ent
                 r += 1
+            refresh_funcs()
         def apply(self):
             for col, widget in self.widgets.items():
                 if isinstance(widget, tk.Entry):
@@ -969,8 +1012,23 @@ class TC2FIWindow(tk.Toplevel):
         def body(self, master):
             tc_names = [n.user_name or f"TC {n.unique_id}" for n in self.app.get_all_triggering_conditions()]
             fi_names = [n.user_name or f"FI {n.unique_id}" for n in self.app.get_all_functional_insufficiencies()]
+            func_names = self.app.get_all_function_names()
+            comp_names = self.app.get_all_component_names()
+            scen_names = self.app.get_all_scenario_names()
+            scene_names = self.app.get_all_scenery_names()
             self.widgets = {}
             r = 0
+
+            def refresh_funcs(*_):
+                comp = self.widgets.get("arch_elements")
+                if isinstance(comp, tk.StringVar):
+                    opts = sorted({e.function for e in self.app.hazop_entries if not comp.get() or e.component == comp.get()})
+                else:
+                    opts = func_names
+                if "impacted_function" in self.widgets:
+                    w = self.widgets["impacted_function_widget"]
+                    w["values"] = opts
+
             for col in TC2FIWindow.COLS:
                 ttk.Label(master, text=col.replace("_", " ").title()).grid(row=r, column=0, sticky="e")
                 if col == "functional_insufficiency":
@@ -983,12 +1041,40 @@ class TC2FIWindow(tk.Toplevel):
                     cb = ttk.Combobox(master, textvariable=var, values=tc_names, state="readonly")
                     cb.grid(row=r, column=1)
                     self.widgets[col] = var
+                elif col == "impacted_function":
+                    var = tk.StringVar(value=self.data.get(col, ""))
+                    cb = ttk.Combobox(master, textvariable=var, values=func_names, state="readonly")
+                    cb.grid(row=r, column=1)
+                    self.widgets[col] = var
+                    self.widgets["impacted_function_widget"] = cb
+                elif col == "arch_elements":
+                    var = tk.StringVar(value=self.data.get(col, ""))
+                    cb = ttk.Combobox(master, textvariable=var, values=comp_names, state="readonly")
+                    cb.grid(row=r, column=1)
+                    cb.bind("<<ComboboxSelected>>", refresh_funcs)
+                    self.widgets[col] = var
+                elif col == "scene":
+                    var = tk.StringVar(value=self.data.get(col, ""))
+                    cb = ttk.Combobox(master, textvariable=var, values=scene_names, state="readonly")
+                    cb.grid(row=r, column=1)
+                    self.widgets[col] = var
+                elif col == "scenario":
+                    var = tk.StringVar(value=self.data.get(col, ""))
+                    cb = ttk.Combobox(master, textvariable=var, values=scen_names, state="readonly")
+                    cb.grid(row=r, column=1)
+                    self.widgets[col] = var
+                elif col == "severity":
+                    var = tk.StringVar(value=self.data.get(col, ""))
+                    cb = ttk.Combobox(master, textvariable=var, values=["1", "2", "3"], state="readonly")
+                    cb.grid(row=r, column=1)
+                    self.widgets[col] = var
                 else:
                     ent = tk.Entry(master)
                     ent.insert(0, self.data.get(col, ""))
                     ent.grid(row=r, column=1)
                     self.widgets[col] = ent
                 r += 1
+            refresh_funcs()
 
         def apply(self):
             for col, widget in self.widgets.items():
