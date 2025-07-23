@@ -1652,6 +1652,18 @@ class FaultTreeApp:
                     rid = r.get("id")
                     if rid and rid not in reqs2:
                         reqs2[rid] = r
+        for f in data1.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+        for f in data2.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
 
         import difflib, html
 
@@ -1922,8 +1934,27 @@ class FaultTreeApp:
 
         def filter_data(data):
             return {
-                "top_events": [t for t in data.get("top_events", []) if t["unique_id"] in review.fta_ids],
-                "fmeas": [f for f in data.get("fmeas", []) if f["name"] in review.fmea_names],
+                "top_events": [
+                    t for t in data.get("top_events", []) if t["unique_id"] in review.fta_ids
+                ],
+                "fmeas": [
+                    f for f in data.get("fmeas", []) if f["name"] in review.fmea_names
+                ],
+                "fmedas": [
+                    d
+                    for d in data.get("fmedas", [])
+                    if d.get("name") in getattr(review, "fmeda_names", [])
+                ],
+                "hazops": [
+                    d
+                    for d in data.get("hazops", [])
+                    if d.get("name") in getattr(review, "hazop_names", [])
+                ],
+                "haras": [
+                    d
+                    for d in data.get("haras", [])
+                    if d.get("name") in getattr(review, "hara_names", [])
+                ],
             }
 
         data1 = filter_data(base_data)
@@ -2145,6 +2176,22 @@ class FaultTreeApp:
             else:
                 if json.dumps(r1, sort_keys=True) != json.dumps(r2, sort_keys=True):
                     lines.append("Updated: " + html_diff(self.format_requirement_with_trace(r1), self.format_requirement_with_trace(r2)))
+
+        for nid in review.fta_ids:
+            n1 = map1.get(nid, {})
+            n2 = map2.get(nid, {})
+            sg_old = f"{n1.get('safety_goal_description','')} [{n1.get('safety_goal_asil','')}]"
+            sg_new = f"{n2.get('safety_goal_description','')} [{n2.get('safety_goal_asil','')}]"
+            label = n2.get('user_name') or n1.get('user_name') or f"Node {nid}"
+            if sg_old != sg_new:
+                lines.append(
+                    f"Safety Goal for {html.escape(label)}: " + html_diff(sg_old, sg_new)
+                )
+            if n1.get('safe_state','') != n2.get('safe_state',''):
+                lines.append(
+                    f"Safe State for {html.escape(label)}: " + html_diff(n1.get('safe_state',''), n2.get('safe_state',''))
+                )
+
         return "<br>".join(lines)
 
     def generate_recommendations_for_top_event(self, node):

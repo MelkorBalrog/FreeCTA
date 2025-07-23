@@ -1028,7 +1028,7 @@ class ReviewDocumentDialog(tk.Toplevel):
                 "fmedas": [
                     d
                     for d in data.get("fmedas", [])
-                    if d.get("name") in self.review.fmeda_names
+                    if d.get("name") in getattr(self.review, "fmeda_names", [])
                 ],
                 "hazops": [
                     d
