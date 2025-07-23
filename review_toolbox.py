@@ -67,6 +67,7 @@ class ReviewData:
     due_date: str = ""
     closed: bool = False
     approved: bool = False
+    reviewed: bool = False
 
 class ParticipantDialog(simpledialog.Dialog):
     def __init__(self, parent, joint: bool, initial_mods=None, initial_parts=None):
@@ -404,7 +405,12 @@ class ReviewToolbox(tk.Toplevel):
         self.review_combo['values'] = names
         if self.app.review_data:
             self.review_var.set(self.app.review_data.name)
-            self.status_var.set("approved" if self.app.review_data.approved else "open")
+            if self.app.review_data.approved:
+                self.status_var.set("approved")
+            elif self.app.review_data.reviewed:
+                self.status_var.set("reviewed")
+            else:
+                self.status_var.set("open")
             self.desc_var.set(self.app.review_data.description)
             mods = ", ".join(m.name for m in self.app.review_data.moderators)
             self.mod_var.set(f"Moderators: {mods}")
@@ -422,7 +428,15 @@ class ReviewToolbox(tk.Toplevel):
             if r.name == name:
                 self.app.review_data = r
                 break
-        self.status_var.set("approved" if self.app.review_data and self.app.review_data.approved else "open")
+        if self.app.review_data:
+            if self.app.review_data.approved:
+                self.status_var.set("approved")
+            elif self.app.review_data.reviewed:
+                self.status_var.set("reviewed")
+            else:
+                self.status_var.set("open")
+        else:
+            self.status_var.set("open")
         if self.app.review_data:
             self.desc_var.set(self.app.review_data.description)
             mods = ", ".join(m.name for m in self.app.review_data.moderators)
@@ -689,7 +703,7 @@ class ReviewToolbox(tk.Toplevel):
         if r.mode == 'peer':
             if all(p.done for p in r.participants) and all(c.resolved for c in r.comments):
                 r.closed = True
-                r.approved = True
+                r.reviewed = True
                 self.app.update_hara_statuses()
                 self.app.update_requirement_statuses()
                 if hasattr(self.app, "_hara_window") and self.app._hara_window.winfo_exists():
