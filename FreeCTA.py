@@ -2287,6 +2287,11 @@ class FaultTreeApp:
         self.top_events = [self.root_node]
         self.fmea_entries = []
         self.fmeas = []  # list of FMEA documents
+        self.fmedas = []
+        self.hazops = []
+        self.haras = []
+        self.fi2tcs = []
+        self.tc2fis = []
         self.selected_node = None
         self.dragging_node = None
         self.drag_offset_x = 0
@@ -8747,11 +8752,21 @@ class FaultTreeApp:
                 "comments": [asdict(c) for c in r.comments],
                 "fta_ids": r.fta_ids,
                 "fmea_names": r.fmea_names,
+                "fmeda_names": r.fmeda_names,
+                "hazop_names": r.hazop_names,
+                "hara_names": r.hara_names,
+                "fi2tc_names": r.fi2tc_names,
+                "tc2fi_names": r.tc2fi_names,
             })
         current_name = self.review_data.name if self.review_data else None
         data = {
             "top_events": [event.to_dict() for event in self.top_events],
             "fmeas": [{"name": f['name'], "file": f['file'], "entries": [e.to_dict() for e in f['entries']]} for f in self.fmeas],
+            "fmedas": [{"name": f['name'], "file": f['file'], "entries": [e.to_dict() for e in f['entries']]} for f in self.fmedas],
+            "hazops": [{"name": f['name'], "file": f['file'], "entries": [e.to_dict() for e in f['entries']]} for f in self.hazops],
+            "haras": [{"name": f['name'], "file": f['file'], "entries": [e.to_dict() for e in f['entries']]} for f in self.haras],
+            "fi2tcs": [{"name": f['name'], "file": f['file'], "entries": [e.to_dict() for e in f['entries']]} for f in self.fi2tcs],
+            "tc2fis": [{"name": f['name'], "file": f['file'], "entries": [e.to_dict() for e in f['entries']]} for f in self.tc2fis],
             "project_properties": self.project_properties,
             "global_requirements": global_requirements,
             "reviews": reviews,
@@ -8820,6 +8835,31 @@ class FaultTreeApp:
             entries = [FaultTreeNode.from_dict(e) for e in data.get("fmea_entries", [])]
             self.fmeas.append({"name": "Default FMEA", "file": "fmea_default.csv", "entries": entries})
 
+        self.fmedas = []
+        for d in data.get("fmedas", []):
+            entries = [FaultTreeNode.from_dict(e) for e in d.get("entries", [])]
+            self.fmedas.append({"name": d.get("name", "FMEDA"), "file": d.get("file", f"fmeda_{len(self.fmedas)}.csv"), "entries": entries})
+
+        self.hazops = []
+        for d in data.get("hazops", []):
+            entries = [FaultTreeNode.from_dict(e) for e in d.get("entries", [])]
+            self.hazops.append({"name": d.get("name", "HAZOP"), "file": d.get("file", f"hazop_{len(self.hazops)}.csv"), "entries": entries})
+
+        self.haras = []
+        for d in data.get("haras", []):
+            entries = [FaultTreeNode.from_dict(e) for e in d.get("entries", [])]
+            self.haras.append({"name": d.get("name", "HARA"), "file": d.get("file", f"hara_{len(self.haras)}.csv"), "entries": entries})
+
+        self.fi2tcs = []
+        for d in data.get("fi2tcs", []):
+            entries = [FaultTreeNode.from_dict(e) for e in d.get("entries", [])]
+            self.fi2tcs.append({"name": d.get("name", "FI2TC"), "file": d.get("file", f"fi2tc_{len(self.fi2tcs)}.csv"), "entries": entries})
+
+        self.tc2fis = []
+        for d in data.get("tc2fis", []):
+            entries = [FaultTreeNode.from_dict(e) for e in d.get("entries", [])]
+            self.tc2fis.append({"name": d.get("name", "TC2FI"), "file": d.get("file", f"tc2fi_{len(self.tc2fis)}.csv"), "entries": entries})
+
         # Fix clone references for each top event.
         for event in self.top_events:
             AD_RiskAssessment_Helper.fix_clone_references(self.top_events)
@@ -8855,6 +8895,11 @@ class FaultTreeApp:
                         closed=rd.get("closed", False),
                         fta_ids=rd.get("fta_ids", []),
                         fmea_names=rd.get("fmea_names", []),
+                        fmeda_names=rd.get("fmeda_names", []),
+                        hazop_names=rd.get("hazop_names", []),
+                        hara_names=rd.get("hara_names", []),
+                        fi2tc_names=rd.get("fi2tc_names", []),
+                        tc2fi_names=rd.get("tc2fi_names", []),
                     )
                 )
             current = data.get("current_review")
@@ -8883,6 +8928,11 @@ class FaultTreeApp:
                     closed=rd.get("closed", False),
                     fta_ids=rd.get("fta_ids", []),
                     fmea_names=rd.get("fmea_names", []),
+                    fmeda_names=rd.get("fmeda_names", []),
+                    hazop_names=rd.get("hazop_names", []),
+                    hara_names=rd.get("hara_names", []),
+                    fi2tc_names=rd.get("fi2tc_names", []),
+                    tc2fi_names=rd.get("tc2fi_names", []),
                 )
                 self.reviews = [review]
                 self.review_data = review
@@ -9208,10 +9258,27 @@ class FaultTreeApp:
                 messagebox.showerror("Review", "Name already exists")
                 return
             scope = ReviewScopeDialog(self.root, self)
-            fta_ids, fmea_names = scope.result if scope.result else ([], [])
-            review = ReviewData(name=name, description=description, mode='peer', moderators=moderators,
-                               participants=parts, comments=[],
-                               fta_ids=fta_ids, fmea_names=fmea_names, due_date=due_date)
+            if scope.result:
+                (fta_ids, fmea_names, fmeda_names, hazop_names,
+                 hara_names, fi2tc_names, tc2fi_names) = scope.result
+            else:
+                fta_ids, fmea_names, fmeda_names, hazop_names, hara_names, fi2tc_names, tc2fi_names = ([], [], [], [], [], [], [])
+            review = ReviewData(
+                name=name,
+                description=description,
+                mode='peer',
+                moderators=moderators,
+                participants=parts,
+                comments=[],
+                fta_ids=fta_ids,
+                fmea_names=fmea_names,
+                fmeda_names=fmeda_names,
+                hazop_names=hazop_names,
+                hara_names=hara_names,
+                fi2tc_names=fi2tc_names,
+                tc2fi_names=tc2fi_names,
+                due_date=due_date,
+            )
             self.reviews.append(review)
             self.review_data = review
             self.current_user = moderators[0].name if moderators else parts[0].name
@@ -9243,10 +9310,27 @@ class FaultTreeApp:
                 messagebox.showerror("Review", "Name already exists")
                 return
             scope = ReviewScopeDialog(self.root, self)
-            fta_ids, fmea_names = scope.result if scope.result else ([], [])
-            review = ReviewData(name=name, description=description, mode='joint', moderators=moderators,
-                               participants=participants, comments=[],
-                               fta_ids=fta_ids, fmea_names=fmea_names, due_date=due_date)
+            if scope.result:
+                (fta_ids, fmea_names, fmeda_names, hazop_names,
+                 hara_names, fi2tc_names, tc2fi_names) = scope.result
+            else:
+                fta_ids, fmea_names, fmeda_names, hazop_names, hara_names, fi2tc_names, tc2fi_names = ([], [], [], [], [], [], [])
+            review = ReviewData(
+                name=name,
+                description=description,
+                mode='joint',
+                moderators=moderators,
+                participants=participants,
+                comments=[],
+                fta_ids=fta_ids,
+                fmea_names=fmea_names,
+                fmeda_names=fmeda_names,
+                hazop_names=hazop_names,
+                hara_names=hara_names,
+                fi2tc_names=fi2tc_names,
+                tc2fi_names=tc2fi_names,
+                due_date=due_date,
+            )
             self.reviews.append(review)
             self.review_data = review
             self.current_user = moderators[0].name if moderators else participants[0].name
@@ -9294,6 +9378,31 @@ class FaultTreeApp:
         if review.fmea_names:
             lines.append("FMEAs:")
             for name in review.fmea_names:
+                lines.append(f" - {name}")
+            lines.append("")
+        if review.fmeda_names:
+            lines.append("FMEDAs:")
+            for name in review.fmeda_names:
+                lines.append(f" - {name}")
+            lines.append("")
+        if review.hazop_names:
+            lines.append("HAZOPs:")
+            for name in review.hazop_names:
+                lines.append(f" - {name}")
+            lines.append("")
+        if review.hara_names:
+            lines.append("HARAs:")
+            for name in review.hara_names:
+                lines.append(f" - {name}")
+            lines.append("")
+        if review.fi2tc_names:
+            lines.append("FI2TCs:")
+            for name in review.fi2tc_names:
+                lines.append(f" - {name}")
+            lines.append("")
+        if review.tc2fi_names:
+            lines.append("TC2FIs:")
+            for name in review.tc2fi_names:
                 lines.append(f" - {name}")
             lines.append("")
         content = "\n".join(lines)
