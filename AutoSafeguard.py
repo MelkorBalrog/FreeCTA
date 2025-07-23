@@ -6548,6 +6548,22 @@ class FaultTreeApp:
                     names.append(name)
         return names
 
+    def classify_scenarios(self):
+        """Return two lists of scenario names grouped by category."""
+        use_case = []
+        sotif = []
+        for lib in self.scenario_libraries:
+            for sc in lib.get("scenarios", []):
+                if isinstance(sc, dict):
+                    name = sc.get("name", "")
+                    if sc.get("tcs") or sc.get("fis") or sc.get("type") == "sotif":
+                        sotif.append(name)
+                    else:
+                        use_case.append(name)
+                else:
+                    use_case.append(sc)
+        return {"use_case": use_case, "sotif": sotif}
+
     def get_all_scenery_names(self):
         """Return the list of scenery/ODD element names."""
         names = []
@@ -9189,22 +9205,154 @@ class FaultTreeApp:
     def manage_scenario_libraries(self):
         win = tk.Toplevel(self.root)
         win.title("Scenario Libraries")
-        lb = tk.Listbox(win, height=8, width=40)
-        lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        for lib in self.scenario_libraries:
-            lb.insert(tk.END, lib.get("name",""))
+
+        lib_lb = tk.Listbox(win, height=8, width=25)
+        lib_lb.grid(row=0, column=0, rowspan=4, sticky="nsew")
+        sc_tree = ttk.Treeview(win, columns=("type", "base", "tcs", "fis"), show="headings")
+        sc_tree.heading("type", text="Type")
+        sc_tree.heading("base", text="Base")
+        sc_tree.heading("tcs", text="TCs")
+        sc_tree.heading("fis", text="FIs")
+        sc_tree.column("type", width=70)
+        sc_tree.column("base", width=120)
+        sc_tree.column("tcs", width=120)
+        sc_tree.column("fis", width=120)
+        sc_tree.grid(row=0, column=1, columnspan=3, sticky="nsew")
+        win.grid_rowconfigure(0, weight=1)
+        win.grid_columnconfigure(1, weight=1)
+
+        def refresh_libs():
+            lib_lb.delete(0, tk.END)
+            for lib in self.scenario_libraries:
+                lib_lb.insert(tk.END, lib.get("name", ""))
+            refresh_scenarios()
+
+        def refresh_scenarios(*_):
+            sc_tree.delete(*sc_tree.get_children())
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.scenario_libraries[sel[0]]
+            for sc in lib.get("scenarios", []):
+                if isinstance(sc, dict):
+                    name = sc.get("name", "")
+                    sc_type = "SOTIF" if sc.get("fis") or sc.get("tcs") else "Use Case"
+                    base = sc.get("base", "")
+                    tcs = ", ".join(sc.get("tcs", []))
+                    fis = ", ".join(sc.get("fis", []))
+                else:
+                    name = sc
+                    sc_type = "Use Case"
+                    base = ""
+                    tcs = ""
+                    fis = ""
+                sc_tree.insert("", tk.END, text=name, values=(sc_type, base, tcs, fis))
+
+        class ScenarioDialog(simpledialog.Dialog):
+            def __init__(self, parent, app, data=None):
+                self.app = app
+                self.data = data or {"name": "", "base": "", "tcs": [], "fis": []}
+                super().__init__(parent, title="Edit Scenario")
+
+            def body(self, master):
+                ttk.Label(master, text="Name").grid(row=0, column=0, sticky="e")
+                self.name_var = tk.StringVar(value=self.data.get("name", ""))
+                ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1)
+
+                ttk.Label(master, text="Base Use Case").grid(row=1, column=0, sticky="e")
+                names = self.app.get_all_scenario_names()
+                self.base_var = tk.StringVar(value=self.data.get("base", ""))
+                ttk.Combobox(master, textvariable=self.base_var, values=names, state="readonly").grid(row=1, column=1)
+
+                ttk.Label(master, text="Triggering Conditions").grid(row=2, column=0, sticky="e")
+                self.tc_var = tk.Entry(master)
+                self.tc_var.insert(0, ", ".join(self.data.get("tcs", [])))
+                self.tc_var.grid(row=2, column=1)
+
+                ttk.Label(master, text="Functional Insufficiencies").grid(row=3, column=0, sticky="e")
+                self.fi_var = tk.Entry(master)
+                self.fi_var.insert(0, ", ".join(self.data.get("fis", [])))
+                self.fi_var.grid(row=3, column=1)
+
+            def apply(self):
+                tcs = [t.strip() for t in self.tc_var.get().split(",") if t.strip()]
+                fis = [f.strip() for f in self.fi_var.get().split(",") if f.strip()]
+                self.data = {
+                    "name": self.name_var.get().strip(),
+                    "base": self.base_var.get().strip(),
+                    "tcs": tcs,
+                    "fis": fis,
+                    "type": "sotif" if (tcs or fis) else "use_case",
+                }
+
         def add_lib():
-            name = simpledialog.askstring("New Library","Library name:")
+            name = simpledialog.askstring("New Library", "Library name:")
+            if not name:
+                return
+            self.scenario_libraries.append({"name": name, "scenarios": []})
+            refresh_libs()
+
+        def edit_lib():
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.scenario_libraries[sel[0]]
+            name = simpledialog.askstring("Edit Library", "Library name:", initialvalue=lib.get("name", ""))
             if name:
-                self.scenario_libraries.append({"name":name,"scenarios":[]})
-                lb.insert(tk.END,name)
+                lib["name"] = name
+                refresh_libs()
+
         def delete_lib():
-            sel = lb.curselection()
+            sel = lib_lb.curselection()
             if sel:
-                idx=sel[0]; del self.scenario_libraries[idx]; lb.delete(idx)
-        btn = ttk.Frame(win); btn.pack(side=tk.RIGHT, fill=tk.Y)
-        ttk.Button(btn,text="Add",command=add_lib).pack(fill=tk.X)
-        ttk.Button(btn,text="Delete",command=delete_lib).pack(fill=tk.X)
+                idx = sel[0]
+                del self.scenario_libraries[idx]
+                refresh_libs()
+
+        def add_scenario():
+            sel = lib_lb.curselection()
+            if not sel:
+                return
+            lib = self.scenario_libraries[sel[0]]
+            dlg = ScenarioDialog(win, self)
+            lib.setdefault("scenarios", []).append(dlg.data)
+            refresh_scenarios()
+
+        def edit_scenario():
+            sel_lib = lib_lb.curselection()
+            sel_sc = sc_tree.selection()
+            if not sel_lib or not sel_sc:
+                return
+            lib = self.scenario_libraries[sel_lib[0]]
+            idx = sc_tree.index(sel_sc[0])
+            data = lib.get("scenarios", [])[idx]
+            if isinstance(data, str):
+                data = {"name": data, "base": "", "tcs": [], "fis": [], "type": "use_case"}
+            dlg = ScenarioDialog(win, self, data)
+            lib["scenarios"][idx] = dlg.data
+            refresh_scenarios()
+
+        def del_scenario():
+            sel_lib = lib_lb.curselection()
+            sel_sc = sc_tree.selection()
+            if not sel_lib or not sel_sc:
+                return
+            lib = self.scenario_libraries[sel_lib[0]]
+            idx = sc_tree.index(sel_sc[0])
+            del lib.get("scenarios", [])[idx]
+            refresh_scenarios()
+
+        btnf = ttk.Frame(win)
+        btnf.grid(row=1, column=1, columnspan=3, sticky="ew")
+        ttk.Button(btnf, text="Add Lib", command=add_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Edit Lib", command=edit_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Del Lib", command=delete_lib).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Add Scen", command=add_scenario).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btnf, text="Edit Scen", command=edit_scenario).pack(side=tk.LEFT)
+        ttk.Button(btnf, text="Del Scen", command=del_scenario).pack(side=tk.LEFT)
+
+        lib_lb.bind("<<ListboxSelect>>", refresh_scenarios)
+        refresh_libs()
 
     def manage_odd_libraries(self):
         win = tk.Toplevel(self.root)
@@ -9921,6 +10069,18 @@ class FaultTreeApp:
         self.fi2tc_entries = data.get("fi2tc_entries", [])
         self.tc2fi_entries = data.get("tc2fi_entries", [])
         self.scenario_libraries = data.get("scenario_libraries", [])
+        # Normalize legacy scenario entries
+        for lib in self.scenario_libraries:
+            norm = []
+            for sc in lib.get("scenarios", []):
+                if isinstance(sc, str):
+                    norm.append({"name": sc, "base": "", "tcs": [], "fis": [], "type": "use_case"})
+                else:
+                    sc.setdefault("tcs", [])
+                    sc.setdefault("fis", [])
+                    sc["type"] = "sotif" if sc.get("tcs") or sc.get("fis") else sc.get("type", "use_case")
+                    norm.append(sc)
+            lib["scenarios"] = norm
         self.odd_libraries = data.get("odd_libraries", [])
         if not self.odd_libraries and "odd_elements" in data:
             self.odd_libraries = [{"name": "Default", "elements": data.get("odd_elements", [])}]
