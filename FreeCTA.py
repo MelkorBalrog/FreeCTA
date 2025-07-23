@@ -2369,7 +2369,7 @@ class EditNodeDialog(simpledialog.Dialog):
             formula = self.formula_var.get() if hasattr(self, "formula_var") else None
             prob = self.app.compute_failure_prob(self.node, failure_mode_ref=ref, formula=formula)
             self.prob_entry.delete(0, tk.END)
-            self.prob_entry.insert(0, f"{prob:.6g}")
+            self.prob_entry.insert(0, f"{prob:.10g}")
 
     def validate(self):
         if hasattr(self, 'fm_var'):
@@ -7733,8 +7733,6 @@ class FaultTreeApp:
         mode is converted to a failure rate in events per hour, then the
         probability is derived for the mission profile time ``tau``.
         """
-        if not self.mission_profiles:
-            return
         for be in self.get_all_basic_events():
             be.failure_prob = self.compute_failure_prob(be)
 
@@ -7751,11 +7749,12 @@ class FaultTreeApp:
             return 0.0
         t = tau
         formula = formula or getattr(node, "prob_formula", getattr(fm, "prob_formula", "linear"))
+        f = str(formula).strip().lower()
         lam = fit / 1e9
-        if formula == "exponential":
+        if f == "exponential":
             return 1 - math.exp(-lam * t)
-        elif formula == "constant":
-            return lam
+        elif f == "constant":
+            return fit
         else:
             return lam * t
 
@@ -7765,8 +7764,8 @@ class FaultTreeApp:
             if getattr(be, "failure_mode_ref", None) == fm_node.unique_id:
                 be.fmeda_fit = fm_node.fmeda_fit
                 be.fmeda_diag_cov = fm_node.fmeda_diag_cov
-                if not getattr(be, "prob_formula", None):
-                    be.prob_formula = fm_node.prob_formula
+                # Always propagate the formula so edits take effect
+                be.prob_formula = fm_node.prob_formula
                 be.failure_prob = self.compute_failure_prob(be)
 
     def insert_node_in_tree(self, parent_item, node):
@@ -8305,7 +8304,7 @@ class FaultTreeApp:
             pmhf += prob
 
         self.update_views()
-        msg = f"PMHF = {pmhf:.2e}\nSPFM = {spf:.2f}\nLPFM = {lpf:.2f}"
+        msg = f"PMHF = {pmhf:.6e}\nSPFM = {spf:.2f}\nLPFM = {lpf:.2f}"
         messagebox.showinfo("PMHF Calculation", msg)
 
     def show_requirements_matrix(self):
