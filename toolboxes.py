@@ -837,11 +837,13 @@ class HaraWindow(tk.Toplevel):
         self.doc_cb["values"] = names
         if self.app.active_hara:
             self.doc_var.set(self.app.active_hara.name)
-            self.hazop_lbl.config(text=f"HAZOP: {self.app.active_hara.hazop}")
+            hazops = ", ".join(getattr(self.app.active_hara, "hazops", []))
+            self.hazop_lbl.config(text=f"HAZOPs: {hazops}")
         elif names:
             self.doc_var.set(names[0])
             doc = self.app.hara_docs[0]
-            self.hazop_lbl.config(text=f"HAZOP: {doc.hazop}")
+            hazops = ", ".join(getattr(doc, "hazops", []))
+            self.hazop_lbl.config(text=f"HAZOPs: {hazops}")
             self.app.active_hara = doc
             self.app.hara_entries = doc.entries
 
@@ -851,7 +853,8 @@ class HaraWindow(tk.Toplevel):
             if d.name == name:
                 self.app.active_hara = d
                 self.app.hara_entries = d.entries
-                self.hazop_lbl.config(text=f"HAZOP: {d.hazop}")
+                hazops = ", ".join(getattr(d, "hazops", []))
+                self.hazop_lbl.config(text=f"HAZOPs: {hazops}")
                 break
         self.refresh()
 
@@ -864,20 +867,23 @@ class HaraWindow(tk.Toplevel):
             ttk.Label(master, text="Name").grid(row=0, column=0, sticky="e")
             self.name_var = tk.StringVar()
             ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1)
-            ttk.Label(master, text="HAZOP").grid(row=1, column=0, sticky="e")
+            ttk.Label(master, text="HAZOPs").grid(row=1, column=0, sticky="ne")
             names = [d.name for d in self.app.hazop_docs]
-            self.hazop_var = tk.StringVar()
-            ttk.Combobox(master, textvariable=self.hazop_var, values=names, state="readonly").grid(row=1, column=1)
+            self.hazop_lb = tk.Listbox(master, selectmode="extended", height=5)
+            for n in names:
+                self.hazop_lb.insert(tk.END, n)
+            self.hazop_lb.grid(row=1, column=1)
 
         def apply(self):
-            self.result = (self.name_var.get(), self.hazop_var.get())
+            sel = [self.hazop_lb.get(i) for i in self.hazop_lb.curselection()]
+            self.result = (self.name_var.get(), sel)
 
     def new_doc(self):
         dlg = self.NewHaraDialog(self, self.app)
         if not getattr(dlg, "result", None):
             return
-        name, hazop = dlg.result
-        doc = HaraDoc(name, hazop, [], False)
+        name, hazops = dlg.result
+        doc = HaraDoc(name, hazops, [], False)
         self.app.hara_docs.append(doc)
         self.app.active_hara = doc
         self.app.hara_entries = doc.entries
@@ -903,10 +909,13 @@ class HaraWindow(tk.Toplevel):
             super().__init__(parent, title="Edit HARA Row")
 
         def body(self, master):
-            hazop_name = self.app.active_hara.hazop if self.app.active_hara else ""
-            hazop = self.app.get_hazop_by_name(hazop_name) if hazop_name else None
-            entries = hazop.entries if hazop else []
-            malfs = [e.malfunction for e in entries if getattr(e, "safety", False)]
+            hazop_names = getattr(self.app.active_hara, "hazops", []) if self.app.active_hara else []
+            malfs = []
+            for hz_name in hazop_names:
+                hz = self.app.get_hazop_by_name(hz_name)
+                if hz:
+                    malfs.extend(e.malfunction for e in hz.entries if getattr(e, "safety", False))
+            malfs = sorted(set(malfs))
             goals = [te.safety_goal_description or (te.user_name or f"SG {te.unique_id}") for te in self.app.top_events]
             ttk.Label(master, text="Malfunction").grid(row=0,column=0,sticky="e")
             self.mal_var = tk.StringVar(value=self.row.malfunction)

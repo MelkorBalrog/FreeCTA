@@ -70,11 +70,13 @@ become selectable failure modes in the FMEDA table.
 
 ### HARA Analysis
 
-The **HARA Analysis** view builds on the safety relevant malfunctions from the
-selected HAZOP. Each HARA table contains the following columns:
+The **HARA Analysis** view builds on the safety relevant malfunctions from one
+or more selected HAZOPs. When creating a new HARA you can pick multiple HAZOP
+documents; only malfunctions from those selections appear in the table.
+Each HARA table contains the following columns:
 
 1. **Malfunction** – combo box listing malfunctions flagged as safety relevant
-   in the chosen HAZOP document.
+   in the chosen HAZOP documents.
 2. **Severity** – ISO&nbsp;26262 severity level (1–3).
 3. **Severity Rationale** – free text explanation for the chosen severity.
 4. **Controllability** – ISO&nbsp;26262 controllability level (1–3).

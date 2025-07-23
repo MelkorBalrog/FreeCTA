@@ -100,9 +100,9 @@ class HazopDoc:
 
 @dataclass
 class HaraDoc:
-    """Container for a HARA linked to a specific HAZOP."""
+    """Container for a HARA derived from one or more HAZOPs."""
     name: str
-    hazop: str
+    hazops: list
     entries: list
     approved: bool = False
 
