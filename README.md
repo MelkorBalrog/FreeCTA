@@ -68,6 +68,15 @@ Covered malfunctions may reference other entries as mitigation. When a function
 is allocated to an active component in a reliability analysis, its malfunctions
 become selectable failure modes in the FMEDA table.
 
+### HARA Analysis
+
+The **HARA Analysis** view builds on the safety relevant malfunctions from the
+selected HAZOP. For every malfunction you can assign severity, controllability
+and exposure levels along with textual rationales. The tool automatically
+calculates the resulting ASIL and lets you link each entry to a defined safety
+goal. ASIL values from these HARA entries are propagated to the linked safety
+goals and appear in FTA top level events and related documentation.
+
 ## License
 
 This project is licensed under the GNU General Public License version 3. See the [LICENSE](LICENSE) file for details.
