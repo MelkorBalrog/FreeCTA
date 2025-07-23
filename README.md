@@ -58,6 +58,16 @@ interpreted:
 Mission profiles and the selected formula for each basic event are stored in the
 JSON model so results remain consistent when reloading the file.
 
+### Component Qualifications
+
+Reliability calculations now take the qualification certificate of each passive
+component into account.  When computing FIT rates, a multiplier based on the
+certificate (e.g. *AEC‑Q200* or *MIL‑STD‑883*) is applied so qualified parts
+yield lower failure rates.  Active components currently use a neutral factor.
+Additional datasheet parameters such as diode forward voltage or MOSFET
+`RDS(on)` can be entered when configuring components to better document the
+parts used in the analysis.
+
 ### HAZOP Analysis
 
 The **HAZOP Analysis** window lets you list system functions with one or more

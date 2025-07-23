@@ -12,6 +12,7 @@ from models import (
     QUALIFICATIONS,
     COMPONENT_ATTR_TEMPLATES,
     RELIABILITY_MODELS,
+    PASSIVE_QUAL_FACTORS,
     calc_asil,
 )
 
@@ -319,7 +320,8 @@ class ReliabilityWindow(tk.Toplevel):
                     for sub in bom:
                         info = RELIABILITY_MODELS.get(std, {}).get(sub.comp_type)
                         if info:
-                            sub.fit = info["formula"](sub.attributes, mp) * mp.tau
+                            qf = PASSIVE_QUAL_FACTORS.get(sub.qualification, 1.0) if sub.is_passive else 1.0
+                            sub.fit = info["formula"](sub.attributes, mp) * mp.tau * qf
                         else:
                             sub.fit = 0.0
                         sub_total += sub.fit * sub.quantity
@@ -327,7 +329,8 @@ class ReliabilityWindow(tk.Toplevel):
             else:
                 info = RELIABILITY_MODELS.get(std, {}).get(comp.comp_type)
                 if info:
-                    comp.fit = info["formula"](comp.attributes, mp) * mp.tau
+                    qf = PASSIVE_QUAL_FACTORS.get(comp.qualification, 1.0) if comp.is_passive else 1.0
+                    comp.fit = info["formula"](comp.attributes, mp) * mp.tau * qf
                 else:
                     comp.fit = 0.0
             total += comp.fit * comp.quantity

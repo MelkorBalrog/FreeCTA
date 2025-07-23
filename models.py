@@ -53,6 +53,22 @@ QUALIFICATIONS = [
     "None",
 ]
 
+# Multiplicative FIT adjustment factors applied to passive components based on
+# their qualification certificate.  Values below 1.0 decrease the calculated
+# FIT rate.  Active components currently use a factor of ``1.0`` regardless of
+# qualification.
+PASSIVE_QUAL_FACTORS = {
+    "AEC-Q200": 0.8,
+    "IECQ": 0.9,
+    "MIL-STD-883": 0.85,
+    "MIL-PRF-38534": 0.85,
+    "MIL-PRF-38535": 0.85,
+    "Space": 0.75,
+    "AEC-Q100": 1.0,
+    "AEC-Q101": 1.0,
+    "None": 1.0,
+}
+
 @dataclass
 class ReliabilityAnalysis:
     """Store the results of a reliability calculation including the BOM."""
@@ -129,12 +145,18 @@ COMPONENT_ATTR_TEMPLATES = {
         "type": ["standard", "zener", "schottky"],
         "reverse_V": "",
         "forward_current_A": "",
+        "forward_voltage_V": "",
+        "power_W": "",
+        "surge_current_A": "",
     },
     "transistor": {
         "transistor_type": ["BJT", "MOSFET"],
         "pins": "",
         "voltage_V": "",
         "current_A": "",
+        "gain_hfe": "",
+        "rds_on_mohm": "",
+        "gate_charge_nC": "",
     },
     "ic": {
         "type": ["digital", "analog", "mcu"],
