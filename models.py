@@ -310,20 +310,26 @@ ASIL_DECOMP_SCHEMES = {
     "A": [("QM", "A")],
 }
 
-# Simplified ISO 26262 risk graph for ASIL determination
-# Controllability values follow the standard ordering where 1 is easily
-# controllable and 3 represents difficult or uncontrollable situations.
+# ASIL determination table following the ISO 26262 risk graph used in the HARA
+# view. The keys are tuples ``(severity, controllability, exposure)`` using the
+# numeric levels 1–3 for severity/controllability and 1–4 for exposure.  The
+# mapping below implements the conditions from the HARA specification so that
+# ``calc_asil`` returns the correct ASIL value for each combination.
 ASIL_TABLE = {
-    # Severity 3 rows
-    (3, 1, 4): "C", (3, 2, 4): "D", (3, 3, 4): "D",
-    (3, 1, 3): "B", (3, 2, 3): "C", (3, 3, 3): "D",
-    (3, 1, 2): "A", (3, 2, 2): "B", (3, 3, 2): "C",
-    (3, 1, 1): "QM", (3, 2, 1): "A", (3, 3, 1): "B",
+    # Severity 1 rows
+    (1, 1, 1): "QM", (1, 1, 2): "QM", (1, 1, 3): "QM", (1, 1, 4): "QM",
+    (1, 2, 1): "QM", (1, 2, 2): "QM", (1, 2, 3): "QM", (1, 2, 4): "A",
+    (1, 3, 1): "QM", (1, 3, 2): "QM", (1, 3, 3): "QM", (1, 3, 4): "B",
+
     # Severity 2 rows
-    (2, 1, 4): "B", (2, 2, 4): "C", (2, 3, 4): "D",
-    (2, 1, 3): "A", (2, 2, 3): "B", (2, 3, 3): "C",
-    (2, 1, 2): "QM", (2, 2, 2): "A", (2, 3, 2): "B",
-    (2, 1, 1): "QM", (2, 2, 1): "QM", (2, 3, 1): "A",
+    (2, 1, 1): "QM", (2, 1, 2): "QM", (2, 1, 3): "QM", (2, 1, 4): "A",
+    (2, 2, 1): "QM", (2, 2, 2): "QM", (2, 2, 3): "A", (2, 2, 4): "B",
+    (2, 3, 1): "QM", (2, 3, 2): "A", (2, 3, 3): "B", (2, 3, 4): "C",
+
+    # Severity 3 rows
+    (3, 1, 1): "QM", (3, 1, 2): "QM", (3, 1, 3): "A", (3, 1, 4): "B",
+    (3, 2, 1): "QM", (3, 2, 2): "A", (3, 2, 3): "B", (3, 2, 4): "C",
+    (3, 3, 1): "A", (3, 3, 2): "B", (3, 3, 3): "C", (3, 3, 4): "D",
 }
 
 def calc_asil(sev: int, cont: int, expo: int) -> str:
