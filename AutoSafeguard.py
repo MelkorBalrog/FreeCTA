@@ -2652,11 +2652,6 @@ class FaultTreeApp:
         reliability_menu.add_command(label="FMEDA Analysis", command=self.open_fmeda_window)
         reliability_menu.add_command(label="FMEDA Manager", command=self.show_fmeda_list)
         menubar.add_cascade(label="Reliability", menu=reliability_menu)
-
-        hazard_menu = tk.Menu(menubar, tearoff=0)
-        hazard_menu.add_command(label="HAZOP Analysis", command=self.open_hazop_window)
-        hazard_menu.add_command(label="HARA Analysis", command=self.open_hara_window)
-        menubar.add_cascade(label="Hazard", menu=hazard_menu)
         sotif_menu = tk.Menu(menubar, tearoff=0)
         sotif_menu.add_command(label="Triggering Conditions", command=self.show_triggering_condition_list)
         sotif_menu.add_command(label="Functional Insufficiencies", command=self.show_functional_insufficiency_list)
@@ -7759,14 +7754,6 @@ class FaultTreeApp:
     def get_all_basic_events(self):
         """Return a list of all basic events across all top-level trees."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]
-    def get_all_triggering_conditions(self):
-        """Return all triggering condition nodes."""
-        return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "TRIGGERING CONDITION"]
-
-    def get_all_functional_insufficiencies(self):
-        """Return all functional insufficiency nodes."""
-        return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "FUNCTIONAL INSUFFICIENCY"]
-
 
     def get_all_triggering_conditions(self):
         """Return all triggering condition nodes."""
@@ -7775,6 +7762,31 @@ class FaultTreeApp:
     def get_all_functional_insufficiencies(self):
         """Return all functional insufficiency nodes."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "FUNCTIONAL INSUFFICIENCY"]
+
+    def get_all_scenario_names(self):
+        """Return the list of scenario names from all scenario libraries."""
+        names = []
+        for lib in self.scenario_libraries:
+            for sc in lib.get("scenarios", []):
+                if isinstance(sc, dict):
+                    name = sc.get("name", "")
+                else:
+                    name = sc
+                if name:
+                    names.append(name)
+        return names
+
+    def get_all_scenery_names(self):
+        """Return the list of scenery/ODD element names."""
+        names = []
+        for el in self.odd_elements:
+            if isinstance(el, dict):
+                name = el.get("name") or el.get("element") or el.get("id")
+            else:
+                name = str(el)
+            if name:
+                names.append(name)
+        return names
 
     def get_all_failure_modes(self):
         """Return list of all failure mode nodes from FTA, FMEAs and FMEDAs."""
@@ -10417,12 +10429,6 @@ class FaultTreeApp:
             return
         self._hazop_window = self.HazopWindow(self)
 
-    def open_hara_window(self):
-        if hasattr(self, "_hara_window") and self._hara_window.winfo_exists():
-            self._hara_window.lift()
-            return
-        self._hara_window = self.HaraWindow(self)
-
     def open_fi2tc_window(self):
         if hasattr(self, "_fi2tc_window") and self._fi2tc_window.winfo_exists():
             self._fi2tc_window.lift()
@@ -10434,7 +10440,7 @@ class FaultTreeApp:
             self._tc2fi_window.lift()
             return
         self._tc2fi_window = self.TC2FIWindow(self)
-        
+
     class ReliabilityWindow(tk.Toplevel):
         def __init__(self, app):
             super().__init__(app.root)
@@ -10801,7 +10807,6 @@ class FaultTreeApp:
             self.app.reliability_analyses.append(ra)
             messagebox.showinfo("Save", "Analysis saved")
 
-
     class FI2TCWindow(tk.Toplevel):
         COLS = [
             "id","system_function","allocation","interfaces","insufficiency",
@@ -10841,6 +10846,8 @@ class FaultTreeApp:
             def body(self, master):
                 fi_names = [n.user_name or f"FI {n.unique_id}" for n in self.app.get_all_functional_insufficiencies()]
                 tc_names = [n.user_name or f"TC {n.unique_id}" for n in self.app.get_all_triggering_conditions()]
+                scenario_names = self.app.get_all_scenario_names()
+                scene_names = self.app.get_all_scenery_names()
                 self.widgets = {}
                 r = 0
                 for col in self.parent_win.COLS:
@@ -10853,6 +10860,16 @@ class FaultTreeApp:
                     elif col == "insufficiency":
                         var = tk.StringVar(value=self.data.get(col, ""))
                         cb = ttk.Combobox(master, textvariable=var, values=fi_names, state="readonly")
+                        cb.grid(row=r, column=1)
+                        self.widgets[col] = var
+                    elif col == "scenario":
+                        var = tk.StringVar(value=self.data.get(col, ""))
+                        cb = ttk.Combobox(master, textvariable=var, values=scenario_names, state="readonly")
+                        cb.grid(row=r, column=1)
+                        self.widgets[col] = var
+                    elif col == "scene":
+                        var = tk.StringVar(value=self.data.get(col, ""))
+                        cb = ttk.Combobox(master, textvariable=var, values=scene_names, state="readonly")
                         cb.grid(row=r, column=1)
                         self.widgets[col] = var
                     else:
@@ -10909,11 +10926,7 @@ class FaultTreeApp:
             self.tree = ttk.Treeview(self, columns=columns, show="headings")
             for col in columns:
                 self.tree.heading(col, text=col.capitalize())
-                if col in ("rationale", "hazard"):
-                    width = 200
-                else:
-                    width = 120
-                self.tree.column(col, width=width)
+                self.tree.column(col, width=120 if col != "rationale" else 200)
             self.tree.pack(fill=tk.BOTH, expand=True)
 
             btn = ttk.Frame(self)
@@ -10927,34 +10940,12 @@ class FaultTreeApp:
         def refresh(self):
             self.tree.delete(*self.tree.get_children())
             for row in self.app.hazop_entries:
-                vals = [
-                    row.function,
-                    row.malfunction,
-                    row.mtype,
-                    row.scenario,
-                    row.conditions,
-                    row.hazard,
-                    "Yes" if row.safety else "No",
-                    row.rationale,
-                    "Yes" if row.covered else "No",
-                    row.covered_by,
-                ]
+                vals = [row.function, row.malfunction, row.mtype, "Yes" if row.safety else "No", row.rationale]
                 self.tree.insert("", "end", values=vals)
 
         class RowDialog(simpledialog.Dialog):
             def __init__(self, parent, row=None):
-                self.row = row or HazopEntry(
-                    "",
-                    "",
-                    "No/Not",
-                    "",
-                    "",
-                    "",
-                    False,
-                    "",
-                    False,
-                    "",
-                )
+                self.row = row or HazopEntry("", "", "No/Not", False, "")
                 super().__init__(parent, title="Edit HAZOP Row")
 
             def body(self, master):
@@ -10971,55 +10962,25 @@ class FaultTreeApp:
                 ttk.Combobox(
                     master,
                     textvariable=self.typ,
-                    values=["No/Not", "Unintended", "Excessive", "Insufficient", "Reverse"],
+                    values=["No/Not", "Excessive", "Insufficient", "Unintended", "Reverse"],
                     state="readonly",
                 ).grid(row=2, column=1, padx=5, pady=5)
 
-                ttk.Label(master, text="Scenario").grid(row=3, column=0, sticky="e", padx=5, pady=5)
-                scenarios = []
-                for lib in self.app.scenario_libraries:
-                    scenarios.extend(lib.get("scenarios", []))
-                self.scen = tk.StringVar(value=self.row.scenario)
-                ttk.Combobox(master, textvariable=self.scen, values=scenarios, state="readonly").grid(row=3, column=1, padx=5, pady=5)
+                ttk.Label(master, text="Safety Relevant").grid(row=3, column=0, sticky="e", padx=5, pady=5)
+                self.safety = tk.BooleanVar(value=self.row.safety)
+                ttk.Checkbutton(master, variable=self.safety).grid(row=3, column=1, sticky="w", padx=5, pady=5)
 
-                ttk.Label(master, text="Driving Conditions").grid(row=4, column=0, sticky="e", padx=5, pady=5)
-                self.cond = tk.StringVar(value=self.row.conditions)
-                ttk.Entry(master, textvariable=self.cond).grid(row=4, column=1, padx=5, pady=5)
-
-                ttk.Label(master, text="Hazard").grid(row=5, column=0, sticky="ne", padx=5, pady=5)
-                self.haz = tk.Text(master, width=30, height=3)
-                self.haz.insert("1.0", self.row.hazard)
-                self.haz.grid(row=5, column=1, padx=5, pady=5)
-
-                ttk.Label(master, text="Safety Relevant").grid(row=6, column=0, sticky="e", padx=5, pady=5)
-                self.safety = tk.StringVar(value="Yes" if self.row.safety else "No")
-                ttk.Combobox(master, textvariable=self.safety, values=["Yes", "No"], state="readonly").grid(row=6, column=1, padx=5, pady=5)
-
-                ttk.Label(master, text="Rationale").grid(row=7, column=0, sticky="ne", padx=5, pady=5)
+                ttk.Label(master, text="Rationale").grid(row=4, column=0, sticky="ne", padx=5, pady=5)
                 self.rat = tk.Text(master, width=30, height=3)
                 self.rat.insert("1.0", self.row.rationale)
-                self.rat.grid(row=7, column=1, padx=5, pady=5)
-
-                ttk.Label(master, text="Covered").grid(row=8, column=0, sticky="e", padx=5, pady=5)
-                self.cov = tk.StringVar(value="Yes" if self.row.covered else "No")
-                ttk.Combobox(master, textvariable=self.cov, values=["Yes", "No"], state="readonly").grid(row=8, column=1, padx=5, pady=5)
-
-                ttk.Label(master, text="Covered By").grid(row=9, column=0, sticky="e", padx=5, pady=5)
-                malfs = [e.malfunction for e in self.app.hazop_entries]
-                self.cov_by = tk.StringVar(value=self.row.covered_by)
-                ttk.Combobox(master, textvariable=self.cov_by, values=malfs, state="readonly").grid(row=9, column=1, padx=5, pady=5)
+                self.rat.grid(row=4, column=1, padx=5, pady=5)
 
             def apply(self):
                 self.row.function = self.func.get()
                 self.row.malfunction = self.mal.get()
                 self.row.mtype = self.typ.get()
-                self.row.scenario = self.scen.get()
-                self.row.conditions = self.cond.get()
-                self.row.hazard = self.haz.get("1.0", "end-1c")
-                self.row.safety = self.safety.get() == "Yes"
+                self.row.safety = self.safety.get()
                 self.row.rationale = self.rat.get("1.0", "end-1c")
-                self.row.covered = self.cov.get() == "Yes"
-                self.row.covered_by = self.cov_by.get()
 
         def add_row(self):
             dlg = self.RowDialog(self)
@@ -11043,7 +11004,7 @@ class FaultTreeApp:
                 if idx < len(self.app.hazop_entries):
                     del self.app.hazop_entries[idx]
             self.refresh()
-
+            
         def load_analysis(self):
             if not self.app.reliability_analyses:
                 messagebox.showwarning("Load", "No saved analyses")
@@ -11092,6 +11053,127 @@ class FaultTreeApp:
             )
             self.app.reliability_analyses.append(ra)
             messagebox.showinfo("Save", "Analysis saved")
+
+
+    class TC2FIWindow(tk.Toplevel):
+        COLS = [
+            "id",
+            "hazard_use_case",
+            "occurrence",
+            "system_function",
+            "elements_impacted",
+            "interfaces",
+            "functional_insufficiency",
+            "vehicle_effect",
+            "severity",
+            "design_measures",
+            "verification",
+            "measure_effectiveness",
+            "scene",
+            "scenario",
+            "driver_behavior",
+            "triggering_condition",
+            "tc_effect",
+            "mitigation",
+            "acceptance",
+        ]
+        def __init__(self, app):
+            super().__init__(app.root)
+            self.app = app
+            self.title("TC2FI Analysis")
+            self.tree = ttk.Treeview(self, columns=self.COLS, show="headings")
+            for c in self.COLS:
+                self.tree.heading(c, text=c.replace("_"," ").title())
+                self.tree.column(c, width=120)
+            self.tree.pack(fill=tk.BOTH, expand=True)
+            btn = ttk.Frame(self)
+            btn.pack()
+            ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Export CSV", command=self.export_csv).pack(side=tk.LEFT, padx=2, pady=2)
+            self.refresh()
+        def refresh(self):
+            self.tree.delete(*self.tree.get_children())
+            for row in self.app.tc2fi_entries:
+                self.tree.insert("", "end", values=[row.get(k, "") for k in self.COLS])
+        class RowDialog(simpledialog.Dialog):
+            def __init__(self, parent, app, data=None):
+                self.app = app
+                self.parent_win = parent
+                default = {k: "" for k in parent.COLS}
+                self.data = data or default
+                super().__init__(parent, title="Edit Row")
+            def body(self, master):
+                tc_names = [n.user_name or f"TC {n.unique_id}" for n in self.app.get_all_triggering_conditions()]
+                fi_names = [n.user_name or f"FI {n.unique_id}" for n in self.app.get_all_functional_insufficiencies()]
+                scenario_names = self.app.get_all_scenario_names()
+                scene_names = self.app.get_all_scenery_names()
+                self.widgets = {}
+                r = 0
+                for col in self.parent_win.COLS:
+                    ttk.Label(master, text=col.replace("_"," ").title()).grid(row=r, column=0, sticky="e")
+                    if col == "functional_insufficiency":
+                        var = tk.StringVar(value=self.data.get(col, ""))
+                        cb = ttk.Combobox(master, textvariable=var, values=fi_names, state="readonly")
+                        cb.grid(row=r, column=1)
+                        self.widgets[col] = var
+                    elif col == "triggering_condition":
+                        var = tk.StringVar(value=self.data.get(col, ""))
+                        cb = ttk.Combobox(master, textvariable=var, values=tc_names, state="readonly")
+                        cb.grid(row=r, column=1)
+                        self.widgets[col] = var
+                    elif col == "scenario":
+                        var = tk.StringVar(value=self.data.get(col, ""))
+                        cb = ttk.Combobox(master, textvariable=var, values=scenario_names, state="readonly")
+                        cb.grid(row=r, column=1)
+                        self.widgets[col] = var
+                    elif col == "scene":
+                        var = tk.StringVar(value=self.data.get(col, ""))
+                        cb = ttk.Combobox(master, textvariable=var, values=scene_names, state="readonly")
+                        cb.grid(row=r, column=1)
+                        self.widgets[col] = var
+                    else:
+                        ent = tk.Entry(master)
+                        ent.insert(0, self.data.get(col, ""))
+                        ent.grid(row=r, column=1)
+                        self.widgets[col] = ent
+                    r += 1
+            def apply(self):
+                for col, widget in self.widgets.items():
+                    if isinstance(widget, tk.Entry):
+                        self.data[col] = widget.get()
+                    else:
+                        self.data[col] = widget.get()
+        def add_row(self):
+            dlg = self.RowDialog(self, self.app)
+            self.app.tc2fi_entries.append(dlg.data)
+            self.refresh()
+        def edit_row(self):
+            sel = self.tree.focus()
+            if not sel:
+                return
+            idx = self.tree.index(sel)
+            data = self.app.tc2fi_entries[idx]
+            dlg = self.RowDialog(self, self.app, data)
+            self.refresh()
+        def del_row(self):
+            sel = self.tree.selection()
+            for iid in sel:
+                idx = self.tree.index(iid)
+                if idx < len(self.app.tc2fi_entries):
+                    del self.app.tc2fi_entries[idx]
+            self.refresh()
+        def export_csv(self):
+            path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV","*.csv")])
+            if not path:
+                return
+            with open(path, "w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(self.COLS)
+                for r in self.app.tc2fi_entries:
+                    w.writerow([r.get(k, "") for k in self.COLS])
+            messagebox.showinfo("Export", "TC2FI exported")
 
 
     class HaraWindow(tk.Toplevel):
@@ -12115,7 +12197,6 @@ class FaultTreeApp:
                 for ra in self.reliability_analyses
             ],
             "hazop_entries": [asdict(e) for e in self.hazop_entries],
-            "hara_entries": [asdict(e) for e in self.hara_entries],
             "fi2tc_entries": self.fi2tc_entries,
             "tc2fi_entries": self.tc2fi_entries,
             "scenario_libraries": self.scenario_libraries,
@@ -12257,42 +12338,11 @@ class FaultTreeApp:
                 )
             )
 
-        self.hazop_entries = [
-            HazopEntry(
-                h.get("function", ""),
-                h.get("malfunction", ""),
-                h.get("mtype", "No/Not"),
-                h.get("scenario", ""),
-                h.get("conditions", ""),
-                h.get("hazard", ""),
-                h.get("safety", False),
-                h.get("rationale", ""),
-                h.get("covered", False),
-                h.get("covered_by", ""),
-                h.get("component", ""),
-            )
-            for h in data.get("hazop_entries", [])
-        ]
-        self.hara_entries = [
-            HaraEntry(
-                h.get("malfunction", ""),
-                int(h.get("severity", 1)),
-                h.get("sev_rationale", ""),
-                int(h.get("controllability", 1)),
-                h.get("cont_rationale", ""),
-                int(h.get("exposure", 1)),
-                h.get("exp_rationale", ""),
-                h.get("asil", "QM"),
-                h.get("safety_goal", ""),
-            )
-            for h in data.get("hara_entries", [])
-        ]
+        self.hazop_entries = [HazopEntry(**h) for h in data.get("hazop_entries", [])]
         self.fi2tc_entries = data.get("fi2tc_entries", [])
         self.tc2fi_entries = data.get("tc2fi_entries", [])
         self.scenario_libraries = data.get("scenario_libraries", [])
         self.odd_elements = data.get("odd_elements", [])
-
-        self.sync_hara_to_safety_goals()
 
         self.fmedas = []
         for doc in data.get("fmedas", []):
