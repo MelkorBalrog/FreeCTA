@@ -864,6 +864,19 @@ class EditNodeDialog(simpledialog.Dialog):
                 self.safe_state_entry.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
+                ttk.Label(master, text="FTTI:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.ftti_entry = tk.Entry(master, width=20, font=dialog_font)
+                self.ftti_entry.insert(0, getattr(self.node, "ftti", ""))
+                self.ftti_entry.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
+                row_next += 1
+
+                ttk.Label(master, text="Acceptance Criteria:").grid(row=row_next, column=0, padx=5, pady=5, sticky="ne")
+                self.ac_text = tk.Text(master, width=40, height=3, font=dialog_font, wrap="word")
+                self.ac_text.insert("1.0", getattr(self.node, "acceptance_criteria", ""))
+                self.ac_text.grid(row=row_next, column=1, padx=5, pady=5)
+                self.ac_text.bind("<Return>", self.on_enter_pressed)
+                row_next += 1
+
 
         if self.node.node_type.upper() not in ["TOP EVENT", "BASIC EVENT"]:
             self.is_page_var = tk.BooleanVar(value=self.node.is_page)
@@ -1254,11 +1267,26 @@ class EditNodeDialog(simpledialog.Dialog):
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
             target_node.gate_type = self.gate_var.get().strip().upper()
             if self.node.node_type.upper() == "TOP EVENT":
-                # Severity, controllability and ASIL are managed via the HARA
-                # Keep existing values and only update descriptive fields
+                try:
+                    sev = float(self.sev_combo.get().strip())
+                    if not (1 <= sev <= 3):
+                        raise ValueError
+                    target_node.severity = sev
+                except ValueError:
+                    messagebox.showerror("Invalid Input", "Select a severity between 1 and 3.")
+                try:
+                    cont = float(self.cont_combo.get().strip())
+                    if not (1 <= cont <= 3):
+                        raise ValueError
+                    target_node.controllability = cont
+                except ValueError:
+                    messagebox.showerror("Invalid Input", "Select a controllability between 1 and 3.")
                 target_node.is_page = False
                 target_node.safety_goal_description = self.safety_goal_text.get("1.0", "end-1c")
+                target_node.safety_goal_asil = self.sg_asil_var.get().strip()
                 target_node.safe_state = self.safe_state_entry.get().strip()
+                target_node.ftti = self.ftti_entry.get().strip()
+                target_node.acceptance_criteria = self.ac_text.get("1.0", "end-1c")
             else:
                 target_node.is_page = self.is_page_var.get()
 
@@ -1395,6 +1423,7 @@ class FaultTreeApp:
         view_menu.add_command(label="Requirements Editor", command=self.show_requirements_editor)
         view_menu.add_command(label="FTA-FMEA Traceability", command=self.show_traceability_matrix)
         view_menu.add_command(label="Safety Goals Matrix", command=self.show_safety_goals_matrix)
+        view_menu.add_command(label="Safety Goals Editor", command=self.show_safety_goals_editor)
         view_menu.add_command(label="FTA Cut Sets", command=self.show_cut_sets)
         view_menu.add_command(label="Common Cause Toolbox", command=self.show_common_cause_view)
         menubar.add_cascade(label="View", menu=view_menu)
@@ -7586,7 +7615,7 @@ class FaultTreeApp:
 
                 frame.bind("<Configure>", on_config)
 
-                for n in [n for n in self.app.get_all_nodes(self.app.root_node) if n.node_type.upper() == "BASIC EVENT"]:
+                for n in [n for n in self.app.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]:
                     var = tk.BooleanVar(value=any(r.get("id") == self.requirement.get("id") for r in getattr(n, "safety_requirements", [])))
                     self.vars[n] = var
                     ttk.Checkbutton(frame, text=n.user_name or f"BE {n.unique_id}", variable=var).pack(anchor="w")
@@ -8735,6 +8764,127 @@ class FaultTreeApp:
                     text="",
                     values=[req_id, req.get("asil", ""), req.get("text", "")],
                 )
+
+    def show_safety_goals_editor(self):
+        """Allow editing of top-level safety goals."""
+        win = tk.Toplevel(self.root)
+        win.title("Safety Goals Editor")
+
+        columns = ["ID", "ASIL", "Safe State", "FTTI", "Acceptance", "Description"]
+        tree = ttk.Treeview(win, columns=columns, show="headings", selectmode="browse")
+        for c in columns:
+            tree.heading(c, text=c)
+            tree.column(c, width=120 if c != "Description" else 300, anchor="center")
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        def refresh_tree():
+            tree.delete(*tree.get_children())
+            for sg in self.top_events:
+                tree.insert(
+                    "",
+                    "end",
+                    iid=sg.unique_id,
+                    values=[
+                        sg.user_name or f"SG {sg.unique_id}",
+                        sg.safety_goal_asil,
+                        sg.safe_state,
+                        getattr(sg, "ftti", ""),
+                        getattr(sg, "acceptance_criteria", ""),
+                        sg.safety_goal_description,
+                    ],
+                )
+
+        class SGDialog(simpledialog.Dialog):
+            def __init__(self, parent, title, initial=None):
+                self.initial = initial
+                super().__init__(parent, title=title)
+
+            def body(self, master):
+                ttk.Label(master, text="ID:").grid(row=0, column=0, sticky="e")
+                self.id_var = tk.StringVar(value=getattr(self.initial, "user_name", ""))
+                tk.Entry(master, textvariable=self.id_var).grid(row=0, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="ASIL:").grid(row=1, column=0, sticky="e")
+                self.asil_var = tk.StringVar(value=getattr(self.initial, "safety_goal_asil", "QM"))
+                ttk.Combobox(master, textvariable=self.asil_var, values=ASIL_LEVEL_OPTIONS, state="readonly", width=8).grid(row=1, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Safe State:").grid(row=2, column=0, sticky="e")
+                self.state_var = tk.StringVar(value=getattr(self.initial, "safe_state", ""))
+                tk.Entry(master, textvariable=self.state_var).grid(row=2, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="FTTI:").grid(row=3, column=0, sticky="e")
+                self.ftti_var = tk.StringVar(value=getattr(self.initial, "ftti", ""))
+                tk.Entry(master, textvariable=self.ftti_var).grid(row=3, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Acceptance Criteria:").grid(row=4, column=0, sticky="ne")
+                self.acc_text = tk.Text(master, width=30, height=3, wrap="word")
+                self.acc_text.insert("1.0", getattr(self.initial, "acceptance_criteria", ""))
+                self.acc_text.grid(row=4, column=1, padx=5, pady=5)
+
+                ttk.Label(master, text="Description:").grid(row=5, column=0, sticky="ne")
+                self.desc_text = tk.Text(master, width=30, height=3, wrap="word")
+                self.desc_text.insert("1.0", getattr(self.initial, "safety_goal_description", ""))
+                self.desc_text.grid(row=5, column=1, padx=5, pady=5)
+                return master
+
+            def apply(self):
+                self.result = {
+                    "id": self.id_var.get().strip(),
+                    "asil": self.asil_var.get().strip(),
+                    "state": self.state_var.get().strip(),
+                    "ftti": self.ftti_var.get().strip(),
+                    "accept": self.acc_text.get("1.0", "end-1c"),
+                    "desc": self.desc_text.get("1.0", "end-1c"),
+                }
+
+        def add_sg():
+            dlg = SGDialog(win, "Add Safety Goal")
+            if dlg.result:
+                node = FaultTreeNode(dlg.result["id"], "TOP EVENT")
+                node.safety_goal_asil = dlg.result["asil"]
+                node.safe_state = dlg.result["state"]
+                node.ftti = dlg.result["ftti"]
+                node.acceptance_criteria = dlg.result["accept"]
+                node.safety_goal_description = dlg.result["desc"]
+                self.top_events.append(node)
+                refresh_tree()
+                self.update_views()
+
+        def edit_sg():
+            sel = tree.selection()
+            if not sel:
+                return
+            uid = int(sel[0])
+            sg = self.find_node_by_id_all(uid)
+            dlg = SGDialog(win, "Edit Safety Goal", sg)
+            if dlg.result:
+                sg.user_name = dlg.result["id"]
+                sg.safety_goal_asil = dlg.result["asil"]
+                sg.safe_state = dlg.result["state"]
+                sg.ftti = dlg.result["ftti"]
+                sg.acceptance_criteria = dlg.result["accept"]
+                sg.safety_goal_description = dlg.result["desc"]
+                refresh_tree()
+                self.update_views()
+
+        def del_sg():
+            sel = tree.selection()
+            if not sel:
+                return
+            uid = int(sel[0])
+            sg = self.find_node_by_id_all(uid)
+            if sg and messagebox.askyesno("Delete", "Delete safety goal?"):
+                self.top_events = [t for t in self.top_events if t.unique_id != uid]
+                refresh_tree()
+                self.update_views()
+
+        btn = ttk.Frame(win)
+        btn.pack(fill=tk.X)
+        ttk.Button(btn, text="Add", command=add_sg).pack(side=tk.LEFT)
+        ttk.Button(btn, text="Edit", command=edit_sg).pack(side=tk.LEFT)
+        ttk.Button(btn, text="Delete", command=del_sg).pack(side=tk.LEFT)
+
+        refresh_tree()
 
     def export_safety_goal_requirements(self):
         """Export requirements traced to safety goals including their ASIL."""
@@ -11412,6 +11562,8 @@ class FaultTreeNode:
         self.safety_goal_description = ""
         self.safety_goal_asil = ""
         self.safe_state = ""
+        self.ftti = ""
+        self.acceptance_criteria = ""
         self.vehicle_safety_requirements = []          # List of vehicle safety requirements
         self.operational_safety_requirements = []        # List of operational safety requirements
         # Each requirement is a dict with keys: "id", "req_type" and "text"
@@ -11469,6 +11621,8 @@ class FaultTreeNode:
             "safety_goal_description": self.safety_goal_description,
             "safety_goal_asil": self.safety_goal_asil,
             "safe_state": self.safe_state,
+            "ftti": self.ftti,
+            "acceptance_criteria": self.acceptance_criteria,
             "fmea_effect": self.fmea_effect,
             "fmea_cause": self.fmea_cause,
             "fmea_severity": self.fmea_severity,
@@ -11518,6 +11672,8 @@ class FaultTreeNode:
         node.safety_goal_description = data.get("safety_goal_description", "")
         node.safety_goal_asil = data.get("safety_goal_asil", "")
         node.safe_state = data.get("safe_state", "")
+        node.ftti = data.get("ftti", "")
+        node.acceptance_criteria = data.get("acceptance_criteria", "")
         node.fmea_effect = data.get("fmea_effect", "")
         node.fmea_cause = data.get("fmea_cause", "")
         node.fmea_severity = data.get("fmea_severity", 1)
