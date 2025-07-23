@@ -1664,6 +1664,66 @@ class FaultTreeApp:
                     rid = r.get("id")
                     if rid and rid not in reqs2:
                         reqs2[rid] = r
+        for f in data1.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+        for f in data2.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
+        for f in data1.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+        for f in data2.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
+        for f in data1.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+        for f in data2.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
+        for f in data1.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+        for f in data2.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
+        for f in data1.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+        for f in data2.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
 
         import difflib, html
 
@@ -2109,8 +2169,25 @@ class FaultTreeApp:
 
         def filter_data(data):
             return {
-                "top_events": [t for t in data.get("top_events", []) if t["unique_id"] in review.fta_ids],
+                "top_events": [
+                    t for t in data.get("top_events", []) if t["unique_id"] in review.fta_ids
+                ],
                 "fmeas": [f for f in data.get("fmeas", []) if f["name"] in review.fmea_names],
+                "fmedas": [
+                    d
+                    for d in data.get("fmedas", [])
+                    if d.get("name") in getattr(review, "fmeda_names", [])
+                ],
+                "hazops": [
+                    d
+                    for d in data.get("hazops", [])
+                    if d.get("name") in getattr(review, "hazop_names", [])
+                ],
+                "haras": [
+                    d
+                    for d in data.get("haras", [])
+                    if d.get("name") in getattr(review, "hara_names", [])
+                ],
             }
 
         data1 = filter_data(base_data)
@@ -2142,6 +2219,18 @@ class FaultTreeApp:
                     if rid and rid not in reqs1:
                         reqs1[rid] = r
             for e in fmea2.get(name, {}).get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs2:
+                        reqs2[rid] = r
+        for f in data1.get("fmedas", []):
+            for e in f.get("entries", []):
+                for r in e.get("safety_requirements", []):
+                    rid = r.get("id")
+                    if rid and rid not in reqs1:
+                        reqs1[rid] = r
+        for f in data2.get("fmedas", []):
+            for e in f.get("entries", []):
                 for r in e.get("safety_requirements", []):
                     rid = r.get("id")
                     if rid and rid not in reqs2:
