@@ -244,7 +244,22 @@ import json
 import csv
 from drawing_helper import FTADrawingHelper, fta_drawing_helper
 from risk_assessment import DERIVED_MATURITY_TABLE, ASSURANCE_AGGREGATION_AND, AND_DECOMPOSITION_TABLE, OR_DECOMPOSITION_TABLE, boolify, ADRiskAssessmentHelper
-from models import MissionProfile, ReliabilityComponent, ReliabilityAnalysis, HazopEntry, HaraEntry, QUALIFICATIONS, COMPONENT_ATTR_TEMPLATES, RELIABILITY_MODELS, ASIL_LEVEL_OPTIONS, ASIL_ORDER, ASIL_TARGETS, ASIL_TABLE, calc_asil
+from models import (
+    MissionProfile,
+    ReliabilityComponent,
+    ReliabilityAnalysis,
+    HazopEntry,
+    HaraEntry,
+    QUALIFICATIONS,
+    COMPONENT_ATTR_TEMPLATES,
+    RELIABILITY_MODELS,
+    ASIL_LEVEL_OPTIONS,
+    ASIL_ORDER,
+    ASIL_TARGETS,
+    ASIL_TABLE,
+    calc_asil,
+    global_requirements,
+)
 from toolboxes import ReliabilityWindow, FI2TCWindow, HazopWindow, HaraWindow, TC2FIWindow
 import copy
 import tkinter.font as tkFont
