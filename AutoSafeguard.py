@@ -326,19 +326,28 @@ class MissionProfile:
         """Return the total TAU for backward compatibility."""
         return self.tau_on + self.tau_off
 
-
 @dataclass
 class ReliabilityComponent:
     name: str
     comp_type: str
     quantity: int = 1
     attributes: dict = field(default_factory=dict)
-    safety_req: str = ""
+    qualification: str = ""
     fit: float = 0.0
     is_passive: bool = False
-    functions: list = field(default_factory=list)
     sub_boms: list = field(default_factory=list)
 
+QUALIFICATIONS = [
+    "AEC-Q100",
+    "AEC-Q101",
+    "AEC-Q200",
+    "IECQ",
+    "MIL-STD-883",
+    "MIL-PRF-38534",
+    "MIL-PRF-38535",
+    "Space",
+    "None",
+]
 
 @dataclass
 class ReliabilityAnalysis:
@@ -2518,7 +2527,6 @@ class FaultTreeApp:
         self.tc2fi_entries = []
         self.scenario_libraries = []
         self.odd_elements = []
-
         # Provide the drawing helper to dialogs that may be opened later
         self.fta_drawing_helper = fta_drawing_helper
 
@@ -2554,10 +2562,8 @@ class FaultTreeApp:
         edit_menu.add_command(label="Add Robustness", command=lambda: self.add_node_of_type("Robustness Score"), accelerator="Ctrl+Shift+R")
         edit_menu.add_command(label="Add Gate", command=lambda: self.add_node_of_type("GATE"), accelerator="Ctrl+Shift+G")
         edit_menu.add_command(label="Add Basic Event", command=lambda: self.add_node_of_type("Basic Event"), accelerator="Ctrl+Shift+B")
-
         edit_menu.add_command(label="Add Triggering Condition", command=lambda: self.add_node_of_type("Triggering Condition"))
         edit_menu.add_command(label="Add Functional Insufficiency", command=lambda: self.add_node_of_type("Functional Insufficiency"))
-
         edit_menu.add_command(label="Add FMEA/FMEDA Event", command=self.add_basic_event_from_fmea)
         edit_menu.add_command(label="Edit Selected", command=self.edit_selected)
         edit_menu.add_command(label="Remove Connection", command=lambda: self.remove_connection(self.selected_node) if self.selected_node else None)
@@ -2617,7 +2623,6 @@ class FaultTreeApp:
         sotif_menu.add_command(label="Scenario Libraries", command=self.manage_scenario_libraries)
         sotif_menu.add_command(label="Import ODD Table", command=self.import_odd_table)
         menubar.add_cascade(label="SOTIF", menu=sotif_menu)
-
         root.config(menu=menubar)
         root.bind("<Control-n>", lambda event: self.new_model())
         root.bind("<Control-s>", lambda event: self.save_model())
@@ -2638,7 +2643,6 @@ class FaultTreeApp:
         root.bind("<Control-Shift-b>", lambda event: self.add_node_of_type("Basic Event"))
         root.bind("<Control-Shift-t>", lambda event: self.add_node_of_type("Triggering Condition"))
         root.bind("<Control-Shift-f>", lambda event: self.add_node_of_type("Functional Insufficiency"))
-
         root.bind("<Control-c>", lambda event: self.copy_node())
         root.bind("<Control-x>", lambda event: self.cut_node())
         root.bind("<Control-v>", lambda event: self.paste_node())
@@ -7708,6 +7712,7 @@ class FaultTreeApp:
     def get_all_basic_events(self):
         """Return a list of all basic events across all top-level trees."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "BASIC EVENT"]
+      
     def get_all_triggering_conditions(self):
         """Return all triggering condition nodes."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "TRIGGERING CONDITION"]
@@ -7715,7 +7720,6 @@ class FaultTreeApp:
     def get_all_functional_insufficiencies(self):
         """Return all functional insufficiency nodes."""
         return [n for n in self.get_all_nodes_in_model() if n.node_type.upper() == "FUNCTIONAL INSUFFICIENCY"]
-
 
     def get_all_failure_modes(self):
         """Return list of all failure mode nodes from FTA, FMEAs and FMEDAs."""
@@ -8609,6 +8613,7 @@ class FaultTreeApp:
         ttk.Button(btn_frame, text="Open", command=open_selected).pack(fill=tk.X)
         ttk.Button(btn_frame, text="Add", command=add_fmeda).pack(fill=tk.X)
         ttk.Button(btn_frame, text="Delete", command=delete_fmeda).pack(fill=tk.X)
+        
     def show_triggering_condition_list(self):
         win = tk.Toplevel(self.root)
         win.title("Triggering Conditions")
@@ -8646,7 +8651,6 @@ class FaultTreeApp:
                     w.writerow([n.unique_id, n.user_name, n.description])
             messagebox.showinfo("Export","Functional insufficiencies exported.")
         ttk.Button(win, text="Export CSV", command=export_csv).pack(side=tk.RIGHT, padx=5, pady=5)
-
 
     class FMEARowDialog(simpledialog.Dialog):
         def __init__(self, parent, node, app, fmea_entries, mechanisms=None, hide_diagnostics=False):
@@ -9057,11 +9061,21 @@ class FaultTreeApp:
                 ttk.Label(dlg, text="Quantity").grid(row=2, column=0, padx=5, pady=5, sticky="e")
                 qty_var = tk.IntVar(value=1)
                 ttk.Entry(dlg, textvariable=qty_var).grid(row=2, column=1, padx=5, pady=5)
+                ttk.Label(dlg, text="Qualification").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+                qual_var = tk.StringVar(value="None")
+                ttk.Combobox(dlg, textvariable=qual_var, values=QUALIFICATIONS, state="readonly").grid(row=3, column=1, padx=5, pady=5)
                 passive_var = tk.BooleanVar(value=False)
-                ttk.Checkbutton(dlg, text="Passive", variable=passive_var).grid(row=3, column=0, columnspan=2, pady=5)
+                ttk.Checkbutton(dlg, text="Passive", variable=passive_var).grid(row=4, column=0, columnspan=2, pady=5)
 
                 def ok():
-                    comp = ReliabilityComponent(name_var.get(), type_var.get(), qty_var.get(), is_passive=passive_var.get())
+                    comp = ReliabilityComponent(
+                        name_var.get(),
+                        type_var.get(),
+                        qty_var.get(),
+                        {},
+                        qual_var.get(),
+                        is_passive=passive_var.get(),
+                    )
                     template = COMPONENT_ATTR_TEMPLATES.get(comp.comp_type, {})
                     for k, v in template.items():
                         comp.attributes[k] = v[0] if isinstance(v, list) else v
@@ -9069,7 +9083,7 @@ class FaultTreeApp:
                     dlg.destroy()
                     refresh_tree()
 
-                ttk.Button(dlg, text="Add", command=ok).grid(row=4, column=0, columnspan=2, pady=5)
+                ttk.Button(dlg, text="Add", command=ok).grid(row=5, column=0, columnspan=2, pady=5)
                 dlg.grab_set()
                 dlg.wait_window()
 
@@ -10333,7 +10347,6 @@ class FaultTreeApp:
             reader=csv.DictReader(f); self.odd_elements=list(reader)
         messagebox.showinfo("Import","ODD table imported")
 
-
     def open_reliability_window(self):
         if hasattr(self, "_rel_window") and self._rel_window.winfo_exists():
             self._rel_window.lift()
@@ -10390,13 +10403,13 @@ class FaultTreeApp:
 
             self.tree = ttk.Treeview(
                 self,
-                columns=("name", "type", "qty", "fit", "safety"),
+                columns=("name", "type", "qty", "fit", "qualification"),
                 show="headings",
             )
-            for col in ("name", "type", "qty", "fit", "safety"):
-                heading = "Safety" if col == "safety" else col.capitalize()
+            for col in ("name", "type", "qty", "fit", "qualification"):
+                heading = "Qualification" if col == "qualification" else col.capitalize()
                 self.tree.heading(col, text=heading)
-                self.tree.column(col, width=120 if col == "safety" else 100)
+                self.tree.column(col, width=120 if col == "qualification" else 100)
             self.tree.pack(fill=tk.BOTH, expand=True)
             self.tree.bind("<<TreeviewSelect>>", self.show_formula)
 
@@ -10438,11 +10451,21 @@ class FaultTreeApp:
             ttk.Label(dialog, text="Quantity").grid(row=2, column=0, padx=5, pady=5, sticky="e")
             qty_var = tk.IntVar(value=1)
             ttk.Entry(dialog, textvariable=qty_var).grid(row=2, column=1, padx=5, pady=5)
+            ttk.Label(dialog, text="Qualification").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+            qual_var = tk.StringVar(value="None")
+            ttk.Combobox(dialog, textvariable=qual_var, values=QUALIFICATIONS, state="readonly").grid(row=3, column=1, padx=5, pady=5)
             passive_var = tk.BooleanVar(value=False)
-            ttk.Checkbutton(dialog, text="Passive", variable=passive_var).grid(row=3, column=0, columnspan=2, pady=5)
+            ttk.Checkbutton(dialog, text="Passive", variable=passive_var).grid(row=4, column=0, columnspan=2, pady=5)
 
             def ok():
-                comp = ReliabilityComponent(name_var.get(), type_var.get(), qty_var.get(), is_passive=passive_var.get())
+                comp = ReliabilityComponent(
+                    name_var.get(),
+                    type_var.get(),
+                    qty_var.get(),
+                    {},
+                    qual_var.get(),
+                    is_passive=passive_var.get(),
+                )
                 template = COMPONENT_ATTR_TEMPLATES.get(comp.comp_type, {})
                 for k, v in template.items():
                     comp.attributes[k] = v[0] if isinstance(v, list) else v
@@ -10450,7 +10473,7 @@ class FaultTreeApp:
                 self.refresh_tree()
                 dialog.destroy()
 
-            ttk.Button(dialog, text="Add", command=ok).grid(row=4, column=0, columnspan=2, pady=5)
+            ttk.Button(dialog, text="Add", command=ok).grid(row=5, column=0, columnspan=2, pady=5)
             dialog.grab_set()
             dialog.wait_window()
 
@@ -10468,20 +10491,30 @@ class FaultTreeApp:
             qty_var = tk.IntVar(value=1)
             ttk.Label(dlg, text="Quantity").grid(row=2, column=0, padx=5, pady=5, sticky="e")
             ttk.Entry(dlg, textvariable=qty_var).grid(row=2, column=1, padx=5, pady=5)
+            ttk.Label(dlg, text="Qualification").grid(row=3, column=0, padx=5, pady=5, sticky="e")
+            qual_var = tk.StringVar(value="None")
+            ttk.Combobox(dlg, textvariable=qual_var, values=QUALIFICATIONS, state="readonly").grid(row=3, column=1, padx=5, pady=5)
             passive_var = tk.BooleanVar(value=False)
-            ttk.Checkbutton(dlg, text="Passive", variable=passive_var).grid(row=3, column=0, columnspan=2, pady=5)
+            ttk.Checkbutton(dlg, text="Passive", variable=passive_var).grid(row=4, column=0, columnspan=2, pady=5)
 
             def ok():
                 bom_idxs = lb.curselection()
                 boms = [self.app.reliability_analyses[i].components for i in bom_idxs]
-                comp = ReliabilityComponent(name_var.get(), "circuit", qty_var.get(), is_passive=passive_var.get())
+                comp = ReliabilityComponent(
+                    name_var.get(),
+                    "circuit",
+                    qty_var.get(),
+                    {},
+                    qual_var.get(),
+                    is_passive=passive_var.get(),
+                )
                 comp.sub_boms = copy.deepcopy(boms)
                 comp.fit = 0.0
                 self.components.append(comp)
                 self.refresh_tree()
                 dlg.destroy()
 
-            ttk.Button(dlg, text="Add", command=ok).grid(row=4, column=0, columnspan=2, pady=5)
+            ttk.Button(dlg, text="Add", command=ok).grid(row=5, column=0, columnspan=2, pady=5)
             dlg.grab_set()
             dlg.wait_window()
 
@@ -10512,7 +10545,7 @@ class FaultTreeApp:
                         comp.comp_type,
                         comp.quantity,
                         f"{comp.fit:.2f}",
-                        comp.safety_req,
+                        comp.qualification,
                     ),
                 )
             self.profile_combo.config(values=[mp.name for mp in self.app.mission_profiles])
@@ -10533,8 +10566,8 @@ class FaultTreeApp:
                         name = row.get(mapping["name"], "")
                         ctype = row.get(mapping["type"], "")
                         qty = int(row.get(mapping["qty"], 1) or 1)
-                        safety = row.get(mapping.get("safety"), "") if mapping.get("safety") else ""
-                        comp = ReliabilityComponent(name, ctype, qty, {}, safety)
+                        qual = row.get(mapping.get("qualification"), "") if mapping.get("qualification") else ""
+                        comp = ReliabilityComponent(name, ctype, qty, {}, qual)
                         template = COMPONENT_ATTR_TEMPLATES.get(ctype, {})
                         for k, v in template.items():
                             comp.attributes[k] = v[0] if isinstance(v, list) else v
@@ -10553,7 +10586,7 @@ class FaultTreeApp:
             win = tk.Toplevel(self)
             win.title("Map Columns")
             vars = {}
-            targets = ["name", "type", "qty", "safety"]
+            targets = ["name", "type", "qty", "qualification"]
             for i, tgt in enumerate(targets):
                 ttk.Label(win, text=tgt.capitalize()).grid(row=i, column=0, padx=5, pady=5, sticky="e")
                 var = tk.StringVar()
@@ -10594,11 +10627,20 @@ class FaultTreeApp:
             for k, v in template.items():
                 comp.attributes.setdefault(k, v[0] if isinstance(v, list) else v)
 
-            parent_win = self
             class ParamDialog(simpledialog.Dialog):
                 def body(self, master):
                     self.vars = {}
                     row = 0
+                    ttk.Label(master, text="Quantity").grid(row=row, column=0, padx=5, pady=5, sticky="e")
+                    qty_var = tk.IntVar(value=comp.quantity)
+                    ttk.Entry(master, textvariable=qty_var).grid(row=row, column=1, padx=5, pady=5)
+                    self.vars["__qty__"] = qty_var
+                    row += 1
+                    ttk.Label(master, text="Qualification").grid(row=row, column=0, padx=5, pady=5, sticky="e")
+                    qual_var = tk.StringVar(value=comp.qualification)
+                    ttk.Combobox(master, textvariable=qual_var, values=QUALIFICATIONS, state="readonly").grid(row=row, column=1, padx=5, pady=5)
+                    self.vars["__qual__"] = qual_var
+                    row += 1
                     for k, v in comp.attributes.items():
                         ttk.Label(master, text=k).grid(row=row, column=0, padx=5, pady=5, sticky="e")
                         if isinstance(template.get(k), list):
@@ -10610,26 +10652,13 @@ class FaultTreeApp:
                         self.vars[k] = var
                         row += 1
 
-                    if not comp.is_passive and parent_win.app.hazop_entries:
-                        funcs = sorted({e.function for e in parent_win.app.hazop_entries})
-                        ttk.Label(master, text="Functions").grid(row=row, column=0, padx=5, pady=5, sticky="ne")
-                        self.lb = tk.Listbox(master, selectmode=tk.MULTIPLE, height=4)
-                        for f in funcs:
-                            self.lb.insert(tk.END, f)
-                            if f in comp.functions:
-                                self.lb.selection_set(tk.END)
-                        self.lb.grid(row=row, column=1, padx=5, pady=5)
-                        row += 1
-
                 def apply(self):
+                    comp.quantity = int(self.vars["__qty__"].get())
+                    comp.qualification = self.vars["__qual__"].get()
                     for k, v in self.vars.items():
+                        if k.startswith("__"):
+                            continue
                         comp.attributes[k] = v.get()
-                    if not comp.is_passive and parent_win.app.hazop_entries:
-                        sel = [self.lb.get(i) for i in self.lb.curselection()]
-                        comp.functions = sel
-                        for entry in parent_win.app.hazop_entries:
-                            if entry.function in sel:
-                                entry.component = comp.name
 
             ParamDialog(self)
             self.refresh_tree()
@@ -10849,6 +10878,164 @@ class FaultTreeApp:
             )
             self.app.reliability_analyses.append(ra)
             messagebox.showinfo("Save", "Analysis saved")
+
+        def __init__(self, app):
+            super().__init__(app.root)
+            self.app = app
+            self.title("FI2TC Analysis")
+            cols = ("fi","tc","scenario","hazard","mitigation","asil")
+            self.tree = ttk.Treeview(self, columns=cols, show="headings")
+            for c in cols:
+                self.tree.heading(c, text=c.capitalize())
+                self.tree.column(c, width=100)
+            self.tree.pack(fill=tk.BOTH, expand=True)
+            btn = ttk.Frame(self)
+            btn.pack()
+            ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Export CSV", command=self.export_csv).pack(side=tk.LEFT, padx=2, pady=2)
+            self.refresh()
+
+        def refresh(self):
+            self.tree.delete(*self.tree.get_children())
+            for row in self.app.fi2tc_entries:
+                self.tree.insert("", "end", values=(row.get("fi"), row.get("tc"), row.get("scenario"), row.get("hazard"), row.get("mitigation"), row.get("asil")))
+
+        class RowDialog(simpledialog.Dialog):
+            def __init__(self, parent, app, data=None):
+                self.app = app
+                self.data = data or {"fi":"","tc":"","scenario":"","hazard":"","mitigation":"","asil":""}
+                super().__init__(parent, title="Edit Row")
+            def body(self, master):
+                fi_names = [n.user_name or f"FI {n.unique_id}" for n in self.app.get_all_functional_insufficiencies()]
+                tc_names = [n.user_name or f"TC {n.unique_id}" for n in self.app.get_all_triggering_conditions()]
+                self.fi_var = tk.StringVar(value=self.data.get("fi"))
+                ttk.Combobox(master, textvariable=self.fi_var, values=fi_names, state="readonly").grid(row=0,column=1)
+                ttk.Label(master, text="Functional Insufficiency").grid(row=0,column=0,sticky="e")
+                self.tc_var = tk.StringVar(value=self.data.get("tc"))
+                ttk.Combobox(master, textvariable=self.tc_var, values=tc_names, state="readonly").grid(row=1,column=1)
+                ttk.Label(master, text="Triggering Condition").grid(row=1,column=0,sticky="e")
+                ttk.Label(master, text="Scenario").grid(row=2,column=0,sticky="e")
+                self.sc_var = tk.Entry(master)
+                self.sc_var.insert(0, self.data.get("scenario"))
+                self.sc_var.grid(row=2,column=1)
+                ttk.Label(master, text="Hazard").grid(row=3,column=0,sticky="e")
+                self.haz_var = tk.Entry(master)
+                self.haz_var.insert(0, self.data.get("hazard"))
+                self.haz_var.grid(row=3,column=1)
+                ttk.Label(master, text="Mitigation").grid(row=4,column=0,sticky="e")
+                self.mit_var = tk.Entry(master)
+                self.mit_var.insert(0, self.data.get("mitigation"))
+                self.mit_var.grid(row=4,column=1)
+                ttk.Label(master, text="ASIL").grid(row=5,column=0,sticky="e")
+                self.asil_var = tk.Entry(master)
+                self.asil_var.insert(0, self.data.get("asil"))
+                self.asil_var.grid(row=5,column=1)
+            def apply(self):
+                self.data["fi"] = self.fi_var.get()
+                self.data["tc"] = self.tc_var.get()
+                self.data["scenario"] = self.sc_var.get()
+                self.data["hazard"] = self.haz_var.get()
+                self.data["mitigation"] = self.mit_var.get()
+                self.data["asil"] = self.asil_var.get()
+
+        def add_row(self):
+            dlg = self.RowDialog(self, self.app)
+            self.app.fi2tc_entries.append(dlg.data)
+            self.refresh()
+        def edit_row(self):
+            sel = self.tree.focus()
+            if not sel: return
+            idx = self.tree.index(sel)
+            data = self.app.fi2tc_entries[idx]
+            dlg = self.RowDialog(self, self.app, data)
+            self.refresh()
+        def del_row(self):
+            sel = self.tree.selection()
+            for iid in sel:
+                idx = self.tree.index(iid)
+                if idx < len(self.app.fi2tc_entries):
+                    del self.app.fi2tc_entries[idx]
+            self.refresh()
+        def export_csv(self):
+            path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV","*.csv")])
+            if not path: return
+            with open(path,"w",newline="") as f:
+                w=csv.writer(f)
+                w.writerow(["Functional Insufficiency","Triggering Condition","Scenario","Hazard","Mitigation","ASIL"])
+                for r in self.app.fi2tc_entries:
+                    w.writerow([r.get("fi"),r.get("tc"),r.get("scenario"),r.get("hazard"),r.get("mitigation"),r.get("asil")])
+            messagebox.showinfo("Export","FI2TC exported")
+
+    class TC2FIWindow(tk.Toplevel):
+        def __init__(self, app):
+            super().__init__(app.root)
+            self.app = app
+            self.title("TC2FI Analysis")
+            cols = ("tc","fi","scenario","hazard","mitigation","asil")
+            self.tree = ttk.Treeview(self, columns=cols, show="headings")
+            for c in cols:
+                self.tree.heading(c, text=c.capitalize())
+                self.tree.column(c, width=100)
+            self.tree.pack(fill=tk.BOTH, expand=True)
+            btn = ttk.Frame(self)
+            btn.pack()
+            ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
+            ttk.Button(btn, text="Export CSV", command=self.export_csv).pack(side=tk.LEFT, padx=2, pady=2)
+            self.refresh()
+        def refresh(self):
+            self.tree.delete(*self.tree.get_children())
+            for row in self.app.tc2fi_entries:
+                self.tree.insert("", "end", values=(row.get("tc"), row.get("fi"), row.get("scenario"), row.get("hazard"), row.get("mitigation"), row.get("asil")))
+        class RowDialog(simpledialog.Dialog):
+            def __init__(self, parent, app, data=None):
+                self.app=app
+                self.data=data or {"tc":"","fi":"","scenario":"","hazard":"","mitigation":"","asil":""}
+                super().__init__(parent, title="Edit Row")
+            def body(self, master):
+                tc_names=[n.user_name or f"TC {n.unique_id}" for n in self.app.get_all_triggering_conditions()]
+                fi_names=[n.user_name or f"FI {n.unique_id}" for n in self.app.get_all_functional_insufficiencies()]
+                self.tc_var=tk.StringVar(value=self.data.get("tc"))
+                ttk.Combobox(master,textvariable=self.tc_var,values=tc_names,state="readonly").grid(row=0,column=1)
+                ttk.Label(master,text="Triggering Condition").grid(row=0,column=0,sticky="e")
+                self.fi_var=tk.StringVar(value=self.data.get("fi"))
+                ttk.Combobox(master,textvariable=self.fi_var,values=fi_names,state="readonly").grid(row=1,column=1)
+                ttk.Label(master,text="Functional Insufficiency").grid(row=1,column=0,sticky="e")
+                ttk.Label(master,text="Scenario").grid(row=2,column=0,sticky="e")
+                self.sc_var=tk.Entry(master);self.sc_var.insert(0,self.data.get("scenario"));self.sc_var.grid(row=2,column=1)
+                ttk.Label(master,text="Hazard").grid(row=3,column=0,sticky="e")
+                self.haz_var=tk.Entry(master);self.haz_var.insert(0,self.data.get("hazard"));self.haz_var.grid(row=3,column=1)
+                ttk.Label(master,text="Mitigation").grid(row=4,column=0,sticky="e")
+                self.mit_var=tk.Entry(master);self.mit_var.insert(0,self.data.get("mitigation"));self.mit_var.grid(row=4,column=1)
+                ttk.Label(master,text="ASIL").grid(row=5,column=0,sticky="e")
+                self.asil_var=tk.Entry(master);self.asil_var.insert(0,self.data.get("asil"));self.asil_var.grid(row=5,column=1)
+            def apply(self):
+                self.data["tc"]=self.tc_var.get();self.data["fi"]=self.fi_var.get();self.data["scenario"]=self.sc_var.get();self.data["hazard"]=self.haz_var.get();self.data["mitigation"]=self.mit_var.get();self.data["asil"]=self.asil_var.get()
+        def add_row(self):
+            dlg=self.RowDialog(self,self.app)
+            self.app.tc2fi_entries.append(dlg.data);self.refresh()
+        def edit_row(self):
+            sel=self.tree.focus()
+            if not sel: return
+            idx=self.tree.index(sel);data=self.app.tc2fi_entries[idx];dlg=self.RowDialog(self,self.app,data);self.refresh()
+        def del_row(self):
+            sel=self.tree.selection()
+            for iid in sel:
+                idx=self.tree.index(iid)
+                if idx < len(self.app.tc2fi_entries):
+                    del self.app.tc2fi_entries[idx]
+            self.refresh()
+        def export_csv(self):
+            path=filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV","*.csv")])
+            if not path: return
+            with open(path,"w",newline="") as f:
+                w=csv.writer(f);w.writerow(["Triggering Condition","Functional Insufficiency","Scenario","Hazard","Mitigation","ASIL"]);
+                for r in self.app.tc2fi_entries:
+                    w.writerow([r.get("tc"),r.get("fi"),r.get("scenario"),r.get("hazard"),r.get("mitigation"),r.get("asil")])
+            messagebox.showinfo("Export","TC2FI exported")
 
         def __init__(self, app):
             super().__init__(app.root)
@@ -11504,7 +11691,7 @@ class FaultTreeApp:
                     cdata.get("comp_type", ""),
                     cdata.get("quantity", 1),
                     cdata.get("attributes", {}),
-                    cdata.get("safety_req", ""),
+                    cdata.get("qualification", cdata.get("safety_req", "")),
                     cdata.get("fit", 0.0),
                     cdata.get("is_passive", False),
                 )
@@ -12672,7 +12859,6 @@ class PageDiagram:
         menu.add_command(label="Add Basic Event", command=lambda: self.context_add("Basic Event"))
         menu.add_command(label="Add Triggering Condition", command=lambda: self.context_add("Triggering Condition"))
         menu.add_command(label="Add Functional Insufficiency", command=lambda: self.context_add("Functional Insufficiency"))
-
         menu.tk_popup(event.x_root, event.y_root)
 
     def context_edit(self, node):
