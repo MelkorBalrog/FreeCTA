@@ -105,6 +105,7 @@ class HaraDoc:
     hazops: list
     entries: list
     approved: bool = False
+    status: str = "draft"
 
 COMPONENT_ATTR_TEMPLATES = {
     "capacitor": {
