@@ -8541,7 +8541,7 @@ class FaultTreeApp:
             name = simpledialog.askstring("New FMEDA", "Enter FMEDA name:")
             if name:
                 file_name = f"fmeda_{name}.csv"
-                self.fmedas.append({'name': name, 'entries': [], 'file': file_name})
+                self.fmedas.append({'name': name, 'entries': [], 'file': file_name, 'bom': ''})
                 listbox.insert(tk.END, name)
 
         def delete_fmeda():
@@ -8923,7 +8923,7 @@ class FaultTreeApp:
             calc_btn = ttk.Button(btn_frame, text="Calculate FMEDA", command=lambda: refresh_tree())
             calc_btn.pack(side=tk.LEFT, padx=2)
             ttk.Label(btn_frame, text="BOM:").pack(side=tk.LEFT, padx=2)
-            bom_var = tk.StringVar()
+            bom_var = tk.StringVar(value=fmea.get('bom', ''))
             bom_combo = ttk.Combobox(
                 btn_frame,
                 textvariable=bom_var,
@@ -8998,9 +8998,13 @@ class FaultTreeApp:
                     self.reliability_total_fit = ra.total_fit
                     self.spfm = ra.spfm
                     self.lpfm = ra.lpfm
+                    if fmea is not None:
+                        fmea['bom'] = name
                     refresh_tree()
 
             bom_combo.bind("<<ComboboxSelected>>", load_bom)
+            if bom_var.get():
+                load_bom()
 
         tree_frame = ttk.Frame(win)
         tree_frame.pack(fill=tk.BOTH, expand=True)
@@ -9267,6 +9271,8 @@ class FaultTreeApp:
                     self.export_fmeda_to_csv(fmea, fmea['file'])
                 else:
                     self.export_fmea_to_csv(fmea, fmea['file'])
+                if fmeda:
+                    fmea['bom'] = bom_var.get()
             win.destroy()
 
         win.protocol("WM_DELETE_WINDOW", on_close)
@@ -10032,13 +10038,15 @@ class FaultTreeApp:
         win = tk.Toplevel(self.root)
         win.title("Mechanism Libraries")
         lib_lb = tk.Listbox(win, height=8, width=25)
-        lib_lb.grid(row=0, column=0, rowspan=4, sticky="ns")
+        lib_lb.grid(row=0, column=0, rowspan=4, sticky="nsew")
         mech_tree = ttk.Treeview(win, columns=("cov", "desc"), show="headings")
         mech_tree.heading("cov", text="Coverage")
         mech_tree.column("cov", width=80)
         mech_tree.heading("desc", text="Description")
         mech_tree.column("desc", width=200)
         mech_tree.grid(row=0, column=1, columnspan=3, sticky="nsew")
+        win.grid_rowconfigure(0, weight=1)
+        win.grid_columnconfigure(1, weight=1)
 
         def refresh_libs():
             lib_lb.delete(0, tk.END)
@@ -10847,6 +10855,7 @@ class FaultTreeApp:
                     "name": d["name"],
                     "file": d["file"],
                     "entries": [e.to_dict() for e in d["entries"]],
+                    "bom": d.get("bom", ""),
                 }
                 for d in self.fmedas
             ],
@@ -10945,7 +10954,12 @@ class FaultTreeApp:
         self.fmedas = []
         for doc in data.get("fmedas", []):
             entries = [FaultTreeNode.from_dict(e) for e in doc.get("entries", [])]
-            self.fmedas.append({"name": doc.get("name", "FMEDA"), "file": doc.get("file", f"fmeda_{len(self.fmedas)}.csv"), "entries": entries})
+            self.fmedas.append({
+                "name": doc.get("name", "FMEDA"),
+                "file": doc.get("file", f"fmeda_{len(self.fmedas)}.csv"),
+                "entries": entries,
+                "bom": doc.get("bom", ""),
+            })
 
         # Mechanism libraries and selections
         self.mechanism_libraries = []
@@ -10989,7 +11003,12 @@ class FaultTreeApp:
         self.fmedas = []
         for doc in data.get("fmedas", []):
             entries = [FaultTreeNode.from_dict(e) for e in doc.get("entries", [])]
-            self.fmedas.append({"name": doc.get("name", "FMEDA"), "file": doc.get("file", f"fmeda_{len(self.fmedas)}.csv"), "entries": entries})
+            self.fmedas.append({
+                "name": doc.get("name", "FMEDA"),
+                "file": doc.get("file", f"fmeda_{len(self.fmedas)}.csv"),
+                "entries": entries,
+                "bom": doc.get("bom", ""),
+            })
 
         # Fix clone references for each top event.
         for event in self.top_events:
