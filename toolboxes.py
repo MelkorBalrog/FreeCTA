@@ -834,7 +834,8 @@ class HaraWindow(tk.Toplevel):
 
     def refresh_docs(self):
         names = [d.name for d in self.app.hara_docs]
-        self.doc_cb["values"] = names
+        # Explicitly configure the combobox values to ensure Tkinter updates
+        self.doc_cb.configure(values=names)
         if self.app.active_hara:
             self.doc_var.set(self.app.active_hara.name)
             hazops = ", ".join(getattr(self.app.active_hara, "hazops", []))

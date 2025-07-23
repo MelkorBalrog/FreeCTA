@@ -300,6 +300,16 @@ ASIL_TARGETS = {
     "QM": {"spfm":0.0, "lpfm":0.0, "dc":0.0},
 }
 
+# Mapping of ASIL decomposition schemes as allowed by ISO 26262. Each
+# parent ASIL level maps to a list of two-element tuples representing the
+# resulting ASIL assignments for the decomposed requirements.
+ASIL_DECOMP_SCHEMES = {
+    "D": [("B", "B"), ("C", "D")],
+    "C": [("B", "C"), ("A", "C")],
+    "B": [("A", "B"), ("QM", "B")],
+    "A": [("QM", "A")],
+}
+
 # Simplified ISO 26262 risk graph for ASIL determination
 # Controllability values follow the standard ordering where 1 is easily
 # controllable and 3 represents difficult or uncontrollable situations.
