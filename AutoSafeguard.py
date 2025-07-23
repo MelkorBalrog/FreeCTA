@@ -764,6 +764,8 @@ class EditNodeDialog(simpledialog.Dialog):
             self.add_existing_req_button.grid(row=1, column=3, padx=2, pady=2)
             self.decomp_req_button = ttk.Button(self.safety_req_frame, text="Decompose", command=self.decompose_safety_requirement)
             self.decomp_req_button.grid(row=1, column=4, padx=2, pady=2)
+            self.update_decomp_button = ttk.Button(self.safety_req_frame, text="Update Scheme", command=self.update_decomposition_scheme)
+            self.update_decomp_button.grid(row=1, column=5, padx=2, pady=2)
 
         elif self.node.node_type.upper() == "BASIC EVENT":
             ttk.Label(master, text="Failure Probability:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
@@ -819,6 +821,8 @@ class EditNodeDialog(simpledialog.Dialog):
             self.add_existing_req_button.grid(row=1, column=3, padx=2, pady=2)
             self.decomp_req_button = ttk.Button(self.safety_req_frame, text="Decompose", command=self.decompose_safety_requirement)
             self.decomp_req_button.grid(row=1, column=4, padx=2, pady=2)
+            self.update_decomp_button = ttk.Button(self.safety_req_frame, text="Update Scheme", command=self.update_decomposition_scheme)
+            self.update_decomp_button.grid(row=1, column=5, padx=2, pady=2)
 
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
             ttk.Label(master, text="Gate Type:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
@@ -1342,6 +1346,40 @@ class EditNodeDialog(simpledialog.Dialog):
             index + 1,
             f"[{r2['id']}] [{r2['req_type']}] [{r2.get('asil','')}] {r2['text']}",
         )
+
+    def update_decomposition_scheme(self):
+        selected = self.safety_req_listbox.curselection()
+        if not selected:
+            messagebox.showwarning("Update Decomposition", "Select a decomposed requirement.")
+            return
+        index = selected[0]
+        req = self.node.safety_requirements[index]
+        parent_id = req.get("parent_id")
+        if not parent_id:
+            messagebox.showwarning("Update Decomposition", "Selected requirement is not decomposed.")
+            return
+        pair_indices = [i for i, r in enumerate(self.node.safety_requirements) if r.get("parent_id") == parent_id]
+        if len(pair_indices) != 2:
+            messagebox.showerror("Update Decomposition", "Could not identify decomposition pair.")
+            return
+        parent_req = global_requirements.get(parent_id, {})
+        dlg = DecompositionDialog(self, parent_req.get("asil", "QM"))
+        if not dlg.result:
+            return
+        asil_a, asil_b = dlg.result
+        pair_indices.sort()
+        req_a = self.node.safety_requirements[pair_indices[0]]
+        req_b = self.node.safety_requirements[pair_indices[1]]
+        req_a["asil"] = asil_a
+        req_b["asil"] = asil_b
+        global_requirements[req_a["id"]] = req_a
+        global_requirements[req_b["id"]] = req_b
+        for idx, r in zip(pair_indices, (req_a, req_b)):
+            self.safety_req_listbox.delete(idx)
+            self.safety_req_listbox.insert(idx, f"[{r['id']}] [{r['req_type']}] [{r.get('asil','')}] {r['text']}")
+        if self.node.node_type.upper() != "BASIC EVENT":
+            self.update_requirement_asil(req_a["id"])
+            self.update_requirement_asil(req_b["id"])
 
     def buttonbox(self):
         box = tk.Frame(self)
