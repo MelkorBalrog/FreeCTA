@@ -7733,8 +7733,6 @@ class FaultTreeApp:
         mode is converted to a failure rate in events per hour, then the
         probability is derived for the mission profile time ``tau``.
         """
-        if not self.mission_profiles:
-            return
         for be in self.get_all_basic_events():
             be.failure_prob = self.compute_failure_prob(be)
 
@@ -7755,7 +7753,7 @@ class FaultTreeApp:
         if formula == "exponential":
             return 1 - math.exp(-lam * t)
         elif formula == "constant":
-            return lam
+            return fit
         else:
             return lam * t
 
