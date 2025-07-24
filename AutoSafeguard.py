@@ -1633,6 +1633,7 @@ class FaultTreeApp:
         self.active_hara = None
         self.hazop_entries = []  # backwards compatibility for active doc
         self.hara_entries = []
+        self.arch_diagrams = []
         self.top_events = []
         self.reviews = []
         self.review_data = None
@@ -1777,9 +1778,16 @@ class FaultTreeApp:
         root.bind("<Control-p>", lambda event: self.save_diagram_png())
         self.main_pane = tk.PanedWindow(root, orient=tk.HORIZONTAL)
         self.main_pane.pack(fill=tk.BOTH, expand=True)
-        self.tree_frame = ttk.Frame(self.main_pane)
 
-        self.top_event_controls = ttk.Frame(self.tree_frame)
+        self.explorer_nb = ttk.Notebook(self.main_pane)
+        self.main_pane.add(self.explorer_nb, width=300)
+
+        self.fta_tab = ttk.Frame(self.explorer_nb)
+        self.analysis_tab = ttk.Frame(self.explorer_nb)
+        self.explorer_nb.add(self.fta_tab, text="FTAs")
+        self.explorer_nb.add(self.analysis_tab, text="Analyses")
+
+        self.top_event_controls = ttk.Frame(self.fta_tab)
         self.top_event_controls.pack(side=tk.TOP, fill=tk.X)
 
         self.move_up_btn = ttk.Button(self.top_event_controls, text="Move Up", command=self.move_top_event_up)
@@ -1787,15 +1795,18 @@ class FaultTreeApp:
         self.move_down_btn = ttk.Button(self.top_event_controls, text="Move Down", command=self.move_top_event_down)
         self.move_down_btn.pack(side=tk.LEFT, padx=2)
 
-        
-        self.treeview = ttk.Treeview(self.tree_frame)
+        self.treeview = ttk.Treeview(self.fta_tab)
         self.treeview.pack(fill=tk.BOTH, expand=True)
         self.treeview.bind("<Double-1>", lambda e: self.edit_selected())
         self.treeview.bind("<ButtonRelease-1>", self.on_treeview_click)
+
+        self.analysis_tree = ttk.Treeview(self.analysis_tab)
+        self.analysis_tree.pack(fill=tk.BOTH, expand=True)
+        self.analysis_tree.bind("<Double-1>", self.on_analysis_tree_double_click)
+
         self.pmhf_var = tk.StringVar(value="")
-        self.pmhf_label = ttk.Label(self.tree_frame, textvariable=self.pmhf_var, foreground="blue")
+        self.pmhf_label = ttk.Label(self.fta_tab, textvariable=self.pmhf_var, foreground="blue")
         self.pmhf_label.pack(side=tk.BOTTOM, fill=tk.X, pady=2)
-        self.main_pane.add(self.tree_frame, width=300)
         self.canvas_frame = ttk.Frame(self.main_pane)
         self.main_pane.add(self.canvas_frame, stretch="always")
         self.canvas = tk.Canvas(self.canvas_frame, bg="white")
@@ -6781,6 +6792,31 @@ class FaultTreeApp:
         if node:
             self.open_page_diagram(node)
 
+    def on_analysis_tree_double_click(self, event):
+        item = self.analysis_tree.focus()
+        tags = self.analysis_tree.item(item, "tags")
+        if len(tags) != 2:
+            return
+        kind, idx = tags[0], int(tags[1])
+        if kind == "fmea":
+            self.show_fmea_table(self.fmeas[idx])
+        elif kind == "fmeda":
+            self.show_fmea_table(self.fmedas[idx], fmeda=True)
+        elif kind == "hazop":
+            self.open_hazop_window()
+            if hasattr(self, "_hazop_window"):
+                doc = self.hazop_docs[idx]
+                self._hazop_window.doc_var.set(doc.name)
+                self._hazop_window.select_doc()
+        elif kind == "hara":
+            self.open_hara_window()
+            if hasattr(self, "_hara_window"):
+                doc = self.hara_docs[idx]
+                self._hara_window.doc_var.set(doc.name)
+                self._hara_window.select_doc()
+        elif kind == "arch":
+            self.open_arch_window(idx)
+
     def on_ctrl_mousewheel(self, event):
         if event.delta > 0:
             self.zoom_in()
@@ -7210,6 +7246,26 @@ class FaultTreeApp:
             self.insert_node_in_tree("", top_event)
         # NEW: Compute the occurrence counts from the current tree:
         self.occurrence_counts = self.compute_occurrence_counts()
+
+        if hasattr(self, "analysis_tree"):
+            tree = self.analysis_tree
+            tree.delete(*tree.get_children())
+            fmea_root = tree.insert("", "end", text="FMEAs", open=True)
+            for idx, fmea in enumerate(self.fmeas):
+                tree.insert(fmea_root, "end", text=fmea['name'], tags=("fmea", str(idx)))
+            fmeda_root = tree.insert("", "end", text="FMEDAs", open=True)
+            for idx, doc in enumerate(self.fmedas):
+                tree.insert(fmeda_root, "end", text=doc['name'], tags=("fmeda", str(idx)))
+            hazop_root = tree.insert("", "end", text="HAZOPs", open=True)
+            for idx, doc in enumerate(self.hazop_docs):
+                tree.insert(hazop_root, "end", text=doc.name, tags=("hazop", str(idx)))
+            hara_root = tree.insert("", "end", text="HARAs", open=True)
+            for idx, doc in enumerate(self.hara_docs):
+                tree.insert(hara_root, "end", text=doc.name, tags=("hara", str(idx)))
+            arch_root = tree.insert("", "end", text="Architecture Diagrams", open=True)
+            for idx, diag in enumerate(self.arch_diagrams):
+                name = diag.get('name', f'Diagram {idx+1}')
+                tree.insert(arch_root, "end", text=name, tags=("arch", str(idx)))
 
         if hasattr(self, "page_diagram") and self.page_diagram is not None:
             if self.page_diagram.canvas.winfo_exists():
@@ -8171,6 +8227,7 @@ class FaultTreeApp:
                 file_name = f"fmea_{name}.csv"
                 self.fmeas.append({'name': name, 'entries': [], 'file': file_name})
                 listbox.insert(tk.END, name)
+                self.update_views()
 
         def delete_fmea():
             sel = listbox.curselection()
@@ -8179,6 +8236,7 @@ class FaultTreeApp:
             idx = sel[0]
             del self.fmeas[idx]
             listbox.delete(idx)
+            self.update_views()
 
         listbox.bind("<Double-1>", open_selected)
         btn_frame = ttk.Frame(win)
@@ -8210,6 +8268,7 @@ class FaultTreeApp:
                 file_name = f"fmeda_{name}.csv"
                 self.fmedas.append({'name': name, 'entries': [], 'file': file_name, 'bom': ''})
                 listbox.insert(tk.END, name)
+                self.update_views()
 
         def delete_fmeda():
             sel = listbox.curselection()
@@ -8218,6 +8277,7 @@ class FaultTreeApp:
             idx = sel[0]
             del self.fmedas[idx]
             listbox.delete(idx)
+            self.update_views()
 
         listbox.bind("<Double-1>", open_selected)
         btn_frame = ttk.Frame(win)
@@ -10506,6 +10566,21 @@ class FaultTreeApp:
             self._tc2fi_window.lift()
             return
         self._tc2fi_window = TC2FIWindow(self)
+
+    def open_arch_window(self, idx):
+        if idx >= len(self.arch_diagrams):
+            return
+        diag = self.arch_diagrams[idx]
+        win = tk.Toplevel(self.root)
+        win.title(f"Architecture Diagram - {diag.get('name', f'Diagram {idx+1}')}")
+        canvas = tk.Canvas(win, width=800, height=600, bg="white")
+        canvas.pack(fill=tk.BOTH, expand=True)
+        canvas.create_text(
+            400,
+            300,
+            text=diag.get('name', f'Diagram {idx+1}'),
+            font=("Arial", 20),
+        )
         
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
