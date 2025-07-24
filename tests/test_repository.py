@@ -41,5 +41,18 @@ class RepositoryTests(unittest.TestCase):
         self.assertIn(blk.elem_id, new_repo.elements)
         self.assertEqual(new_repo.get_qualified_name(blk.elem_id), qn)
 
+    def test_diagram_creation_and_persistence(self):
+        diag = self.repo.create_diagram("Use Case Diagram", name="UC1")
+        actor = self.repo.create_element("Actor")
+        self.repo.add_element_to_diagram(diag.diag_id, actor.elem_id)
+        path = "repo_diag.json"
+        self.repo.save(path)
+        SysMLRepository._instance = None
+        new_repo = SysMLRepository.get_instance()
+        new_repo.load(path)
+        os.remove(path)
+        self.assertIn(diag.diag_id, new_repo.diagrams)
+        self.assertIn(actor.elem_id, new_repo.diagrams[diag.diag_id].elements)
+
 if __name__ == '__main__':
     unittest.main()

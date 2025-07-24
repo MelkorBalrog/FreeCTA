@@ -1852,6 +1852,10 @@ class FaultTreeApp:
         # Track the last saved state so we can prompt on exit
         self.last_saved_state = json.dumps(self.export_model_data(), sort_keys=True)
         root.protocol("WM_DELETE_WINDOW", self.confirm_close)
+        self.use_case_windows = []
+        self.activity_windows = []
+        self.block_windows = []
+        self.ibd_windows = []
 
     # --- Requirement Traceability Helpers used by reviews and matrix view ---
     def get_requirement_allocation_names(self, req_id):
@@ -10580,20 +10584,32 @@ class FaultTreeApp:
             return
         self._tc2fi_window = TC2FIWindow(self)
 
-    def open_arch_window(self, idx):
-        if idx >= len(self.arch_diagrams):
-            return
-        diag = self.arch_diagrams[idx]
-        win = tk.Toplevel(self.root)
-        win.title(f"Architecture Diagram - {diag.get('name', f'Diagram {idx+1}')}")
-        canvas = tk.Canvas(win, width=800, height=600, bg="white")
-        canvas.pack(fill=tk.BOTH, expand=True)
-        canvas.create_text(
-            400,
-            300,
-            text=diag.get('name', f'Diagram {idx+1}'),
-            font=("Arial", 20),
-        )
+    def _register_close(self, win, collection):
+        def _close():
+            if win in collection:
+                collection.remove(win)
+            win.destroy()
+        return _close
+
+    def open_use_case_diagram(self):
+        win = UseCaseDiagramWindow(self.root)
+        win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.use_case_windows))
+        self.use_case_windows.append(win)
+
+    def open_activity_diagram(self):
+        win = ActivityDiagramWindow(self.root)
+        win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.activity_windows))
+        self.activity_windows.append(win)
+
+    def open_block_diagram(self):
+        win = BlockDiagramWindow(self.root)
+        win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.block_windows))
+        self.block_windows.append(win)
+
+    def open_internal_block_diagram(self):
+        win = InternalBlockDiagramWindow(self.root)
+        win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.ibd_windows))
+        self.ibd_windows.append(win)
         
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:

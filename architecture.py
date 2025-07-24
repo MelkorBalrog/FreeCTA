@@ -39,6 +39,9 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.geometry("800x600")
 
         self.repo = SysMLRepository.get_instance()
+        diagram = self.repo.create_diagram(title)
+        self.diagram_id = diagram.diag_id
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.zoom = 1.0
         self.current_tool = None
@@ -94,11 +97,13 @@ class SysMLDiagramWindow(tk.Toplevel):
                     src_id = self.start.element_id
                     dst_id = obj.element_id
                     if src_id and dst_id:
-                        self.repo.create_relationship(t, src_id, dst_id)
+                        rel = self.repo.create_relationship(t, src_id, dst_id)
+                        self.repo.add_relationship_to_diagram(self.diagram_id, rel.rel_id)
                 self.start = None
                 self.redraw()
         elif t and t != "Select":
             element = self.repo.create_element(t)
+            self.repo.add_element_to_diagram(self.diagram_id, element.elem_id)
             new_obj = SysMLObject(_get_next_id(), t, x / self.zoom, y / self.zoom, element_id=element.elem_id)
             key = f"{t.replace(' ', '')}Usage"
             for prop in SYSML_PROPERTIES.get(key, []):
@@ -250,6 +255,10 @@ class SysMLDiagramWindow(tk.Toplevel):
             if o.obj_id == oid:
                 return o
         return None
+
+    def on_close(self):
+        self.repo.delete_diagram(self.diagram_id)
+        self.destroy()
 
 class SysMLObjectDialog(simpledialog.Dialog):
     """Simple dialog for editing SysML object properties."""

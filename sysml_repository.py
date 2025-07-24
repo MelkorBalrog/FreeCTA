@@ -23,6 +23,14 @@ class SysMLRelationship:
     stereotype: Optional[str] = None
     properties: Dict[str, str] = field(default_factory=dict)
 
+@dataclass
+class SysMLDiagram:
+    diag_id: str
+    diag_type: str
+    name: str = ""
+    elements: List[str] = field(default_factory=list)
+    relationships: List[str] = field(default_factory=list)
+
 class SysMLRepository:
     """Singleton repository for all SysML elements and relationships."""
     _instance = None
@@ -30,6 +38,7 @@ class SysMLRepository:
     def __init__(self):
         self.elements: Dict[str, SysMLElement] = {}
         self.relationships: List[SysMLRelationship] = []
+        self.diagrams: Dict[str, SysMLDiagram] = {}
         self.root_package = self.create_element("Package", name="Root")
 
     @classmethod
@@ -53,11 +62,31 @@ class SysMLRepository:
             parent = self.root_package.elem_id
         return self.create_element("Package", name=name, owner=parent)
 
+    def create_diagram(self, diag_type: str, name: str = "") -> SysMLDiagram:
+        diag_id = str(uuid.uuid4())
+        diagram = SysMLDiagram(diag_id, diag_type, name)
+        self.diagrams[diag_id] = diagram
+        return diagram
+
+    def add_element_to_diagram(self, diag_id: str, elem_id: str) -> None:
+        diag = self.diagrams.get(diag_id)
+        if diag and elem_id not in diag.elements:
+            diag.elements.append(elem_id)
+
+    def add_relationship_to_diagram(self, diag_id: str, rel_id: str) -> None:
+        diag = self.diagrams.get(diag_id)
+        if diag and rel_id not in diag.relationships:
+            diag.relationships.append(rel_id)
+
     def delete_element(self, elem_id: str) -> None:
         """Remove an element and any relationships referencing it."""
         if elem_id in self.elements:
             del self.elements[elem_id]
         self.relationships = [r for r in self.relationships if r.source != elem_id and r.target != elem_id]
+
+    def delete_diagram(self, diag_id: str) -> None:
+        if diag_id in self.diagrams:
+            del self.diagrams[diag_id]
 
     def get_element(self, elem_id: str) -> Optional[SysMLElement]:
         return self.elements.get(elem_id)
@@ -83,12 +112,16 @@ class SysMLRepository:
             data = json.load(f)
         self.elements.clear()
         self.relationships.clear()
+        self.diagrams.clear()
         for e in data.get("elements", []):
             elem = SysMLElement(**e)
             self.elements[elem.elem_id] = elem
         for r in data.get("relationships", []):
             rel = SysMLRelationship(**r)
             self.relationships.append(rel)
+        for d in data.get("diagrams", []):
+            diag = SysMLDiagram(**d)
+            self.diagrams[diag.diag_id] = diag
         self.root_package = None
         for elem in self.elements.values():
             if elem.elem_type == "Package" and elem.owner is None:
@@ -107,6 +140,7 @@ class SysMLRepository:
         data = {
             "elements": [elem.__dict__ for elem in self.elements.values()],
             "relationships": [rel.__dict__ for rel in self.relationships],
+            "diagrams": [diag.__dict__ for diag in self.diagrams.values()],
         }
         return json.dumps(data, indent=2)
 
