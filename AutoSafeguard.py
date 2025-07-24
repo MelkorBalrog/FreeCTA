@@ -1639,6 +1639,7 @@ class FaultTreeApp:
         self.active_hara = None
         self.hazop_entries = []  # backwards compatibility for active doc
         self.hara_entries = []
+        self.arch_diagrams = []
         self.top_events = []
         self.reviews = []
         self.review_data = None
@@ -6826,6 +6827,8 @@ class FaultTreeApp:
                 doc = self.hara_docs[idx]
                 self._hara_window.doc_var.set(doc.name)
                 self._hara_window.select_doc()
+        elif kind == "arch":
+            self.open_arch_window(idx)
 
     def on_ctrl_mousewheel(self, event):
         if event.delta > 0:
@@ -7272,6 +7275,10 @@ class FaultTreeApp:
             hara_root = tree.insert("", "end", text="HARAs", open=True)
             for idx, doc in enumerate(self.hara_docs):
                 tree.insert(hara_root, "end", text=doc.name, tags=("hara", str(idx)))
+            arch_root = tree.insert("", "end", text="Architecture Diagrams", open=True)
+            for idx, diag in enumerate(self.arch_diagrams):
+                name = diag.get('name', f'Diagram {idx+1}')
+                tree.insert(arch_root, "end", text=name, tags=("arch", str(idx)))
 
         if hasattr(self, "page_diagram") and self.page_diagram is not None:
             if self.page_diagram.canvas.winfo_exists():
@@ -10573,29 +10580,20 @@ class FaultTreeApp:
             return
         self._tc2fi_window = TC2FIWindow(self)
 
-    def open_use_case_diagram(self):
-        if hasattr(self, "_use_case_window") and self._use_case_window.winfo_exists():
-            self._use_case_window.lift()
+    def open_arch_window(self, idx):
+        if idx >= len(self.arch_diagrams):
             return
-        self._use_case_window = UseCaseDiagramWindow(self.root)
-
-    def open_activity_diagram(self):
-        if hasattr(self, "_activity_window") and self._activity_window.winfo_exists():
-            self._activity_window.lift()
-            return
-        self._activity_window = ActivityDiagramWindow(self.root)
-
-    def open_block_diagram(self):
-        if hasattr(self, "_block_window") and self._block_window.winfo_exists():
-            self._block_window.lift()
-            return
-        self._block_window = BlockDiagramWindow(self.root)
-
-    def open_internal_block_diagram(self):
-        if hasattr(self, "_ibd_window") and self._ibd_window.winfo_exists():
-            self._ibd_window.lift()
-            return
-        self._ibd_window = InternalBlockDiagramWindow(self.root)
+        diag = self.arch_diagrams[idx]
+        win = tk.Toplevel(self.root)
+        win.title(f"Architecture Diagram - {diag.get('name', f'Diagram {idx+1}')}")
+        canvas = tk.Canvas(win, width=800, height=600, bg="white")
+        canvas.pack(fill=tk.BOTH, expand=True)
+        canvas.create_text(
+            400,
+            300,
+            text=diag.get('name', f'Diagram {idx+1}'),
+            font=("Arial", 20),
+        )
         
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
