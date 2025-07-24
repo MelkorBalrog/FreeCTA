@@ -1240,6 +1240,13 @@ class EditNodeDialog(simpledialog.Dialog):
                     p.approved = False
         self.update_requirement_statuses()
 
+
+
+
+
+
+
+
     
     def add_safety_requirement(self):
         """
@@ -11974,6 +11981,29 @@ class FaultTreeApp:
         self.sync_hara_to_safety_goals()
         self.update_all_requirement_asil()
 
+    def invalidate_reviews_for_hara(self, name):
+        """Reopen reviews associated with the given HARA."""
+        for r in self.reviews:
+            if name in getattr(r, "hara_names", []):
+                r.closed = False
+                r.approved = False
+                r.reviewed = False
+                for p in r.participants:
+                    p.done = False
+                    p.approved = False
+        self.update_hara_statuses()
+
+    def invalidate_reviews_for_requirement(self, req_id):
+        """Reopen reviews that include the given requirement."""
+        for r in self.reviews:
+            if req_id in self.get_requirements_for_review(r):
+                r.closed = False
+                r.approved = False
+                r.reviewed = False
+                for p in r.participants:
+                    p.done = False
+                    p.approved = False
+        self.update_requirement_statuses()
 
     def add_version(self):
         name = f"v{len(self.versions)+1}"
