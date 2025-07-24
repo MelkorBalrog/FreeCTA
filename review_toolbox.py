@@ -712,16 +712,19 @@ class ReviewToolbox(tk.Toplevel):
         else:
             approvers = [p for p in r.participants if p.role == 'approver']
             if approvers and all(p.approved for p in approvers) and all(c.resolved for c in r.comments):
+                was_closed = r.closed
                 newly_approved = False
                 if not r.approved:
                     r.approved = True
-                    r.closed = True
-                    self.app.add_version()
                     newly_approved = True
+                r.closed = True
+                if newly_approved:
+                    self.app.add_version()
                 self.app.update_hara_statuses()
                 self.app.update_requirement_statuses()
-                if newly_approved:
+                if not was_closed and r.closed:
                     self.app.ensure_asil_consistency()
+                    self.app.update_base_event_requirement_asil()
                 if hasattr(self.app, "_hara_window") and self.app._hara_window.winfo_exists():
                     self.app._hara_window.refresh_docs()
                 self.refresh_reviews()
