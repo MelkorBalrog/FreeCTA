@@ -268,6 +268,12 @@ from models import (
     global_requirements,
 )
 from toolboxes import ReliabilityWindow, FI2TCWindow, HazopWindow, HaraWindow, TC2FIWindow
+from architecture import (
+    UseCaseDiagramWindow,
+    ActivityDiagramWindow,
+    BlockDiagramWindow,
+    InternalBlockDiagramWindow,
+)
 import copy
 import tkinter.font as tkFont
 from PIL import Image, ImageDraw, ImageFont, ImageTk
@@ -1735,6 +1741,13 @@ class FaultTreeApp:
         reliability_menu.add_command(label="FMEDA Analysis", command=self.open_fmeda_window)
         reliability_menu.add_command(label="FMEDA Manager", command=self.show_fmeda_list)
         menubar.add_cascade(label="Reliability", menu=reliability_menu)
+
+        architecture_menu = tk.Menu(menubar, tearoff=0)
+        architecture_menu.add_command(label="Use Case Diagram", command=self.open_use_case_diagram)
+        architecture_menu.add_command(label="Activity Diagram", command=self.open_activity_diagram)
+        architecture_menu.add_command(label="Block Diagram", command=self.open_block_diagram)
+        architecture_menu.add_command(label="Internal Block Diagram", command=self.open_internal_block_diagram)
+        menubar.add_cascade(label="Architecture", menu=architecture_menu)
 
         hara_menu = tk.Menu(menubar, tearoff=0)
         hara_menu.add_command(label="HAZOP Analysis", command=self.open_hazop_window)
