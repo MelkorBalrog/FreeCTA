@@ -764,6 +764,8 @@ class EditNodeDialog(simpledialog.Dialog):
             self.add_existing_req_button.grid(row=1, column=3, padx=2, pady=2)
             self.decomp_req_button = ttk.Button(self.safety_req_frame, text="Decompose", command=self.decompose_safety_requirement)
             self.decomp_req_button.grid(row=1, column=4, padx=2, pady=2)
+            self.update_decomp_button = ttk.Button(self.safety_req_frame, text="Update Scheme", command=self.update_decomposition_scheme)
+            self.update_decomp_button.grid(row=1, column=5, padx=2, pady=2)
 
         elif self.node.node_type.upper() == "BASIC EVENT":
             ttk.Label(master, text="Failure Probability:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
@@ -819,6 +821,8 @@ class EditNodeDialog(simpledialog.Dialog):
             self.add_existing_req_button.grid(row=1, column=3, padx=2, pady=2)
             self.decomp_req_button = ttk.Button(self.safety_req_frame, text="Decompose", command=self.decompose_safety_requirement)
             self.decomp_req_button.grid(row=1, column=4, padx=2, pady=2)
+            self.update_decomp_button = ttk.Button(self.safety_req_frame, text="Update Scheme", command=self.update_decomposition_scheme)
+            self.update_decomp_button.grid(row=1, column=5, padx=2, pady=2)
 
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
             ttk.Label(master, text="Gate Type:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
@@ -1051,7 +1055,7 @@ class EditNodeDialog(simpledialog.Dialog):
                     if self.node.node_type.upper() == "BASIC EVENT":
                         req["asil"] = self.infer_requirement_asil_from_node(self.node)
                     else:
-                        self.update_requirement_asil(req_id)
+                        pass  # ASIL recalculated when joint review closes
                     self.safety_req_listbox.insert(
                         tk.END,
                         f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}",
@@ -1167,6 +1171,13 @@ class EditNodeDialog(simpledialog.Dialog):
         self.sync_hara_to_safety_goals()
         self.update_all_requirement_asil()
 
+
+
+
+
+
+
+
     
     def add_safety_requirement(self):
         """
@@ -1211,7 +1222,7 @@ class EditNodeDialog(simpledialog.Dialog):
         if not any(r["id"] == custom_id for r in self.node.safety_requirements):
             self.node.safety_requirements.append(req)
             if self.node.node_type.upper() != "BASIC EVENT":
-                self.update_requirement_asil(custom_id)
+                pass  # ASIL updated after joint review
             self.safety_req_listbox.insert(
                 tk.END,
                 f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}",
@@ -1241,6 +1252,7 @@ class EditNodeDialog(simpledialog.Dialog):
         new_custom_id = dialog.result["custom_id"].strip() or current_req.get("custom_id") or current_req.get("id") or str(uuid.uuid4())
         current_req["req_type"] = dialog.result["req_type"]
         current_req["text"] = dialog.result["text"]
+        current_req["status"] = "draft"
         if self.node.node_type.upper() == "BASIC EVENT":
             # Leave the ASIL untouched for decomposed requirements when
             # editing within a base event so the value set during
@@ -1251,10 +1263,11 @@ class EditNodeDialog(simpledialog.Dialog):
         current_req["custom_id"] = new_custom_id
         current_req["id"] = new_custom_id
         global_requirements[new_custom_id] = current_req
+        self.app.invalidate_reviews_for_requirement(new_custom_id)
         self.node.safety_requirements[index] = current_req
         self.safety_req_listbox.delete(index)
         if self.node.node_type.upper() != "BASIC EVENT":
-            self.update_requirement_asil(new_custom_id)
+            pass  # ASIL updated after joint review completion
         self.safety_req_listbox.insert(
             index,
             f"[{current_req['id']}] [{current_req['req_type']}] [{current_req.get('asil','')}] {current_req['text']}",
@@ -1269,7 +1282,7 @@ class EditNodeDialog(simpledialog.Dialog):
         req_id = self.node.safety_requirements[index]["id"]
         del self.node.safety_requirements[index]
         if self.node.node_type.upper() != "BASIC EVENT":
-            self.update_requirement_asil(req_id)
+            pass  # ASIL recalculated after joint review
         self.safety_req_listbox.delete(index)
 
     def decompose_safety_requirement(self):
@@ -1304,14 +1317,18 @@ class EditNodeDialog(simpledialog.Dialog):
             "status": "draft",
             "parent_id": req.get("id"),
         }
+        req["status"] = "draft"
+        global_requirements[req.get("id")] = req
         global_requirements[req_id_a] = r1
         global_requirements[req_id_b] = r2
         del self.node.safety_requirements[index]
         self.node.safety_requirements.insert(index, r2)
         self.node.safety_requirements.insert(index, r1)
         if self.node.node_type.upper() != "BASIC EVENT":
-            self.update_requirement_asil(req_id_a)
-            self.update_requirement_asil(req_id_b)
+            pass  # ASIL will update after joint review
+        self.app.invalidate_reviews_for_requirement(req.get("id"))
+        self.app.invalidate_reviews_for_requirement(req_id_a)
+        self.app.invalidate_reviews_for_requirement(req_id_b)
         self.safety_req_listbox.delete(index)
         self.safety_req_listbox.insert(
             index,
@@ -1321,6 +1338,43 @@ class EditNodeDialog(simpledialog.Dialog):
             index + 1,
             f"[{r2['id']}] [{r2['req_type']}] [{r2.get('asil','')}] {r2['text']}",
         )
+
+    def update_decomposition_scheme(self):
+        selected = self.safety_req_listbox.curselection()
+        if not selected:
+            messagebox.showwarning("Update Decomposition", "Select a decomposed requirement.")
+            return
+        index = selected[0]
+        req = self.node.safety_requirements[index]
+        parent_id = req.get("parent_id")
+        if not parent_id:
+            messagebox.showwarning("Update Decomposition", "Selected requirement is not decomposed.")
+            return
+        pair_indices = [i for i, r in enumerate(self.node.safety_requirements) if r.get("parent_id") == parent_id]
+        if len(pair_indices) != 2:
+            messagebox.showerror("Update Decomposition", "Could not identify decomposition pair.")
+            return
+        parent_req = global_requirements.get(parent_id, {})
+        dlg = DecompositionDialog(self, parent_req.get("asil", "QM"))
+        if not dlg.result:
+            return
+        asil_a, asil_b = dlg.result
+        pair_indices.sort()
+        req_a = self.node.safety_requirements[pair_indices[0]]
+        req_b = self.node.safety_requirements[pair_indices[1]]
+        req_a["asil"] = asil_a
+        req_b["asil"] = asil_b
+        req_a["status"] = "draft"
+        req_b["status"] = "draft"
+        global_requirements[req_a["id"]] = req_a
+        global_requirements[req_b["id"]] = req_b
+        self.app.invalidate_reviews_for_requirement(req_a["id"])
+        self.app.invalidate_reviews_for_requirement(req_b["id"])
+        for idx, r in zip(pair_indices, (req_a, req_b)):
+            self.safety_req_listbox.delete(idx)
+            self.safety_req_listbox.insert(idx, f"[{r['id']}] [{r['req_type']}] [{r.get('asil','')}] {r['text']}")
+        if self.node.node_type.upper() != "BASIC EVENT":
+            pass  # ASIL recalculated when joint review closes
 
     def buttonbox(self):
         box = tk.Frame(self)
@@ -7998,7 +8052,7 @@ class FaultTreeApp:
                         reqs.append(req)
                     if not val and present:
                         node.safety_requirements = [r for r in reqs if r.get("id") != rid]
-                self.update_requirement_asil(rid)
+                # ASIL updates will occur after joint review
                 refresh_tree()
 
         btn = tk.Frame(win)
@@ -11040,7 +11094,6 @@ class FaultTreeApp:
                 self.review_data = None
 
         self.update_hara_statuses()
-        self.ensure_asil_consistency()
 
         self.versions = data.get("versions", [])
 
@@ -11409,7 +11462,7 @@ class FaultTreeApp:
             def peer_completed(pred):
                 return any(
                     r.mode == 'peer'
-                    and (getattr(r, 'reviewed', False) or self.review_is_closed_for(r))
+                    and getattr(r, 'reviewed', False)
                     and pred(r)
                     for r in self.reviews
                 )
@@ -11418,21 +11471,35 @@ class FaultTreeApp:
                 if not peer_completed(lambda r: tid in r.fta_ids):
                     messagebox.showerror(
                         "Review",
-                        "Peer review must be approved or closed before starting joint review",
+                        "Peer review must be reviewed before starting joint review",
                     )
                     return
             for name_fta in fmea_names:
                 if not peer_completed(lambda r: name_fta in r.fmea_names):
                     messagebox.showerror(
                         "Review",
-                        "Peer review must be approved or closed before starting joint review",
+                        "Peer review must be reviewed before starting joint review",
                     )
                     return
             for name_fd in fmeda_names:
                 if not peer_completed(lambda r: name_fd in r.fmeda_names):
                     messagebox.showerror(
                         "Review",
-                        "Peer review must be approved or closed before starting joint review",
+                        "Peer review must be reviewed before starting joint review",
+                    )
+                    return
+            for name_hz in hazop_names:
+                if not peer_completed(lambda r: name_hz in getattr(r, 'hazop_names', [])):
+                    messagebox.showerror(
+                        "Review",
+                        "Peer review must be reviewed before starting joint review",
+                    )
+                    return
+            for name_hara in hara_names:
+                if not peer_completed(lambda r: name_hara in getattr(r, 'hara_names', [])):
+                    messagebox.showerror(
+                        "Review",
+                        "Peer review must be reviewed before starting joint review",
                     )
                     return
             review = ReviewData(name=name, description=description, mode='joint', moderators=moderators,
@@ -11453,6 +11520,8 @@ class FaultTreeApp:
             return
         if not self.review_data and self.reviews:
             self.review_data = self.reviews[0]
+        self.update_hara_statuses()
+        self.update_requirement_statuses()
         if self.review_window is None or not self.review_window.winfo_exists():
             self.review_window = ReviewToolbox(self.root, self)
         self.set_current_user()
@@ -11814,6 +11883,59 @@ class FaultTreeApp:
                         status = "in review"
                 if status_order[status] > status_order.get(req.get("status", "draft"), 0):
                     req["status"] = status
+
+
+    def compute_requirement_asil(self, req_id):
+        """Return highest ASIL across all safety goals linked to the requirement."""
+        goals = self.get_requirement_goal_names(req_id)
+        asil = "QM"
+        for g in goals:
+            a = self.get_safety_goal_asil(g)
+            if ASIL_ORDER.get(a, 0) > ASIL_ORDER.get(asil, 0):
+                asil = a
+        return asil
+
+    def update_requirement_asil(self, req_id):
+        req = global_requirements.get(req_id)
+        if not req:
+            return
+        req["asil"] = self.compute_requirement_asil(req_id)
+
+    def update_all_requirement_asil(self):
+        for rid, req in global_requirements.items():
+            if req.get("parent_id"):
+                continue  # keep decomposition ASIL
+            self.update_requirement_asil(rid)
+
+    def ensure_asil_consistency(self):
+        """Sync safety goal ASILs from HARAs and update requirement ASILs."""
+        self.sync_hara_to_safety_goals()
+        self.update_all_requirement_asil()
+
+    def invalidate_reviews_for_hara(self, name):
+        """Reopen reviews associated with the given HARA."""
+        for r in self.reviews:
+            if name in getattr(r, "hara_names", []):
+                r.closed = False
+                r.approved = False
+                r.reviewed = False
+                for p in r.participants:
+                    p.done = False
+                    p.approved = False
+        self.update_hara_statuses()
+
+    def invalidate_reviews_for_requirement(self, req_id):
+        """Reopen reviews that include the given requirement."""
+        for r in self.reviews:
+            if req_id in self.get_requirements_for_review(r):
+                r.closed = False
+                r.approved = False
+                r.reviewed = False
+                for p in r.participants:
+                    p.done = False
+                    p.approved = False
+        self.update_requirement_statuses()
+
 
 
     def add_version(self):
