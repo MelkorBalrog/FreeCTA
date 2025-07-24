@@ -1166,6 +1166,20 @@ class EditNodeDialog(simpledialog.Dialog):
                 continue  # keep decomposition ASIL
             self.update_requirement_asil(rid)
 
+    def update_base_event_requirement_asil(self):
+        """Update ASIL for requirements allocated to base events."""
+        for node in self.get_all_nodes(self.root_node):
+            if getattr(node, "node_type", "").upper() != "BASIC EVENT":
+                continue
+            for req in getattr(node, "safety_requirements", []):
+                rid = req.get("id")
+                if not rid:
+                    continue
+                asil = self.compute_requirement_asil(rid)
+                req["asil"] = asil
+                if rid in global_requirements:
+                    global_requirements[rid]["asil"] = asil
+
     def update_requirement_decomposition(self):
         """Update ASIL values of decomposed child requirements."""
         parent_map = {}
