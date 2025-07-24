@@ -3,6 +3,8 @@ from tkinter import ttk, simpledialog
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
+from sysml_repository import SysMLRepository
+
 from sysml_spec import SYSML_PROPERTIES
 
 
@@ -22,6 +24,7 @@ class SysMLObject:
     obj_type: str
     x: float
     y: float
+    element_id: str | None = None
     width: float = 80.0
     height: float = 40.0
     properties: Dict[str, str] = field(default_factory=dict)
@@ -34,6 +37,11 @@ class SysMLDiagramWindow(tk.Toplevel):
         super().__init__(master)
         self.title(title)
         self.geometry("800x600")
+
+        self.repo = SysMLRepository.get_instance()
+        diagram = self.repo.create_diagram(title)
+        self.diagram_id = diagram.diag_id
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         self.zoom = 1.0
         self.current_tool = None
@@ -86,13 +94,21 @@ class SysMLDiagramWindow(tk.Toplevel):
             else:
                 if obj and obj != self.start:
                     self.connections.append((self.start.obj_id, obj.obj_id, t))
+                    src_id = self.start.element_id
+                    dst_id = obj.element_id
+                    if src_id and dst_id:
+                        rel = self.repo.create_relationship(t, src_id, dst_id)
+                        self.repo.add_relationship_to_diagram(self.diagram_id, rel.rel_id)
                 self.start = None
                 self.redraw()
         elif t and t != "Select":
-            new_obj = SysMLObject(_get_next_id(), t, x / self.zoom, y / self.zoom)
+            element = self.repo.create_element(t)
+            self.repo.add_element_to_diagram(self.diagram_id, element.elem_id)
+            new_obj = SysMLObject(_get_next_id(), t, x / self.zoom, y / self.zoom, element_id=element.elem_id)
             key = f"{t.replace(' ', '')}Usage"
             for prop in SYSML_PROPERTIES.get(key, []):
                 new_obj.properties.setdefault(prop, "")
+            element.properties.update(new_obj.properties)
             self.objects.append(new_obj)
             self.redraw()
         else:
@@ -240,6 +256,10 @@ class SysMLDiagramWindow(tk.Toplevel):
                 return o
         return None
 
+    def on_close(self):
+        self.repo.delete_diagram(self.diagram_id)
+        self.destroy()
+
 class SysMLObjectDialog(simpledialog.Dialog):
     """Simple dialog for editing SysML object properties."""
 
@@ -269,8 +289,13 @@ class SysMLObjectDialog(simpledialog.Dialog):
 
     def apply(self):
         self.obj.properties["name"] = self.name_var.get()
+        repo = SysMLRepository.get_instance()
+        if self.obj.element_id and self.obj.element_id in repo.elements:
+            repo.elements[self.obj.element_id].name = self.name_var.get()
         for prop, var in self.entries.items():
             self.obj.properties[prop] = var.get()
+            if self.obj.element_id and self.obj.element_id in repo.elements:
+                repo.elements[self.obj.element_id].properties[prop] = var.get()
         try:
             self.obj.width = float(self.width_var.get())
             self.obj.height = float(self.height_var.get())
