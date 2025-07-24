@@ -240,7 +240,6 @@ class SysMLDiagramWindow(tk.Toplevel):
                 return o
         return None
 
-
 class SysMLObjectDialog(simpledialog.Dialog):
     """Simple dialog for editing SysML object properties."""
 
@@ -277,7 +276,6 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.obj.height = float(self.height_var.get())
         except ValueError:
             pass
-
 
 class UseCaseDiagramWindow(SysMLDiagramWindow):
     def __init__(self, master):
