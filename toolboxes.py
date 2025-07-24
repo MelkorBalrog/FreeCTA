@@ -1043,7 +1043,8 @@ class HaraWindow(tk.Toplevel):
         self.app.active_hara.status = "closed"
         self.app.active_hara.approved = True
         self.app.update_hara_statuses()
-        self.app.sync_hara_to_safety_goals()
+        self.app.ensure_asil_consistency()
+        self.app.update_views()
         messagebox.showinfo("HARA", "HARA approved")
 
 
