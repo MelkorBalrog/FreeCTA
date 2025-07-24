@@ -54,5 +54,19 @@ class RepositoryTests(unittest.TestCase):
         self.assertIn(diag.diag_id, new_repo.diagrams)
         self.assertIn(actor.elem_id, new_repo.diagrams[diag.diag_id].elements)
 
+    def test_element_diagram_linking(self):
+        uc = self.repo.create_element("Use Case")
+        ad = self.repo.create_diagram("Activity Diagram", name="AD1")
+        self.repo.link_diagram(uc.elem_id, ad.diag_id)
+        linked = self.repo.get_linked_diagram(uc.elem_id)
+        self.assertEqual(linked, ad.diag_id)
+        path = "repo_link.json"
+        self.repo.save(path)
+        SysMLRepository._instance = None
+        new_repo = SysMLRepository.get_instance()
+        new_repo.load(path)
+        os.remove(path)
+        self.assertEqual(new_repo.get_linked_diagram(uc.elem_id), ad.diag_id)
+
 if __name__ == '__main__':
     unittest.main()

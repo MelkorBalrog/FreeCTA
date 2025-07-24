@@ -33,13 +33,16 @@ class SysMLObject:
 class SysMLDiagramWindow(tk.Toplevel):
     """Base window for simple SysML diagrams with zoom and pan support."""
 
-    def __init__(self, master, title, tools):
+    def __init__(self, master, title, tools, diagram_id: str | None = None):
         super().__init__(master)
         self.title(title)
         self.geometry("800x600")
 
         self.repo = SysMLRepository.get_instance()
-        diagram = self.repo.create_diagram(title)
+        if diagram_id and diagram_id in self.repo.diagrams:
+            diagram = self.repo.diagrams[diagram_id]
+        else:
+            diagram = self.repo.create_diagram(title, diag_id=diagram_id)
         self.diagram_id = diagram.diag_id
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -133,6 +136,15 @@ class SysMLDiagramWindow(tk.Toplevel):
         y = self.canvas.canvasy(event.y)
         obj = self.find_object(x, y)
         if obj:
+            diag_id = self.repo.get_linked_diagram(obj.element_id)
+            if diag_id and diag_id in self.repo.diagrams:
+                diag = self.repo.diagrams[diag_id]
+                if diag.diag_type == "Activity Diagram":
+                    ActivityDiagramWindow(self.master, diagram_id=diag_id)
+                    return
+                if diag.diag_type == "Internal Block Diagram":
+                    InternalBlockDiagramWindow(self.master, diagram_id=diag_id)
+                    return
             SysMLObjectDialog(self, obj)
             self.redraw()
 
@@ -287,6 +299,30 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.entries[prop] = var
             row += 1
 
+        repo = SysMLRepository.get_instance()
+        if self.obj.obj_type == "Use Case":
+            diags = [d for d in repo.diagrams.values() if d.diag_type == "Activity Diagram"]
+            names = [d.name or d.diag_id for d in diags]
+            ids = {d.name or d.diag_id: d.diag_id for d in diags}
+            ttk.Label(master, text="Activity Diagram:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            self.diag_map = ids
+            cur_id = repo.get_linked_diagram(self.obj.element_id)
+            cur_name = next((n for n, i in ids.items() if i == cur_id), "")
+            self.diagram_var = tk.StringVar(value=cur_name)
+            ttk.Combobox(master, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=row, column=1, padx=4, pady=2)
+            row += 1
+        elif self.obj.obj_type == "Block":
+            diags = [d for d in repo.diagrams.values() if d.diag_type == "Internal Block Diagram"]
+            names = [d.name or d.diag_id for d in diags]
+            ids = {d.name or d.diag_id: d.diag_id for d in diags}
+            ttk.Label(master, text="Internal Block Diagram:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            self.diag_map = ids
+            cur_id = repo.get_linked_diagram(self.obj.element_id)
+            cur_name = next((n for n, i in ids.items() if i == cur_id), "")
+            self.diagram_var = tk.StringVar(value=cur_name)
+            ttk.Combobox(master, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=row, column=1, padx=4, pady=2)
+            row += 1
+        
     def apply(self):
         self.obj.properties["name"] = self.name_var.get()
         repo = SysMLRepository.get_instance()
@@ -301,9 +337,14 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.obj.height = float(self.height_var.get())
         except ValueError:
             pass
+        # Update linked diagram if applicable
+        if hasattr(self, "diagram_var"):
+            name = self.diagram_var.get()
+            diag_id = self.diag_map.get(name)
+            repo.link_diagram(self.obj.element_id, diag_id)
 
 class UseCaseDiagramWindow(SysMLDiagramWindow):
-    def __init__(self, master):
+    def __init__(self, master, diagram_id: str | None = None):
         tools = [
             "Actor",
             "Use Case",
@@ -312,11 +353,11 @@ class UseCaseDiagramWindow(SysMLDiagramWindow):
             "Include",
             "Extend",
         ]
-        super().__init__(master, "Use Case Diagram", tools)
+        super().__init__(master, "Use Case Diagram", tools, diagram_id)
 
 
 class ActivityDiagramWindow(SysMLDiagramWindow):
-    def __init__(self, master):
+    def __init__(self, master, diagram_id: str | None = None):
         tools = [
             "Action",
             "Initial",
@@ -327,24 +368,24 @@ class ActivityDiagramWindow(SysMLDiagramWindow):
             "Join",
             "Flow",
         ]
-        super().__init__(master, "Activity Diagram", tools)
+        super().__init__(master, "Activity Diagram", tools, diagram_id)
 
 
 class BlockDiagramWindow(SysMLDiagramWindow):
-    def __init__(self, master):
+    def __init__(self, master, diagram_id: str | None = None):
         tools = [
             "Block",
             "Association",
         ]
-        super().__init__(master, "Block Diagram", tools)
+        super().__init__(master, "Block Diagram", tools, diagram_id)
 
 
 class InternalBlockDiagramWindow(SysMLDiagramWindow):
-    def __init__(self, master):
+    def __init__(self, master, diagram_id: str | None = None):
         tools = [
             "Block",
             "Part",
             "Port",
             "Connector",
         ]
-        super().__init__(master, "Internal Block Diagram", tools)
+        super().__init__(master, "Internal Block Diagram", tools, diagram_id)
