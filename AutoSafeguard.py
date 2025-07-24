@@ -1639,6 +1639,7 @@ class FaultTreeApp:
         self.active_hara = None
         self.hazop_entries = []  # backwards compatibility for active doc
         self.hara_entries = []
+        self.arch_diagrams = []
         self.top_events = []
         self.reviews = []
         self.review_data = None
@@ -6830,6 +6831,8 @@ class FaultTreeApp:
                 doc = self.hara_docs[idx]
                 self._hara_window.doc_var.set(doc.name)
                 self._hara_window.select_doc()
+        elif kind == "arch":
+            self.open_arch_window(idx)
 
     def on_ctrl_mousewheel(self, event):
         if event.delta > 0:
@@ -7276,6 +7279,10 @@ class FaultTreeApp:
             hara_root = tree.insert("", "end", text="HARAs", open=True)
             for idx, doc in enumerate(self.hara_docs):
                 tree.insert(hara_root, "end", text=doc.name, tags=("hara", str(idx)))
+            arch_root = tree.insert("", "end", text="Architecture Diagrams", open=True)
+            for idx, diag in enumerate(self.arch_diagrams):
+                name = diag.get('name', f'Diagram {idx+1}')
+                tree.insert(arch_root, "end", text=name, tags=("arch", str(idx)))
 
         if hasattr(self, "page_diagram") and self.page_diagram is not None:
             if self.page_diagram.canvas.winfo_exists():
