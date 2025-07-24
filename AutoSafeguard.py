@@ -1166,10 +1166,55 @@ class EditNodeDialog(simpledialog.Dialog):
                 continue  # keep decomposition ASIL
             self.update_requirement_asil(rid)
 
+    def update_requirement_decomposition(self):
+        """Update ASIL values of decomposed child requirements."""
+        parent_map = {}
+        for req in global_requirements.values():
+            pid = req.get("parent_id")
+            if pid:
+                parent_map.setdefault(pid, []).append(req)
+
+        for pid, children in parent_map.items():
+            parent = global_requirements.get(pid)
+            if not parent or len(children) < 2:
+                continue
+            schemes = ASIL_DECOMP_SCHEMES.get(parent.get("asil", "QM"), [])
+            if not schemes:
+                continue
+            asil_a, asil_b = schemes[0]
+            children_sorted = sorted(children, key=lambda r: r.get("id"))
+            children_sorted[0]["asil"] = asil_a
+            children_sorted[1]["asil"] = asil_b
+
     def ensure_asil_consistency(self):
         """Sync safety goal ASILs from HARAs and update requirement ASILs."""
         self.sync_hara_to_safety_goals()
         self.update_all_requirement_asil()
+        self.update_requirement_decomposition()
+
+    def invalidate_reviews_for_hara(self, name):
+        """Reopen reviews associated with the given HARA."""
+        for r in self.reviews:
+            if name in getattr(r, "hara_names", []):
+                r.closed = False
+                r.approved = False
+                r.reviewed = False
+                for p in r.participants:
+                    p.done = False
+                    p.approved = False
+        self.update_hara_statuses()
+
+    def invalidate_reviews_for_requirement(self, req_id):
+        """Reopen reviews that include the given requirement."""
+        for r in self.reviews:
+            if req_id in self.get_requirements_for_review(r):
+                r.closed = False
+                r.approved = False
+                r.reviewed = False
+                for p in r.participants:
+                    p.done = False
+                    p.approved = False
+        self.update_requirement_statuses()
 
     def invalidate_reviews_for_hara(self, name):
         """Reopen reviews associated with the given HARA."""
