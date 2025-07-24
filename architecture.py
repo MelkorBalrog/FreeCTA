@@ -78,8 +78,14 @@ class SysMLObjectDialog(simpledialog.Dialog):
         ttk.Label(master, text="Name:").grid(row=0, column=0, sticky="e", padx=4, pady=4)
         self.name_var = tk.StringVar(value=self.obj.properties.get("name", ""))
         ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, padx=4, pady=4)
+        ttk.Label(master, text="Width:").grid(row=1, column=0, sticky="e", padx=4, pady=2)
+        self.width_var = tk.StringVar(value=str(self.obj.width))
+        ttk.Entry(master, textvariable=self.width_var).grid(row=1, column=1, padx=4, pady=2)
+        ttk.Label(master, text="Height:").grid(row=2, column=0, sticky="e", padx=4, pady=2)
+        self.height_var = tk.StringVar(value=str(self.obj.height))
+        ttk.Entry(master, textvariable=self.height_var).grid(row=2, column=1, padx=4, pady=2)
         self.entries = {}
-        row = 1
+        row = 3
         for prop in SYSML_PROPERTIES.get(f"{self.obj.obj_type}Usage", []):
             ttk.Label(master, text=f"{prop}:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
             var = tk.StringVar(value=self.obj.properties.get(prop, ""))
@@ -91,6 +97,11 @@ class SysMLObjectDialog(simpledialog.Dialog):
         self.obj.properties["name"] = self.name_var.get()
         for prop, var in self.entries.items():
             self.obj.properties[prop] = var.get()
+        try:
+            self.obj.width = float(self.width_var.get())
+            self.obj.height = float(self.height_var.get())
+        except ValueError:
+            pass
 
     def select_tool(self, tool):
         self.current_tool = tool
