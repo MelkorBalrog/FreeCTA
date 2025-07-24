@@ -66,43 +66,6 @@ class SysMLDiagramWindow(tk.Toplevel):
 
         self.redraw()
 
-
-class SysMLObjectDialog(simpledialog.Dialog):
-    """Simple dialog for editing SysML object properties."""
-
-    def __init__(self, master, obj: SysMLObject):
-        self.obj = obj
-        super().__init__(master, title=f"Edit {obj.obj_type}")
-
-    def body(self, master):
-        ttk.Label(master, text="Name:").grid(row=0, column=0, sticky="e", padx=4, pady=4)
-        self.name_var = tk.StringVar(value=self.obj.properties.get("name", ""))
-        ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, padx=4, pady=4)
-        ttk.Label(master, text="Width:").grid(row=1, column=0, sticky="e", padx=4, pady=2)
-        self.width_var = tk.StringVar(value=str(self.obj.width))
-        ttk.Entry(master, textvariable=self.width_var).grid(row=1, column=1, padx=4, pady=2)
-        ttk.Label(master, text="Height:").grid(row=2, column=0, sticky="e", padx=4, pady=2)
-        self.height_var = tk.StringVar(value=str(self.obj.height))
-        ttk.Entry(master, textvariable=self.height_var).grid(row=2, column=1, padx=4, pady=2)
-        self.entries = {}
-        row = 3
-        for prop in SYSML_PROPERTIES.get(f"{self.obj.obj_type}Usage", []):
-            ttk.Label(master, text=f"{prop}:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
-            var = tk.StringVar(value=self.obj.properties.get(prop, ""))
-            ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=4, pady=2)
-            self.entries[prop] = var
-            row += 1
-
-    def apply(self):
-        self.obj.properties["name"] = self.name_var.get()
-        for prop, var in self.entries.items():
-            self.obj.properties[prop] = var.get()
-        try:
-            self.obj.width = float(self.width_var.get())
-            self.obj.height = float(self.height_var.get())
-        except ValueError:
-            pass
-
     def select_tool(self, tool):
         self.current_tool = tool
         self.start = None
@@ -127,7 +90,8 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 self.redraw()
         elif t and t != "Select":
             new_obj = SysMLObject(_get_next_id(), t, x / self.zoom, y / self.zoom)
-            for prop in SYSML_PROPERTIES.get(f"{t}Usage", []):
+            key = f"{t.replace(' ', '')}Usage"
+            for prop in SYSML_PROPERTIES.get(key, []):
                 new_obj.properties.setdefault(prop, "")
             self.objects.append(new_obj)
             self.redraw()
@@ -257,8 +221,13 @@ class SysMLObjectDialog(simpledialog.Dialog):
         else:
             self.canvas.create_rectangle(x - w, y - h, x + w, y + h)
 
-        label = obj.properties.get("name", obj.obj_type)
-        self.canvas.create_text(x, y, text=label, anchor="center")
+        label_lines = [obj.properties.get("name", obj.obj_type)]
+        key = f"{obj.obj_type.replace(' ', '')}Usage"
+        for prop in SYSML_PROPERTIES.get(key, []):
+            val = obj.properties.get(prop)
+            if val:
+                label_lines.append(f"{prop}: {val}")
+        self.canvas.create_text(x, y, text="\n".join(label_lines), anchor="center")
 
     def draw_connection(self, a: SysMLObject, b: SysMLObject):
         ax, ay = a.x * self.zoom, a.y * self.zoom
@@ -271,6 +240,42 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 return o
         return None
 
+class SysMLObjectDialog(simpledialog.Dialog):
+    """Simple dialog for editing SysML object properties."""
+
+    def __init__(self, master, obj: SysMLObject):
+        self.obj = obj
+        super().__init__(master, title=f"Edit {obj.obj_type}")
+
+    def body(self, master):
+        ttk.Label(master, text="Name:").grid(row=0, column=0, sticky="e", padx=4, pady=4)
+        self.name_var = tk.StringVar(value=self.obj.properties.get("name", ""))
+        ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, padx=4, pady=4)
+        ttk.Label(master, text="Width:").grid(row=1, column=0, sticky="e", padx=4, pady=2)
+        self.width_var = tk.StringVar(value=str(self.obj.width))
+        ttk.Entry(master, textvariable=self.width_var).grid(row=1, column=1, padx=4, pady=2)
+        ttk.Label(master, text="Height:").grid(row=2, column=0, sticky="e", padx=4, pady=2)
+        self.height_var = tk.StringVar(value=str(self.obj.height))
+        ttk.Entry(master, textvariable=self.height_var).grid(row=2, column=1, padx=4, pady=2)
+        self.entries = {}
+        row = 3
+        key = f"{self.obj.obj_type.replace(' ', '')}Usage"
+        for prop in SYSML_PROPERTIES.get(key, []):
+            ttk.Label(master, text=f"{prop}:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            var = tk.StringVar(value=self.obj.properties.get(prop, ""))
+            ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=4, pady=2)
+            self.entries[prop] = var
+            row += 1
+
+    def apply(self):
+        self.obj.properties["name"] = self.name_var.get()
+        for prop, var in self.entries.items():
+            self.obj.properties[prop] = var.get()
+        try:
+            self.obj.width = float(self.width_var.get())
+            self.obj.height = float(self.height_var.get())
+        except ValueError:
+            pass
 
 class UseCaseDiagramWindow(SysMLDiagramWindow):
     def __init__(self, master):
