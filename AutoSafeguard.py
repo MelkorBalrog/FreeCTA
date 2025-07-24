@@ -1055,7 +1055,7 @@ class EditNodeDialog(simpledialog.Dialog):
                     if self.node.node_type.upper() == "BASIC EVENT":
                         req["asil"] = self.infer_requirement_asil_from_node(self.node)
                     else:
-                        self.update_requirement_asil(req_id)
+                        pass  # ASIL recalculated when joint review closes
                     self.safety_req_listbox.insert(
                         tk.END,
                         f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}",
@@ -1216,6 +1216,30 @@ class EditNodeDialog(simpledialog.Dialog):
                     p.approved = False
         self.update_requirement_statuses()
 
+    def invalidate_reviews_for_hara(self, name):
+        """Reopen reviews associated with the given HARA."""
+        for r in self.reviews:
+            if name in getattr(r, "hara_names", []):
+                r.closed = False
+                r.approved = False
+                r.reviewed = False
+                for p in r.participants:
+                    p.done = False
+                    p.approved = False
+        self.update_hara_statuses()
+
+    def invalidate_reviews_for_requirement(self, req_id):
+        """Reopen reviews that include the given requirement."""
+        for r in self.reviews:
+            if req_id in self.get_requirements_for_review(r):
+                r.closed = False
+                r.approved = False
+                r.reviewed = False
+                for p in r.participants:
+                    p.done = False
+                    p.approved = False
+        self.update_requirement_statuses()
+
     
     def add_safety_requirement(self):
         """
@@ -1260,7 +1284,7 @@ class EditNodeDialog(simpledialog.Dialog):
         if not any(r["id"] == custom_id for r in self.node.safety_requirements):
             self.node.safety_requirements.append(req)
             if self.node.node_type.upper() != "BASIC EVENT":
-                self.update_requirement_asil(custom_id)
+                pass  # ASIL updated after joint review
             self.safety_req_listbox.insert(
                 tk.END,
                 f"[{req['id']}] [{req['req_type']}] [{req.get('asil','')}] {req['text']}",
@@ -1305,8 +1329,7 @@ class EditNodeDialog(simpledialog.Dialog):
         self.node.safety_requirements[index] = current_req
         self.safety_req_listbox.delete(index)
         if self.node.node_type.upper() != "BASIC EVENT":
-            self.update_requirement_asil(new_custom_id)
-        self.app.ensure_asil_consistency()
+            pass  # ASIL updated after joint review completion
         self.safety_req_listbox.insert(
             index,
             f"[{current_req['id']}] [{current_req['req_type']}] [{current_req.get('asil','')}] {current_req['text']}",
@@ -1321,7 +1344,7 @@ class EditNodeDialog(simpledialog.Dialog):
         req_id = self.node.safety_requirements[index]["id"]
         del self.node.safety_requirements[index]
         if self.node.node_type.upper() != "BASIC EVENT":
-            self.update_requirement_asil(req_id)
+            pass  # ASIL recalculated after joint review
         self.safety_req_listbox.delete(index)
 
     def decompose_safety_requirement(self):
@@ -1364,9 +1387,7 @@ class EditNodeDialog(simpledialog.Dialog):
         self.node.safety_requirements.insert(index, r2)
         self.node.safety_requirements.insert(index, r1)
         if self.node.node_type.upper() != "BASIC EVENT":
-            self.update_requirement_asil(req_id_a)
-            self.update_requirement_asil(req_id_b)
-        self.app.ensure_asil_consistency()
+            pass  # ASIL will update after joint review
         self.app.invalidate_reviews_for_requirement(req.get("id"))
         self.app.invalidate_reviews_for_requirement(req_id_a)
         self.app.invalidate_reviews_for_requirement(req_id_b)
@@ -1415,9 +1436,7 @@ class EditNodeDialog(simpledialog.Dialog):
             self.safety_req_listbox.delete(idx)
             self.safety_req_listbox.insert(idx, f"[{r['id']}] [{r['req_type']}] [{r.get('asil','')}] {r['text']}")
         if self.node.node_type.upper() != "BASIC EVENT":
-            self.update_requirement_asil(req_a["id"])
-            self.update_requirement_asil(req_b["id"])
-        self.app.ensure_asil_consistency()
+            pass  # ASIL recalculated when joint review closes
 
     def buttonbox(self):
         box = tk.Frame(self)
@@ -8095,7 +8114,7 @@ class FaultTreeApp:
                         reqs.append(req)
                     if not val and present:
                         node.safety_requirements = [r for r in reqs if r.get("id") != rid]
-                self.update_requirement_asil(rid)
+                # ASIL updates will occur after joint review
                 refresh_tree()
 
         btn = tk.Frame(win)
@@ -11137,7 +11156,6 @@ class FaultTreeApp:
                 self.review_data = None
 
         self.update_hara_statuses()
-        self.ensure_asil_consistency()
 
         self.versions = data.get("versions", [])
 
@@ -11527,6 +11545,20 @@ class FaultTreeApp:
                     return
             for name_fd in fmeda_names:
                 if not peer_completed(lambda r: name_fd in r.fmeda_names):
+                    messagebox.showerror(
+                        "Review",
+                        "Peer review must be reviewed before starting joint review",
+                    )
+                    return
+            for name_hz in hazop_names:
+                if not peer_completed(lambda r: name_hz in getattr(r, 'hazop_names', [])):
+                    messagebox.showerror(
+                        "Review",
+                        "Peer review must be reviewed before starting joint review",
+                    )
+                    return
+            for name_hara in hara_names:
+                if not peer_completed(lambda r: name_hara in getattr(r, 'hara_names', [])):
                     messagebox.showerror(
                         "Review",
                         "Peer review must be reviewed before starting joint review",

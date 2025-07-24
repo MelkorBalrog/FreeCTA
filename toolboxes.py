@@ -1009,7 +1009,6 @@ class HaraWindow(tk.Toplevel):
             self.app.active_hara.approved = False
             self.app.invalidate_reviews_for_hara(self.app.active_hara.name)
             self.status_lbl.config(text=f"Status: {self.app.active_hara.status}")
-        self.app.ensure_asil_consistency()
         self.refresh()
 
     def edit_row(self):
@@ -1023,7 +1022,6 @@ class HaraWindow(tk.Toplevel):
             self.app.active_hara.approved = False
             self.app.invalidate_reviews_for_hara(self.app.active_hara.name)
             self.status_lbl.config(text=f"Status: {self.app.active_hara.status}")
-        self.app.ensure_asil_consistency()
         self.refresh()
 
     def del_row(self):
@@ -1037,7 +1035,6 @@ class HaraWindow(tk.Toplevel):
             self.app.active_hara.approved = False
             self.app.invalidate_reviews_for_hara(self.app.active_hara.name)
             self.status_lbl.config(text=f"Status: {self.app.active_hara.status}")
-        self.app.ensure_asil_consistency()
         self.refresh()
 
     def approve_doc(self):

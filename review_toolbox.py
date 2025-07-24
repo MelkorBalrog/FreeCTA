@@ -720,7 +720,8 @@ class ReviewToolbox(tk.Toplevel):
                     newly_approved = True
                 self.app.update_hara_statuses()
                 self.app.update_requirement_statuses()
-                self.app.sync_hara_to_safety_goals()
+                if newly_approved:
+                    self.app.ensure_asil_consistency()
                 if hasattr(self.app, "_hara_window") and self.app._hara_window.winfo_exists():
                     self.app._hara_window.refresh_docs()
                 self.refresh_reviews()
