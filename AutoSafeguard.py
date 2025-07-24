@@ -268,6 +268,12 @@ from models import (
     global_requirements,
 )
 from toolboxes import ReliabilityWindow, FI2TCWindow, HazopWindow, HaraWindow, TC2FIWindow
+from architecture import (
+    UseCaseDiagramWindow,
+    ActivityDiagramWindow,
+    BlockDiagramWindow,
+    InternalBlockDiagramWindow,
+)
 import copy
 import tkinter.font as tkFont
 from PIL import Image, ImageDraw, ImageFont, ImageTk
@@ -1734,6 +1740,13 @@ class FaultTreeApp:
         reliability_menu.add_command(label="FMEDA Analysis", command=self.open_fmeda_window)
         reliability_menu.add_command(label="FMEDA Manager", command=self.show_fmeda_list)
         menubar.add_cascade(label="Reliability", menu=reliability_menu)
+
+        architecture_menu = tk.Menu(menubar, tearoff=0)
+        architecture_menu.add_command(label="Use Case Diagram", command=self.open_use_case_diagram)
+        architecture_menu.add_command(label="Activity Diagram", command=self.open_activity_diagram)
+        architecture_menu.add_command(label="Block Diagram", command=self.open_block_diagram)
+        architecture_menu.add_command(label="Internal Block Diagram", command=self.open_internal_block_diagram)
+        menubar.add_cascade(label="Architecture", menu=architecture_menu)
 
         hara_menu = tk.Menu(menubar, tearoff=0)
         hara_menu.add_command(label="HAZOP Analysis", command=self.open_hazop_window)
@@ -10506,6 +10519,30 @@ class FaultTreeApp:
             self._tc2fi_window.lift()
             return
         self._tc2fi_window = TC2FIWindow(self)
+
+    def open_use_case_diagram(self):
+        if hasattr(self, "_use_case_window") and self._use_case_window.winfo_exists():
+            self._use_case_window.lift()
+            return
+        self._use_case_window = UseCaseDiagramWindow(self.root)
+
+    def open_activity_diagram(self):
+        if hasattr(self, "_activity_window") and self._activity_window.winfo_exists():
+            self._activity_window.lift()
+            return
+        self._activity_window = ActivityDiagramWindow(self.root)
+
+    def open_block_diagram(self):
+        if hasattr(self, "_block_window") and self._block_window.winfo_exists():
+            self._block_window.lift()
+            return
+        self._block_window = BlockDiagramWindow(self.root)
+
+    def open_internal_block_diagram(self):
+        if hasattr(self, "_ibd_window") and self._ibd_window.winfo_exists():
+            self._ibd_window.lift()
+            return
+        self._ibd_window = InternalBlockDiagramWindow(self.root)
         
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
