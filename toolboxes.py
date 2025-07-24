@@ -634,6 +634,7 @@ class HazopWindow(tk.Toplevel):
         self.app.hazop_entries = doc.entries
         self.refresh_docs()
         self.refresh()
+        self.app.update_views()
 
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
@@ -906,6 +907,7 @@ class HaraWindow(tk.Toplevel):
         self.status_lbl.config(text=f"Status: {doc.status}")
         self.refresh_docs()
         self.refresh()
+        self.app.update_views()
 
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
