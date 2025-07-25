@@ -267,7 +267,14 @@ from models import (
     calc_asil,
     global_requirements,
 )
-from toolboxes import ReliabilityWindow, FI2TCWindow, HazopWindow, HaraWindow, TC2FIWindow
+from toolboxes import (
+    ReliabilityWindow,
+    FI2TCWindow,
+    HazopWindow,
+    HaraWindow,
+    TC2FIWindow,
+    HazardExplorerWindow,
+)
 from architecture import (
     UseCaseDiagramWindow,
     ActivityDiagramWindow,
@@ -1756,6 +1763,7 @@ class FaultTreeApp:
         hara_menu = tk.Menu(menubar, tearoff=0)
         hara_menu.add_command(label="HAZOP Analysis", command=self.open_hazop_window)
         hara_menu.add_command(label="HARA Analysis", command=self.open_hara_window)
+        hara_menu.add_command(label="Hazard Explorer", command=self.show_hazard_explorer)
         menubar.add_cascade(label="HARA", menu=hara_menu)
         sotif_menu = tk.Menu(menubar, tearoff=0)
         sotif_menu.add_command(label="Triggering Conditions", command=self.show_triggering_condition_list)
@@ -10587,6 +10595,12 @@ class FaultTreeApp:
             self._tc2fi_window.lift()
             return
         self._tc2fi_window = TC2FIWindow(self)
+
+    def show_hazard_explorer(self):
+        if hasattr(self, "_haz_exp_window") and self._haz_exp_window.winfo_exists():
+            self._haz_exp_window.lift()
+            return
+        self._haz_exp_window = HazardExplorerWindow(self)
 
     def _register_close(self, win, collection):
         def _close():

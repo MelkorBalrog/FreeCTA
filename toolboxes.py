@@ -440,7 +440,8 @@ class FI2TCWindow(tk.Toplevel):
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
         for c in self.COLS:
             self.tree.heading(c, text=c.replace("_"," ").title())
-            self.tree.column(c, width=120)
+            width = 200 if c == "hazard" else 120
+            self.tree.column(c, width=width)
         self.tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
         hsb.grid(row=1, column=0, sticky="ew")
@@ -809,7 +810,7 @@ class HazopWindow(tk.Toplevel):
 
 class HaraWindow(tk.Toplevel):
     COLS = [
-        "malfunction","severity","sev_rationale","controllability",
+        "malfunction","hazard","severity","sev_rationale","controllability",
         "cont_rationale","exposure","exp_rationale","asil","safety_goal"
     ]
 
@@ -833,7 +834,8 @@ class HaraWindow(tk.Toplevel):
         self.tree = ttk.Treeview(self, columns=self.COLS, show="headings")
         for c in self.COLS:
             self.tree.heading(c, text=c.replace("_"," ").title())
-            self.tree.column(c, width=120)
+            width = 200 if c == "hazard" else 120
+            self.tree.column(c, width=width)
         self.tree.pack(fill=tk.BOTH, expand=True)
         btn = ttk.Frame(self)
         btn.pack()
@@ -913,7 +915,8 @@ class HaraWindow(tk.Toplevel):
         self.tree.delete(*self.tree.get_children())
         for row in self.app.hara_entries:
             vals = [
-                row.malfunction, row.severity, row.sev_rationale,
+                row.malfunction, row.hazard,
+                row.severity, row.sev_rationale,
                 row.controllability, row.cont_rationale,
                 row.exposure, row.exp_rationale,
                 row.asil, row.safety_goal
@@ -924,7 +927,7 @@ class HaraWindow(tk.Toplevel):
     class RowDialog(simpledialog.Dialog):
         def __init__(self, parent, app, row=None):
             self.app = app
-            self.row = row or HaraEntry("",1,"",1,"",1,"","QM","")
+            self.row = row or HaraEntry("","",1,"",1,"",1,"","QM","")
             super().__init__(parent, title="Edit HARA Row")
 
         def body(self, master):
@@ -945,37 +948,41 @@ class HaraWindow(tk.Toplevel):
             ttk.Label(master, text="Malfunction").grid(row=0,column=0,sticky="e")
             self.mal_var = tk.StringVar(value=self.row.malfunction)
             ttk.Combobox(master, textvariable=self.mal_var, values=malfs, state="readonly").grid(row=0,column=1)
-            ttk.Label(master, text="Severity").grid(row=1,column=0,sticky="e")
+            ttk.Label(master, text="Hazard").grid(row=1,column=0,sticky="ne")
+            self.haz = tk.Text(master, width=30, height=3)
+            self.haz.insert("1.0", self.row.hazard)
+            self.haz.grid(row=1,column=1)
+            ttk.Label(master, text="Severity").grid(row=2,column=0,sticky="e")
             self.sev_var = tk.StringVar(value=str(self.row.severity))
             sev_cb = ttk.Combobox(master, textvariable=self.sev_var, values=["1","2","3"], state="readonly")
-            sev_cb.grid(row=1,column=1)
-            ttk.Label(master, text="Severity Rationale").grid(row=2,column=0,sticky="e")
+            sev_cb.grid(row=2,column=1)
+            ttk.Label(master, text="Severity Rationale").grid(row=3,column=0,sticky="e")
             self.sev_rat = tk.Entry(master)
             self.sev_rat.insert(0, self.row.sev_rationale)
-            self.sev_rat.grid(row=2,column=1)
-            ttk.Label(master, text="Controllability").grid(row=3,column=0,sticky="e")
+            self.sev_rat.grid(row=3,column=1)
+            ttk.Label(master, text="Controllability").grid(row=4,column=0,sticky="e")
             self.cont_var = tk.StringVar(value=str(self.row.controllability))
             cont_cb = ttk.Combobox(master, textvariable=self.cont_var, values=["1","2","3"], state="readonly")
-            cont_cb.grid(row=3,column=1)
-            ttk.Label(master, text="Controllability Rationale").grid(row=4,column=0,sticky="e")
+            cont_cb.grid(row=4,column=1)
+            ttk.Label(master, text="Controllability Rationale").grid(row=5,column=0,sticky="e")
             self.cont_rat = tk.Entry(master)
             self.cont_rat.insert(0, self.row.cont_rationale)
-            self.cont_rat.grid(row=4,column=1)
-            ttk.Label(master, text="Exposure").grid(row=5,column=0,sticky="e")
+            self.cont_rat.grid(row=5,column=1)
+            ttk.Label(master, text="Exposure").grid(row=6,column=0,sticky="e")
             self.exp_var = tk.StringVar(value=str(self.row.exposure))
             exp_cb = ttk.Combobox(master, textvariable=self.exp_var, values=["1","2","3","4"], state="readonly")
-            exp_cb.grid(row=5,column=1)
-            ttk.Label(master, text="Exposure Rationale").grid(row=6,column=0,sticky="e")
+            exp_cb.grid(row=6,column=1)
+            ttk.Label(master, text="Exposure Rationale").grid(row=7,column=0,sticky="e")
             self.exp_rat = tk.Entry(master)
             self.exp_rat.insert(0, self.row.exp_rationale)
-            self.exp_rat.grid(row=6,column=1)
-            ttk.Label(master, text="ASIL").grid(row=7,column=0,sticky="e")
+            self.exp_rat.grid(row=7,column=1)
+            ttk.Label(master, text="ASIL").grid(row=8,column=0,sticky="e")
             self.asil_var = tk.StringVar(value=self.row.asil)
             asil_lbl = ttk.Label(master, textvariable=self.asil_var)
-            asil_lbl.grid(row=7,column=1)
-            ttk.Label(master, text="Safety Goal").grid(row=8,column=0,sticky="e")
+            asil_lbl.grid(row=8,column=1)
+            ttk.Label(master, text="Safety Goal").grid(row=9,column=0,sticky="e")
             self.sg_var = tk.StringVar(value=self.row.safety_goal)
-            ttk.Combobox(master, textvariable=self.sg_var, values=goals, state="readonly").grid(row=8,column=1)
+            ttk.Combobox(master, textvariable=self.sg_var, values=goals, state="readonly").grid(row=9,column=1)
 
             def recalc(_=None):
                 try:
@@ -994,6 +1001,7 @@ class HaraWindow(tk.Toplevel):
 
         def apply(self):
             self.row.malfunction = self.mal_var.get()
+            self.row.hazard = self.haz.get("1.0", "end-1c")
             self.row.severity = int(self.sev_var.get())
             self.row.sev_rationale = self.sev_rat.get()
             self.row.controllability = int(self.cont_var.get())
@@ -1224,3 +1232,43 @@ class TC2FIWindow(tk.Toplevel):
             for r in self.app.tc2fi_entries:
                 w.writerow([r.get(k, "") for k in self.COLS])
         messagebox.showinfo("Export", "TC2FI exported")
+
+
+class HazardExplorerWindow(tk.Toplevel):
+    """Read-only list of hazards per HARA."""
+
+    def __init__(self, app):
+        super().__init__(app.root)
+        self.app = app
+        self.title("Hazard Explorer")
+
+        columns = ("HARA", "Malfunction", "Hazard")
+        self.tree = ttk.Treeview(self, columns=columns, show="headings")
+        for c in columns:
+            self.tree.heading(c, text=c)
+            width = 200 if c == "Hazard" else 120
+            self.tree.column(c, width=width)
+        self.tree.pack(fill=tk.BOTH, expand=True)
+        ttk.Button(self, text="Export CSV", command=self.export_csv).pack(pady=5)
+        self.refresh()
+
+    def refresh(self):
+        self.tree.delete(*self.tree.get_children())
+        for doc in self.app.hara_docs:
+            for e in doc.entries:
+                self.tree.insert(
+                    "",
+                    "end",
+                    values=(doc.name, e.malfunction, getattr(e, "hazard", "")),
+                )
+
+    def export_csv(self):
+        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+        if not path:
+            return
+        with open(path, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["HARA", "Malfunction", "Hazard"])
+            for iid in self.tree.get_children():
+                w.writerow(self.tree.item(iid, "values"))
+        messagebox.showinfo("Export", "Hazards exported")
