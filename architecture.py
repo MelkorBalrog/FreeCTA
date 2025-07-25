@@ -180,10 +180,18 @@ class SysMLDiagramWindow(tk.Toplevel):
                 self.resize_edge = self.hit_resize_handle(obj, x, y)
                 if self.resize_edge:
                     self.resizing_obj = obj
+                self.redraw()
             else:
+                # allow clicking on the resize handle even if outside the object
+                if self.selected_obj:
+                    self.resize_edge = self.hit_resize_handle(self.selected_obj, x, y)
+                    if self.resize_edge:
+                        self.resizing_obj = self.selected_obj
+                        return
                 self.selected_obj = None
                 self.resizing_obj = None
                 self.resize_edge = None
+                self.redraw()
 
     def on_left_drag(self, event):
         if not self.selected_obj:
@@ -965,6 +973,14 @@ class ArchitectureManagerDialog(tk.Toplevel):
         self.geometry("350x400")
         self.tree = ttk.Treeview(self)
         self.tree.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+
+        # simple colored square icons for packages, diagrams and elements
+        self.pkg_icon = tk.PhotoImage(width=16, height=16)
+        self.pkg_icon.put("#f4d742", to=(0, 0, 15, 15))
+        self.diag_icon = tk.PhotoImage(width=16, height=16)
+        self.diag_icon.put("#58a6ff", to=(0, 0, 15, 15))
+        self.elem_icon = tk.PhotoImage(width=16, height=16)
+        self.elem_icon.put("#7ec77e", to=(0, 0, 15, 15))
         btns = ttk.Frame(self)
         btns.pack(fill=tk.X, padx=4, pady=4)
         ttk.Button(btns, text="Open", command=self.open).pack(side=tk.LEFT, padx=2)
@@ -980,6 +996,7 @@ class ArchitectureManagerDialog(tk.Toplevel):
         self.tree.bind("<ButtonPress-1>", self.on_drag_start)
         self.tree.bind("<B1-Motion>", self.on_drag_motion)
         self.tree.bind("<ButtonRelease-1>", self.on_drag_release)
+        self.bind("<FocusIn>", lambda _e: self.populate())
         self.drag_item = None
         self.cut_item = None
 
@@ -988,22 +1005,30 @@ class ArchitectureManagerDialog(tk.Toplevel):
 
         def add_pkg(pkg_id, parent=""):
             pkg = self.repo.elements[pkg_id]
-            node = self.tree.insert(parent, "end", iid=pkg_id, text=pkg.name or pkg_id, open=True)
+            node = self.tree.insert(parent, "end", iid=pkg_id,
+                                   text=pkg.name or pkg_id, open=True,
+                                   image=self.pkg_icon)
             for p in self.repo.elements.values():
                 if p.elem_type == "Package" and p.owner == pkg_id:
                     add_pkg(p.elem_id, node)
             for e in self.repo.elements.values():
                 if e.owner == pkg_id and e.elem_type != "Package":
                     label = e.name or e.elem_id
-                    self.tree.insert(node, "end", iid=e.elem_id, text=label, values=(e.elem_type,))
+                    self.tree.insert(node, "end", iid=e.elem_id, text=label,
+                                     values=(e.elem_type,), image=self.elem_icon)
             for d in self.repo.diagrams.values():
                 if d.package == pkg_id:
                     label = d.name or d.diag_id
-                    diag_node = self.tree.insert(node, "end", iid=f"diag_{d.diag_id}", text=label, values=(d.diag_type,))
+                    self.tree.insert(node, "end", iid=f"diag_{d.diag_id}",
+                                     text=label, values=(d.diag_type,), image=self.diag_icon)
                     for obj in d.objects:
                         name = obj.get("properties", {}).get("name", obj.get("obj_type"))
                         oid = obj.get("obj_id")
-                        self.tree.insert(diag_node, "end", iid=f"obj_{d.diag_id}_{oid}", text=name, values=(obj.get("obj_type"),))
+                        self.tree.insert(node, "end",
+                                         iid=f"obj_{d.diag_id}_{oid}",
+                                         text=name,
+                                         values=(obj.get("obj_type"),),
+                                         image=self.elem_icon)
 
         add_pkg(self.repo.root_package.elem_id)
 
@@ -1079,6 +1104,11 @@ class ArchitectureManagerDialog(tk.Toplevel):
             return
         if item.startswith("diag_"):
             self.repo.delete_diagram(item[5:])
+        elif item.startswith("obj_"):
+            diag_id, oid = item[4:].split("_", 1)
+            diag = self.repo.diagrams.get(diag_id)
+            if diag:
+                diag.objects = [o for o in diag.objects if str(o.get("obj_id")) != oid]
         else:
             self.repo.delete_package(item)
         self.populate()
