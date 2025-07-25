@@ -641,6 +641,9 @@ class ArchitectureManagerDialog(tk.Toplevel):
         add_pkg(self.repo.root_package.elem_id)
 
     def selected(self):
+        sel = self.tree.selection()
+        if sel:
+            return sel[0]
         item = self.tree.focus()
         return item if item else None
 
@@ -650,20 +653,25 @@ class ArchitectureManagerDialog(tk.Toplevel):
             self.open_diagram(item[5:])
 
     def on_double(self, event):
-        self.open()
+        item = self.tree.identify_row(event.y)
+        if item:
+            self.tree.selection_set(item)
+            if item.startswith("diag_"):
+                self.open_diagram(item[5:])
 
     def open_diagram(self, diag_id: str):
         diag = self.repo.diagrams.get(diag_id)
         if not diag:
             return
+        master = self.master if self.master else self
         if diag.diag_type == "Use Case Diagram":
-            UseCaseDiagramWindow(self, diagram_id=diag_id)
+            UseCaseDiagramWindow(master, diagram_id=diag_id)
         elif diag.diag_type == "Activity Diagram":
-            ActivityDiagramWindow(self, diagram_id=diag_id)
+            ActivityDiagramWindow(master, diagram_id=diag_id)
         elif diag.diag_type == "Block Diagram":
-            BlockDiagramWindow(self, diagram_id=diag_id)
+            BlockDiagramWindow(master, diagram_id=diag_id)
         elif diag.diag_type == "Internal Block Diagram":
-            InternalBlockDiagramWindow(self, diagram_id=diag_id)
+            InternalBlockDiagramWindow(master, diagram_id=diag_id)
 
     def new_package(self):
         item = self.selected() or self.repo.root_package.elem_id
