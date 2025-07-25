@@ -1,4 +1,5 @@
 import tkinter as tk
+import tkinter.font as tkFont
 from tkinter import ttk, simpledialog, messagebox
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
@@ -165,6 +166,7 @@ class SysMLDiagramWindow(tk.Toplevel):
             _next_obj_id = max(o.obj_id for o in self.objects) + 1
 
         self.zoom = 1.0
+        self.font = tkFont.Font(family="Arial", size=int(8 * self.zoom))
         self.current_tool = None
         self.start = None
         self.selected_obj: SysMLObject | None = None
@@ -294,6 +296,7 @@ class SysMLDiagramWindow(tk.Toplevel):
                 self.objects.append(new_obj)
             self.sort_objects()
             self._sync_to_repository()
+            self.selected_obj = new_obj
             self.redraw()
         else:
             if obj:
@@ -405,8 +408,6 @@ class SysMLDiagramWindow(tk.Toplevel):
                 ConnectionDialog(self, conn)
         self.start = None
         self.temp_line_end = None
-        if self.current_tool != "Select":
-            self.selected_obj = None
         self.resizing_obj = None
         self.resize_edge = None
         if self.selected_obj and self.current_tool == "Select":
@@ -689,10 +690,12 @@ class SysMLDiagramWindow(tk.Toplevel):
 
     def zoom_in(self):
         self.zoom *= 1.2
+        self.font.config(size=int(8 * self.zoom))
         self.redraw()
 
     def zoom_out(self):
         self.zoom /= 1.2
+        self.font.config(size=int(8 * self.zoom))
         self.redraw()
 
     def sort_objects(self) -> None:
@@ -784,7 +787,13 @@ class SysMLDiagramWindow(tk.Toplevel):
             if label:
                 lx = x - w + 4 * self.zoom
                 ly = y - h - 4 * self.zoom
-                self.canvas.create_text(lx, ly, text=label, anchor="sw")
+                self.canvas.create_text(
+                    lx,
+                    ly,
+                    text=label,
+                    anchor="sw",
+                    font=self.font,
+                )
         elif obj.obj_type in ("Action Usage", "Action", "Part", "Port"):
             dash = ()
             fill = color
@@ -836,7 +845,13 @@ class SysMLDiagramWindow(tk.Toplevel):
                 ly_off = _parse_float(obj.properties.get("labelY"), -8.0)
                 lx = x + lx_off * self.zoom
                 ly = y + ly_off * self.zoom
-                self.canvas.create_text(lx, ly, text=obj.properties.get("name", ""), anchor="center")
+                self.canvas.create_text(
+                    lx,
+                    ly,
+                    text=obj.properties.get("name", ""),
+                    anchor="center",
+                    font=self.font,
+                )
             else:
                 self.canvas.create_rectangle(
                     x - w,
@@ -860,7 +875,13 @@ class SysMLDiagramWindow(tk.Toplevel):
             )
             header = f"<<block>> {obj.properties.get('name', '')}".strip()
             self.canvas.create_line(left, top + 20 * self.zoom, right, top + 20 * self.zoom)
-            self.canvas.create_text(left + 4 * self.zoom, top + 10 * self.zoom, text=header, anchor="w")
+            self.canvas.create_text(
+                left + 4 * self.zoom,
+                top + 10 * self.zoom,
+                text=header,
+                anchor="w",
+                font=self.font,
+            )
             compartments = [
                 ("Attributes", obj.properties.get("valueProperties", "")),
                 ("Parts", obj.properties.get("partProperties", "")),
@@ -889,7 +910,13 @@ class SysMLDiagramWindow(tk.Toplevel):
             for label, text in compartments:
                 self.canvas.create_line(left, cy, right, cy)
                 display = f"{label}: {text}" if text else f"{label}:"
-                self.canvas.create_text(left + 4 * self.zoom, cy + 10 * self.zoom, text=display, anchor="w")
+                self.canvas.create_text(
+                    left + 4 * self.zoom,
+                    cy + 10 * self.zoom,
+                    text=display,
+                    anchor="w",
+                    font=self.font,
+                )
                 cy += 20 * self.zoom
         elif obj.obj_type in ("Initial", "Final"):
             if obj.obj_type == "Initial":
@@ -1010,7 +1037,12 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.canvas.create_line(*flat, arrow=tk.LAST, dash=dash)
         if label:
             mx, my = (ax + bx) / 2, (ay + by) / 2
-            self.canvas.create_text(mx, my - 10 * self.zoom, text=label)
+            self.canvas.create_text(
+                mx,
+                my - 10 * self.zoom,
+                text=label,
+                font=self.font,
+            )
 
     def get_object(self, oid: int) -> SysMLObject | None:
         for o in self.objects:
