@@ -55,11 +55,20 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.diagram_id = diagram.diag_id
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
+        # Load any saved objects and connections for this diagram
+        self.objects: List[SysMLObject] = [
+            SysMLObject(**data) for data in getattr(diagram, "objects", [])
+        ]
+        self.connections: List[DiagramConnection] = [
+            DiagramConnection(**data) for data in getattr(diagram, "connections", [])
+        ]
+        if self.objects:
+            global _next_obj_id
+            _next_obj_id = max(o.obj_id for o in self.objects) + 1
+
         self.zoom = 1.0
         self.current_tool = None
         self.start = None
-        self.objects: List[SysMLObject] = []
-        self.connections: List[DiagramConnection] = []
         self.selected_obj: SysMLObject | None = None
         self.drag_offset = (0, 0)
 
@@ -365,6 +374,10 @@ class SysMLDiagramWindow(tk.Toplevel):
         return None
 
     def on_close(self):
+        diag = self.repo.diagrams.get(self.diagram_id)
+        if diag:
+            diag.objects = [obj.__dict__ for obj in self.objects]
+            diag.connections = [conn.__dict__ for conn in self.connections]
         self.destroy()
 
 class SysMLObjectDialog(simpledialog.Dialog):

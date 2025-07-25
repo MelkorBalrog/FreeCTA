@@ -33,6 +33,8 @@ class SysMLDiagram:
     color: str = "#FFFFFF"
     elements: List[str] = field(default_factory=list)
     relationships: List[str] = field(default_factory=list)
+    objects: List[dict] = field(default_factory=list)
+    connections: List[dict] = field(default_factory=list)
 
 class SysMLRepository:
     """Singleton repository for all SysML elements and relationships."""

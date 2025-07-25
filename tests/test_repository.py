@@ -89,5 +89,31 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(self.repo.elements[blk.elem_id].owner, pkg.elem_id)
         self.assertEqual(self.repo.diagrams[diag.diag_id].package, pkg.elem_id)
 
+    def test_diagram_object_persistence(self):
+        diag = self.repo.create_diagram("Use Case Diagram", name="UC")
+        actor = self.repo.create_element("Actor", name="User")
+        self.repo.add_element_to_diagram(diag.diag_id, actor.elem_id)
+        diag.objects = [
+            {
+                "obj_id": 1,
+                "obj_type": "Actor",
+                "x": 100,
+                "y": 100,
+                "element_id": actor.elem_id,
+                "width": 80.0,
+                "height": 40.0,
+                "properties": {"name": "User"},
+            }
+        ]
+        path = "repo_objs.json"
+        self.repo.save(path)
+        SysMLRepository._instance = None
+        new_repo = SysMLRepository.get_instance()
+        new_repo.load(path)
+        os.remove(path)
+        nd = new_repo.diagrams[diag.diag_id]
+        self.assertEqual(len(nd.objects), 1)
+        self.assertEqual(nd.objects[0]["element_id"], actor.elem_id)
+
 if __name__ == '__main__':
     unittest.main()
