@@ -125,6 +125,19 @@ class SysMLObject:
     requirements: List[dict] = field(default_factory=list)
 
 
+def remove_orphan_ports(objs: List[SysMLObject]) -> None:
+    """Delete ports that don't reference an existing parent part."""
+    part_ids = {o.obj_id for o in objs if o.obj_type == "Part"}
+    filtered: List[SysMLObject] = []
+    for o in objs:
+        if o.obj_type == "Port":
+            pid = o.properties.get("parent")
+            if not pid or int(pid) not in part_ids:
+                continue
+        filtered.append(o)
+    objs[:] = filtered
+
+
 @dataclass
 class DiagramConnection:
     src: int
@@ -255,11 +268,20 @@ class SysMLDiagramWindow(tk.Toplevel):
                 self.selected_obj = None
                 self.redraw()
         elif t and t != "Select":
+            if t == "Port":
+                parent_obj = obj if obj and obj.obj_type == "Part" else None
+                if parent_obj is None:
+                    return
             pkg = self.repo.diagrams[self.diagram_id].package
             element = self.repo.create_element(t, owner=pkg)
             self.repo.add_element_to_diagram(self.diagram_id, element.elem_id)
-            new_obj = SysMLObject(_get_next_id(), t, x / self.zoom, y / self.zoom,
-                                  element_id=element.elem_id)
+            new_obj = SysMLObject(
+                _get_next_id(),
+                t,
+                x / self.zoom,
+                y / self.zoom,
+                element_id=element.elem_id,
+            )
             if t == "Block":
                 new_obj.height = 140.0
                 new_obj.width = 160.0
@@ -285,10 +307,32 @@ class SysMLDiagramWindow(tk.Toplevel):
             if t == "Port":
                 new_obj.properties.setdefault("labelX", "8")
                 new_obj.properties.setdefault("labelY", "-8")
-                parent_obj = obj if obj and obj.obj_type == "Part" else None
                 if parent_obj:
                     new_obj.properties["parent"] = str(parent_obj.obj_id)
                     self.snap_port_to_parent(new_obj, parent_obj)
+                    # Persist the port by adding it to the parent part's list
+                    pname = new_obj.properties.get("name") or ""
+                    ports = [p.strip() for p in parent_obj.properties.get("ports", "").split(",") if p.strip()]
+                    if not pname:
+                        base = "Port"
+                        idx = 1
+                        existing = set(ports)
+                        existing.update(
+                            p.properties.get("name")
+                            for p in self.objects
+                            if p.obj_type == "Port" and p.properties.get("parent") == str(parent_obj.obj_id)
+                        )
+                        pname = base
+                        while pname in existing:
+                            pname = f"{base}{idx}"
+                            idx += 1
+                        new_obj.properties["name"] = pname
+                        element.name = pname
+                    if pname not in ports:
+                        ports.append(pname)
+                        parent_obj.properties["ports"] = ", ".join(ports)
+                        if parent_obj.element_id and parent_obj.element_id in self.repo.elements:
+                            self.repo.elements[parent_obj.element_id].properties["ports"] = parent_obj.properties["ports"]
             element.properties.update(new_obj.properties)
             if t == "System Boundary":
                 self.objects.insert(0, new_obj)
@@ -705,6 +749,7 @@ class SysMLDiagramWindow(tk.Toplevel):
     def redraw(self):
         self.canvas.delete("all")
         self.sort_objects()
+        remove_orphan_ports(self.objects)
         for obj in list(self.objects):
             if obj.obj_type == "Part":
                 self.sync_ports(obj)
@@ -2006,6 +2051,21 @@ class ArchitectureManagerDialog(tk.Toplevel):
 
         visited: set[str] = set()
 
+        # collect all elements that already appear on a diagram so they don't
+        # show up twice in the hierarchy
+        diagram_elems = {
+            elem_id
+            for diag in self.repo.diagrams.values()
+            for elem_id in (
+                list(getattr(diag, "elements", []))
+                + [
+                    getattr(o, "element_id", o.get("element_id"))
+                    for o in getattr(diag, "objects", [])
+                    if getattr(o, "element_id", o.get("element_id"))
+                ]
+            )
+        }
+
         def add_elem(elem_id: str, parent: str):
             if elem_id in visited:
                 return
@@ -2046,6 +2106,7 @@ class ArchitectureManagerDialog(tk.Toplevel):
                     e.owner == pkg_id
                     and e.elem_type not in ("Package", "Part")
                     and e.name
+                    and e.elem_id not in diagram_elems
                 ):
                     add_elem(e.elem_id, node)
             for d in self.repo.diagrams.values():
@@ -2060,14 +2121,25 @@ class ArchitectureManagerDialog(tk.Toplevel):
                         values=(d.diag_type,),
                         image=icon,
                     )
-                    for obj in d.objects:
+                    objs = sorted(
+                        d.objects,
+                        key=lambda o: 1 if getattr(o, "obj_type", o.get("obj_type")) == "Port" else 0,
+                    )
+                    for obj in objs:
                         props = getattr(obj, "properties", obj.get("properties", {}))
                         name = props.get("name", getattr(obj, "obj_type", obj.get("obj_type")))
                         oid = getattr(obj, "obj_id", obj.get("obj_id"))
                         otype = getattr(obj, "obj_type", obj.get("obj_type"))
                         icon = self.elem_icons.get(otype, self.default_elem_icon)
+                        parent_node = diag_node
+                        if (
+                            otype == "Port"
+                            and props.get("parent")
+                            and self.tree.exists(f"obj_{d.diag_id}_{props.get('parent')}")
+                        ):
+                            parent_node = f"obj_{d.diag_id}_{props.get('parent')}"
                         self.tree.insert(
-                            diag_node,
+                            parent_node,
                             "end",
                             iid=f"obj_{d.diag_id}_{oid}",
                             text=name,
