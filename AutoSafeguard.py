@@ -256,6 +256,8 @@ from models import (
     HaraEntry,
     HazopDoc,
     HaraDoc,
+    FI2TCDoc,
+    TC2FIDoc,
     QUALIFICATIONS,
     COMPONENT_ATTR_TEMPLATES,
     RELIABILITY_MODELS,
