@@ -588,7 +588,9 @@ class HazopWindow(tk.Toplevel):
         self.doc_cb.bind("<<ComboboxSelected>>", self.select_doc)
 
         columns = ("function", "malfunction", "type", "safety", "rationale")
-        self.tree = ttk.Treeview(self, columns=columns, show="headings")
+        content = ttk.Frame(self)
+        content.pack(fill=tk.BOTH, expand=True)
+        self.tree = ttk.Treeview(content, columns=columns, show="headings")
         for col in columns:
             self.tree.heading(col, text=col.capitalize())
             if col in ("rationale", "hazard"):
@@ -596,7 +598,14 @@ class HazopWindow(tk.Toplevel):
             else:
                 width = 120
             self.tree.column(col, width=width)
-        self.tree.pack(fill=tk.BOTH, expand=True)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.explorer = ttk.Frame(content)
+        self.explorer.pack(side=tk.LEFT, fill=tk.Y, padx=5)
+        ttk.Label(self.explorer, text="Malfunction Explorer").pack()
+        self.mal_list = tk.Listbox(self.explorer, height=10)
+        self.mal_list.pack(fill=tk.BOTH, expand=True)
+        self.tree.bind("<<TreeviewSelect>>", self.update_mal_explorer)
 
         btn = ttk.Frame(self)
         btn.pack(fill=tk.X)
@@ -652,6 +661,20 @@ class HazopWindow(tk.Toplevel):
                 row.covered_by,
             ]
             self.tree.insert("", "end", values=vals)
+        self.update_mal_explorer()
+
+    def update_mal_explorer(self, *_):
+        sel = self.tree.focus()
+        self.mal_list.delete(0, tk.END)
+        if not sel:
+            return
+        idx = self.tree.index(sel)
+        if idx >= len(self.app.hazop_entries):
+            return
+        row = self.app.hazop_entries[idx]
+        modes = self.app.get_failure_modes_for_malfunction(row.malfunction)
+        for m in modes:
+            self.mal_list.insert(tk.END, m)
 
     class RowDialog(simpledialog.Dialog):
         def __init__(self, parent, row=None):
@@ -672,8 +695,9 @@ class HazopWindow(tk.Toplevel):
 
         def body(self, master):
             ttk.Label(master, text="Function").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+            funcs = self.app.get_all_action_names()
             self.func = tk.StringVar(value=self.row.function)
-            ttk.Entry(master, textvariable=self.func).grid(row=0, column=1, padx=5, pady=5)
+            ttk.Combobox(master, textvariable=self.func, values=funcs, state="readonly").grid(row=0, column=1, padx=5, pady=5)
 
             ttk.Label(master, text="Malfunction").grid(row=1, column=0, sticky="e", padx=5, pady=5)
             self.mal = tk.StringVar(value=self.row.malfunction)
