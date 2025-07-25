@@ -744,22 +744,42 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.result = [rid for rid, var in self.selected_vars.items() if var.get()]
 
     def body(self, master):
-        ttk.Label(master, text="Name:").grid(row=0, column=0, sticky="e", padx=4, pady=4)
+        # Use a notebook to keep the dialog compact by grouping fields
+        self.nb = ttk.Notebook(master)
+        self.nb.grid(row=0, column=0, columnspan=3, sticky="nsew")
+
+        gen_frame = ttk.Frame(self.nb)
+        prop_frame = ttk.Frame(self.nb)
+        rel_frame = ttk.Frame(self.nb)
+        link_frame = ttk.Frame(self.nb)
+        req_frame = ttk.Frame(self.nb)
+
+        self.nb.add(gen_frame, text="General")
+        self.nb.add(prop_frame, text="Properties")
+        self.nb.add(rel_frame, text="Reliability")
+        self.nb.add(link_frame, text="Links")
+        self.nb.add(req_frame, text="Requirements")
+
+        gen_row = 0
+        ttk.Label(gen_frame, text="Name:").grid(row=gen_row, column=0, sticky="e", padx=4, pady=4)
         self.name_var = tk.StringVar(value=self.obj.properties.get("name", ""))
-        ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, padx=4, pady=4)
-        ttk.Label(master, text="Width:").grid(row=1, column=0, sticky="e", padx=4, pady=2)
+        ttk.Entry(gen_frame, textvariable=self.name_var).grid(row=gen_row, column=1, padx=4, pady=4)
+        gen_row += 1
+        ttk.Label(gen_frame, text="Width:").grid(row=gen_row, column=0, sticky="e", padx=4, pady=2)
         self.width_var = tk.StringVar(value=str(self.obj.width))
-        ttk.Entry(master, textvariable=self.width_var).grid(row=1, column=1, padx=4, pady=2)
-        row = 2
+        ttk.Entry(gen_frame, textvariable=self.width_var).grid(row=gen_row, column=1, padx=4, pady=2)
+        gen_row += 1
         if self.obj.obj_type not in ("Fork", "Join"):
-            ttk.Label(master, text="Height:").grid(row=2, column=0, sticky="e", padx=4, pady=2)
+            ttk.Label(gen_frame, text="Height:").grid(row=gen_row, column=0, sticky="e", padx=4, pady=2)
             self.height_var = tk.StringVar(value=str(self.obj.height))
-            ttk.Entry(master, textvariable=self.height_var).grid(row=2, column=1, padx=4, pady=2)
-            row = 3
+            ttk.Entry(gen_frame, textvariable=self.height_var).grid(row=gen_row, column=1, padx=4, pady=2)
+            gen_row += 1
         else:
             self.height_var = tk.StringVar(value=str(self.obj.height))
         self.entries = {}
         self.listboxes = {}
+        prop_row = 0
+        rel_row = 0
         key = f"{self.obj.obj_type.replace(' ', '')}Usage"
         list_props = {
             "ports",
@@ -770,23 +790,26 @@ class SysMLObjectDialog(simpledialog.Dialog):
             "operations",
             "failureModes",
         }
+        reliability_props = {"circuit", "component", "fit", "qualification", "failureModes"}
         app = getattr(self.master, 'app', None)
         for prop in SYSML_PROPERTIES.get(key, []):
-            ttk.Label(master, text=f"{prop}:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            frame = rel_frame if prop in reliability_props else prop_frame
+            row = rel_row if prop in reliability_props else prop_row
+            ttk.Label(frame, text=f"{prop}:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
             if prop in list_props:
-                lb = tk.Listbox(master, height=4)
+                lb = tk.Listbox(frame, height=4)
                 items = [p.strip() for p in self.obj.properties.get(prop, "").split(",") if p.strip()]
                 for it in items:
                     lb.insert(tk.END, it)
                 lb.grid(row=row, column=1, padx=4, pady=2, sticky="we")
-                btnf = ttk.Frame(master)
+                btnf = ttk.Frame(frame)
                 btnf.grid(row=row, column=2, padx=2)
                 ttk.Button(btnf, text="Add", command=lambda p=prop: self.add_list_item(p)).pack(side=tk.TOP)
                 ttk.Button(btnf, text="Remove", command=lambda p=prop: self.remove_list_item(p)).pack(side=tk.TOP)
                 self.listboxes[prop] = lb
             elif prop == "direction":
                 var = tk.StringVar(value=self.obj.properties.get(prop, "in"))
-                ttk.Combobox(master, textvariable=var, values=["in", "out", "inout"]).grid(row=row, column=1, padx=4, pady=2)
+                ttk.Combobox(frame, textvariable=var, values=["in", "out", "inout"]).grid(row=row, column=1, padx=4, pady=2)
                 self.entries[prop] = var
             elif self.obj.obj_type == "Use Case" and prop == "useCaseDefinition":
                 repo = SysMLRepository.get_instance()
@@ -799,7 +822,7 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 cur_id = self.obj.properties.get(prop, "")
                 cur_name = next((n for n, i in idmap.items() if i == cur_id), "")
                 var = tk.StringVar(value=cur_name)
-                ttk.Combobox(master, textvariable=var, values=list(idmap.keys())).grid(row=row, column=1, padx=4, pady=2)
+                ttk.Combobox(frame, textvariable=var, values=list(idmap.keys())).grid(row=row, column=1, padx=4, pady=2)
                 self.entries[prop] = var
             elif self.obj.obj_type == "Use Case" and prop == "includedUseCase":
                 repo = SysMLRepository.get_instance()
@@ -809,7 +832,7 @@ class SysMLObjectDialog(simpledialog.Dialog):
                     if rel.rel_type == "Include" and rel.source == self.obj.element_id
                     if (t := rel.target) in repo.elements
                 ]
-                ttk.Label(master, text=", ".join(targets)).grid(row=row, column=1, sticky="w", padx=4, pady=2)
+                ttk.Label(frame, text=", ".join(targets)).grid(row=row, column=1, sticky="w", padx=4, pady=2)
             elif prop == "circuit" and app:
                 circuits = [
                     c for ra in getattr(app, 'reliability_analyses', [])
@@ -817,7 +840,7 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 ]
                 names = [c.name for c in circuits]
                 var = tk.StringVar(value=self.obj.properties.get(prop, ""))
-                cb = ttk.Combobox(master, textvariable=var, values=names, state="readonly")
+                cb = ttk.Combobox(frame, textvariable=var, values=names, state="readonly")
                 cb.grid(row=row, column=1, padx=4, pady=2)
                 self.entries[prop] = var
                 self._circuit_map = {c.name: c for c in circuits}
@@ -849,7 +872,7 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 ]
                 names = [c.name for c in comps]
                 var = tk.StringVar(value=self.obj.properties.get(prop, ""))
-                cb = ttk.Combobox(master, textvariable=var, values=names, state="readonly")
+                cb = ttk.Combobox(frame, textvariable=var, values=names, state="readonly")
                 cb.grid(row=row, column=1, padx=4, pady=2)
                 self.entries[prop] = var
                 self._comp_map = {c.name: c for c in comps}
@@ -879,55 +902,60 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 state = "normal"
                 if self.obj.obj_type == "Block" and prop in ("fit", "qualification"):
                     state = "readonly"
-                ttk.Entry(master, textvariable=var, state=state).grid(row=row, column=1, padx=4, pady=2)
+                ttk.Entry(frame, textvariable=var, state=state).grid(row=row, column=1, padx=4, pady=2)
                 self.entries[prop] = var
-            row += 1
+            if prop in reliability_props:
+                rel_row += 1
+            else:
+                prop_row += 1
 
         repo = SysMLRepository.get_instance()
+        link_row = 0
         if self.obj.obj_type == "Block":
             diags = [d for d in repo.diagrams.values() if d.diag_type == "Internal Block Diagram"]
             ids = {d.name or d.diag_id: d.diag_id for d in diags}
-            ttk.Label(master, text="Internal Block Diagram:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            ttk.Label(link_frame, text="Internal Block Diagram:").grid(row=link_row, column=0, sticky="e", padx=4, pady=2)
             self.diag_map = ids
             cur_id = repo.get_linked_diagram(self.obj.element_id)
             cur_name = next((n for n, i in ids.items() if i == cur_id), "")
             self.diagram_var = tk.StringVar(value=cur_name)
-            ttk.Combobox(master, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=row, column=1, padx=4, pady=2)
-            row += 1
+            ttk.Combobox(link_frame, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=link_row, column=1, padx=4, pady=2)
+            link_row += 1
         elif self.obj.obj_type in ("Action Usage", "Action"):
             diagrams = [
                 d for d in repo.diagrams.values()
                 if d.diag_type in ("Activity Diagram", "Internal Block Diagram")
             ]
             self.behavior_map = {d.name or d.diag_id: d.diag_id for d in diagrams}
-            ttk.Label(master, text="Behavior Diagram:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            ttk.Label(link_frame, text="Behavior Diagram:").grid(row=link_row, column=0, sticky="e", padx=4, pady=2)
             cur_id = repo.get_linked_diagram(self.obj.element_id)
             cur_name = next((n for n, i in self.behavior_map.items() if i == cur_id), "")
             self.behavior_var = tk.StringVar(value=cur_name)
-            ttk.Combobox(master, textvariable=self.behavior_var, values=list(self.behavior_map.keys())).grid(row=row, column=1, padx=4, pady=2)
-            row += 1
+            ttk.Combobox(link_frame, textvariable=self.behavior_var, values=list(self.behavior_map.keys())).grid(row=link_row, column=1, padx=4, pady=2)
+            link_row += 1
         elif self.obj.obj_type == "Part":
             blocks = [e for e in repo.elements.values() if e.elem_type == "Block"]
             idmap = {b.name or b.elem_id: b.elem_id for b in blocks}
-            ttk.Label(master, text="Definition:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            ttk.Label(link_frame, text="Definition:").grid(row=link_row, column=0, sticky="e", padx=4, pady=2)
             self.def_map = idmap
             cur_id = self.obj.properties.get("definition", "")
             cur_name = next((n for n, i in idmap.items() if i == cur_id), "")
             self.def_var = tk.StringVar(value=cur_name)
-            ttk.Combobox(master, textvariable=self.def_var, values=list(idmap.keys())).grid(row=row, column=1, padx=4, pady=2)
-            row += 1
+            ttk.Combobox(link_frame, textvariable=self.def_var, values=list(idmap.keys())).grid(row=link_row, column=1, padx=4, pady=2)
+            link_row += 1
 
         # Requirement allocation section
-        ttk.Label(master, text="Requirements:").grid(row=row, column=0, sticky="ne", padx=4, pady=2)
-        self.req_list = tk.Listbox(master, height=4)
-        self.req_list.grid(row=row, column=1, padx=4, pady=2, sticky="we")
-        btnf = ttk.Frame(master)
-        btnf.grid(row=row, column=2, padx=2)
+        req_row = 0
+        ttk.Label(req_frame, text="Requirements:").grid(row=req_row, column=0, sticky="ne", padx=4, pady=2)
+        self.req_list = tk.Listbox(req_frame, height=4)
+        self.req_list.grid(row=req_row, column=1, padx=4, pady=2, sticky="we")
+        btnf = ttk.Frame(req_frame)
+        btnf.grid(row=req_row, column=2, padx=2)
         ttk.Button(btnf, text="Add", command=self.add_requirement).pack(side=tk.TOP)
         ttk.Button(btnf, text="Remove", command=self.remove_requirement).pack(side=tk.TOP)
         for r in self.obj.requirements:
             self.req_list.insert(tk.END, f"[{r.get('id')}] {r.get('text','')}")
-        row += 1
+        req_row += 1
 
     def add_port(self):
         name = simpledialog.askstring("Port", "Name:", parent=self)
