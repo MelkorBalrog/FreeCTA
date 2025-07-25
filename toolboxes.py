@@ -455,7 +455,11 @@ class FI2TCWindow(tk.Toplevel):
         style = ttk.Style(self)
         style.configure("FI2TC.Treeview", rowheight=80)
         self.tree = ttk.Treeview(
-            tree_frame, columns=self.COLS, show="headings", style="FI2TC.Treeview"
+            tree_frame,
+            columns=self.COLS,
+            show="headings",
+            style="FI2TC.Treeview",
+            height=4,
         )
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree.xview)
@@ -1219,7 +1223,11 @@ class TC2FIWindow(tk.Toplevel):
         style = ttk.Style(self)
         style.configure("TC2FI.Treeview", rowheight=80)
         self.tree = ttk.Treeview(
-            tree_frame, columns=self.COLS, show="headings", style="TC2FI.Treeview"
+            tree_frame,
+            columns=self.COLS,
+            show="headings",
+            style="TC2FI.Treeview",
+            height=4,
         )
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree.xview)
