@@ -966,7 +966,13 @@ class SysMLDiagramWindow(tk.Toplevel):
                 reqs = "; ".join(r.get("id") for r in obj.requirements)
                 if reqs:
                     label_lines.append(f"Reqs: {reqs}")
-            self.canvas.create_text(x, y, text="\n".join(label_lines), anchor="center")
+            if obj.obj_type == "Actor":
+                sy = obj.height / 40.0 * self.zoom
+                label_x = x
+                label_y = y + 40 * sy + 10 * self.zoom
+                self.canvas.create_text(label_x, label_y, text="\n".join(label_lines), anchor="n")
+            else:
+                self.canvas.create_text(x, y, text="\n".join(label_lines), anchor="center")
 
         if obj == self.selected_obj:
             bx = x - w
