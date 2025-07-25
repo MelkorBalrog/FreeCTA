@@ -569,8 +569,14 @@ class SysMLDiagramWindow(tk.Toplevel):
                 def_id = obj.properties.get("definition")
                 if def_id and def_id in self.repo.elements:
                     def_name = self.repo.elements[def_id].name or def_id
-                    name = f"{name} : {def_name}"
-            label_lines = [name]
+                    label = f"{obj_name} : {def_name}" if obj_name else def_name
+            diag_id = self.repo.get_linked_diagram(obj.element_id)
+            label_lines = []
+            if diag_id and diag_id in self.repo.diagrams:
+                diag = self.repo.diagrams[diag_id]
+                diag_name = diag.name or diag_id
+                label_lines.append(diag_name)
+            label_lines.append(label)
             key = obj.obj_type.replace(' ', '')
             if not key.endswith('Usage'):
                 key += 'Usage'
@@ -741,14 +747,26 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 self.entries[prop] = var
             elif self.obj.obj_type == "Use Case" and prop == "useCaseDefinition":
                 repo = SysMLRepository.get_instance()
-                defs = [e for e in repo.elements.values() if e.elem_type == "Use Case"]
-                idmap = {d.name or d.elem_id: d.elem_id for d in defs}
+                diags = [
+                    d for d in repo.diagrams.values()
+                    if d.diag_type == "Use Case Diagram" and d.diag_id != self.master.diagram_id
+                ]
+                idmap = {d.name or d.diag_id: d.diag_id for d in diags}
                 self.ucdef_map = idmap
                 cur_id = self.obj.properties.get(prop, "")
                 cur_name = next((n for n, i in idmap.items() if i == cur_id), "")
                 var = tk.StringVar(value=cur_name)
                 ttk.Combobox(master, textvariable=var, values=list(idmap.keys())).grid(row=row, column=1, padx=4, pady=2)
                 self.entries[prop] = var
+            elif self.obj.obj_type == "Use Case" and prop == "includedUseCase":
+                repo = SysMLRepository.get_instance()
+                targets = [
+                    repo.elements[t].name or t
+                    for rel in repo.relationships
+                    if rel.rel_type == "Include" and rel.source == self.obj.element_id
+                    if (t := rel.target) in repo.elements
+                ]
+                ttk.Label(master, text=", ".join(targets)).grid(row=row, column=1, sticky="w", padx=4, pady=2)
             elif prop == "circuit" and app:
                 circuits = [
                     c for ra in getattr(app, 'reliability_analyses', [])
@@ -1106,9 +1124,28 @@ class ArchitectureManagerDialog(tk.Toplevel):
         self.bind("<FocusIn>", lambda _e: self.populate())
         self.drag_item = None
         self.cut_item = None
+        from collections import defaultdict
 
-    def populate(self):
-        self.tree.delete(*self.tree.get_children())
+        rel_children = defaultdict(list)
+        for rel in self.repo.relationships:
+            rel_children[rel.source].append((rel.rel_id, rel.target, rel.rel_type))
+
+        visited: set[str] = set()
+
+        def add_elem(elem_id: str, parent: str):
+            if elem_id in visited:
+                return
+            visited.add(elem_id)
+            elem = self.repo.elements[elem_id]
+            node = self.tree.insert(parent, "end", iid=elem_id,
+                                   text=elem.name or elem_id,
+                                   values=(elem.elem_type,), image=self.elem_icon)
+            for rel_id, tgt_id, rtype in rel_children.get(elem_id, []):
+                if tgt_id in self.repo.elements:
+                    rel_node = self.tree.insert(node, "end", iid=f"rel_{rel_id}",
+                                               text=rtype, values=("Relationship",))
+                    add_elem(tgt_id, rel_node)
+            visited.remove(elem_id)
 
         root_pkg = getattr(self.repo, "root_package", None)
         if not root_pkg or root_pkg.elem_id not in self.repo.elements:
@@ -1126,17 +1163,17 @@ class ArchitectureManagerDialog(tk.Toplevel):
                     add_pkg(p.elem_id, node)
             for e in self.repo.elements.values():
                 if e.owner == pkg_id and e.elem_type != "Package":
-                    label = e.name or e.elem_id
-                    self.tree.insert(node, "end", iid=e.elem_id, text=label,
-                                     values=(e.elem_type,), image=self.elem_icon)
+                    add_elem(e.elem_id, node)
             for d in self.repo.diagrams.values():
                 if d.package == pkg_id:
                     label = d.name or d.diag_id
                     self.tree.insert(node, "end", iid=f"diag_{d.diag_id}",
                                      text=label, values=(d.diag_type,), image=self.diag_icon)
                     for obj in d.objects:
-                        name = obj.get("properties", {}).get("name", obj.get("obj_type"))
-                        oid = obj.get("obj_id")
+                        props = getattr(obj, "properties", obj.get("properties", {}))
+                        name = props.get("name", getattr(obj, "obj_type", obj.get("obj_type")))
+                        oid = getattr(obj, "obj_id", obj.get("obj_id"))
+                        otype = getattr(obj, "obj_type", obj.get("obj_type"))
                         self.tree.insert(node, "end",
                                          iid=f"obj_{d.diag_id}_{oid}",
                                          text=name,
@@ -1267,6 +1304,14 @@ class ArchitectureManagerDialog(tk.Toplevel):
         if target == self.drag_item:
             self.drag_item = None
             return
+        if self.drag_item.startswith("obj_"):
+            messagebox.showerror("Drop Error", "Objects cannot be moved in the explorer.")
+            self.drag_item = None
+            return
+        if target.startswith("obj_"):
+            messagebox.showerror("Drop Error", "Cannot drop items on an object.")
+            self.drag_item = None
+            return
         region = self.tree.identify_region(event.x, event.y)
         if region in ("separator", "nothing"):
             parent = self.tree.parent(target)
@@ -1284,13 +1329,20 @@ class ArchitectureManagerDialog(tk.Toplevel):
         self.populate()
 
     def _move_item(self, item, new_parent):
+        if item.startswith("obj_") or new_parent.startswith("obj_"):
+            messagebox.showerror("Drop Error", "Cannot drop items on an object.")
+            return
         if item.startswith("diag_"):
             self.repo.diagrams[item[5:]].package = new_parent
         else:
-            self.repo.elements[item].owner = new_parent
-
+            elem = self.repo.elements.get(item)
+            if elem:
+                elem.owner = new_parent
     def _drop_on_diagram(self, elem_id, diagram):
         repo = self.repo
+        if elem_id.startswith("obj_"):
+            messagebox.showerror("Drop Error", "Objects cannot be dropped on a diagram.")
+            return
         # Dropping a diagram onto an Activity Diagram creates a referenced action
         if elem_id.startswith("diag_"):
             src_diag = repo.diagrams.get(elem_id[5:])
