@@ -3,7 +3,7 @@ from tkinter import ttk, simpledialog
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
-from sysml_repository import SysMLRepository
+from sysml_repository import SysMLRepository, SysMLDiagram
 
 from sysml_spec import SYSML_PROPERTIES
 
@@ -627,7 +627,6 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 if self.obj.element_id and self.obj.element_id in repo.elements:
                     repo.elements[self.obj.element_id].properties["definition"] = def_id
 
-
 class ConnectionDialog(simpledialog.Dialog):
     """Edit connection style and custom routing points."""
 
@@ -720,7 +719,6 @@ class InternalBlockDiagramWindow(SysMLDiagramWindow):
         ]
         super().__init__(master, "Internal Block Diagram", tools, diagram_id)
 
-
 class NewDiagramDialog(simpledialog.Dialog):
     """Dialog to create a new diagram and assign a name and type."""
 
@@ -741,7 +739,6 @@ class NewDiagramDialog(simpledialog.Dialog):
     def apply(self):
         self.name = self.name_var.get()
         self.diag_type = self.type_var.get()
-
 
 class DiagramPropertiesDialog(simpledialog.Dialog):
     """Dialog to edit a diagram's metadata."""
@@ -765,7 +762,6 @@ class DiagramPropertiesDialog(simpledialog.Dialog):
         self.diagram.name = self.name_var.get()
         self.diagram.description = self.desc_var.get()
         self.diagram.color = self.color_var.get()
-
 
 class ArchitectureManagerDialog(tk.Toplevel):
     """Manage packages and diagrams in a hierarchical tree."""
