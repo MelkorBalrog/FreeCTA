@@ -261,6 +261,7 @@ from models import (
     QUALIFICATIONS,
     COMPONENT_ATTR_TEMPLATES,
     RELIABILITY_MODELS,
+    component_fit_map,
     ASIL_LEVEL_OPTIONS,
     ASIL_ORDER,
     ASIL_TARGETS,
@@ -8948,7 +8949,7 @@ class FaultTreeApp:
             entries[:] = list(unique.values())
             events = entries
 
-            comp_fit = {c.name: c.fit * c.quantity for c in self.reliability_components}
+            comp_fit = component_fit_map(self.reliability_components)
             frac_totals = {}
             for be in events:
                 src = self.get_failure_mode_node(be)

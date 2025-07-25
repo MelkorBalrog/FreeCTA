@@ -406,3 +406,26 @@ ASIL_TABLE = {
 def calc_asil(sev: int, cont: int, expo: int) -> str:
     """Return ASIL based on severity, controllability and exposure."""
     return ASIL_TABLE.get((sev, cont, expo), "QM")
+
+
+def component_fit_map(components: list) -> dict:
+    """Return a mapping of component names to aggregated FIT values.
+
+    The returned FIT values include quantity and recursively handle any
+    ``sub_boms`` so nested BOM structures are flattened. Quantities of parent
+    components multiply the FIT contribution of their children.
+    """
+
+    mapping = {}
+
+    def add(comp, mult=1.0):
+        mapping[comp.name] = mapping.get(comp.name, 0.0) + comp.fit * comp.quantity * mult
+        for bom in getattr(comp, "sub_boms", []):
+            for sub in bom:
+                add(sub, mult * comp.quantity)
+
+    for c in components:
+        add(c)
+
+    return mapping
+
