@@ -10623,22 +10623,46 @@ class FaultTreeApp:
         return _close
 
     def open_use_case_diagram(self):
-        win = UseCaseDiagramWindow(self.root, self)
+        """Prompt for a diagram name then open a new use case diagram."""
+        name = simpledialog.askstring("New Use Case Diagram", "Enter diagram name:")
+        if not name:
+            return
+        repo = SysMLRepository.get_instance()
+        diag = repo.create_diagram("Use Case Diagram", name=name, package=repo.root_package.elem_id)
+        win = UseCaseDiagramWindow(self.root, self, diagram_id=diag.diag_id)
         win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.use_case_windows))
         self.use_case_windows.append(win)
 
     def open_activity_diagram(self):
-        win = ActivityDiagramWindow(self.root, self)
+        """Prompt for a diagram name then open a new activity diagram."""
+        name = simpledialog.askstring("New Activity Diagram", "Enter diagram name:")
+        if not name:
+            return
+        repo = SysMLRepository.get_instance()
+        diag = repo.create_diagram("Activity Diagram", name=name, package=repo.root_package.elem_id)
+        win = ActivityDiagramWindow(self.root, self, diagram_id=diag.diag_id)
         win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.activity_windows))
         self.activity_windows.append(win)
 
     def open_block_diagram(self):
-        win = BlockDiagramWindow(self.root, self)
+        """Prompt for a diagram name then open a new block diagram."""
+        name = simpledialog.askstring("New Block Diagram", "Enter diagram name:")
+        if not name:
+            return
+        repo = SysMLRepository.get_instance()
+        diag = repo.create_diagram("Block Diagram", name=name, package=repo.root_package.elem_id)
+        win = BlockDiagramWindow(self.root, self, diagram_id=diag.diag_id)
         win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.block_windows))
         self.block_windows.append(win)
 
     def open_internal_block_diagram(self):
-        win = InternalBlockDiagramWindow(self.root, self)
+        """Prompt for a diagram name then open a new internal block diagram."""
+        name = simpledialog.askstring("New Internal Block Diagram", "Enter diagram name:")
+        if not name:
+            return
+        repo = SysMLRepository.get_instance()
+        diag = repo.create_diagram("Internal Block Diagram", name=name, package=repo.root_package.elem_id)
+        win = InternalBlockDiagramWindow(self.root, self, diagram_id=diag.diag_id)
         win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.ibd_windows))
         self.ibd_windows.append(win)
 
