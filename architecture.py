@@ -148,8 +148,15 @@ class SysMLDiagramWindow(tk.Toplevel):
             return
         x = self.canvas.canvasx(event.x)
         y = self.canvas.canvasy(event.y)
-        self.selected_obj.x = x / self.zoom - self.drag_offset[0]
-        self.selected_obj.y = y / self.zoom - self.drag_offset[1]
+        if self.selected_obj.obj_type == "Port" and "parent" in self.selected_obj.properties:
+            parent = self.get_object(int(self.selected_obj.properties["parent"]))
+            if parent:
+                self.selected_obj.x = x / self.zoom
+                self.selected_obj.y = y / self.zoom
+                self.snap_port_to_parent(self.selected_obj, parent)
+        else:
+            self.selected_obj.x = x / self.zoom - self.drag_offset[0]
+            self.selected_obj.y = y / self.zoom - self.drag_offset[1]
         self.redraw()
 
     def on_left_release(self, _event):
@@ -236,6 +243,79 @@ class SysMLDiagramWindow(tk.Toplevel):
                     return conn
         return None
 
+    def snap_port_to_parent(self, port: SysMLObject, parent: SysMLObject) -> None:
+        px = port.x
+        py = port.y
+        left = parent.x - parent.width / 2
+        right = parent.x + parent.width / 2
+        top = parent.y - parent.height / 2
+        bottom = parent.y + parent.height / 2
+        d_left = abs(px - left)
+        d_right = abs(px - right)
+        d_top = abs(py - top)
+        d_bottom = abs(py - bottom)
+        min_d = min(d_left, d_right, d_top, d_bottom)
+        if min_d == d_left:
+            port.x = left
+            port.y = min(max(py, top), bottom)
+            port.properties["side"] = "W"
+        elif min_d == d_right:
+            port.x = right
+            port.y = min(max(py, top), bottom)
+            port.properties["side"] = "E"
+        elif min_d == d_top:
+            port.y = top
+            port.x = min(max(px, left), right)
+            port.properties["side"] = "N"
+        else:
+            port.y = bottom
+            port.x = min(max(px, left), right)
+            port.properties["side"] = "S"
+
+    def edge_point(self, obj: SysMLObject, tx: float, ty: float) -> Tuple[float, float]:
+        x = obj.x * self.zoom
+        y = obj.y * self.zoom
+        if obj.obj_type == "Port":
+            return x, y
+        w = obj.width * self.zoom / 2
+        h = obj.height * self.zoom / 2
+        dx = tx - x
+        dy = ty - y
+        if abs(dx) > abs(dy):
+            if dx > 0:
+                x += w
+                y += dy * (w / abs(dx)) if dx != 0 else 0
+            else:
+                x -= w
+                y += dy * (w / abs(dx)) if dx != 0 else 0
+        else:
+            if dy > 0:
+                y += h
+                x += dx * (h / abs(dy)) if dy != 0 else 0
+            else:
+                y -= h
+                x += dx * (h / abs(dy)) if dy != 0 else 0
+        return x, y
+
+    def sync_ports(self, part: SysMLObject) -> None:
+        names: List[str] = []
+        block_id = part.properties.get("definition")
+        if block_id and block_id in self.repo.elements:
+            block_elem = self.repo.elements[block_id]
+            names.extend([p.strip() for p in block_elem.properties.get("ports", "").split(",") if p.strip()])
+        names.extend([p.strip() for p in part.properties.get("ports", "").split(",") if p.strip()])
+        existing = {o.properties.get("name"): o for o in self.objects if o.obj_type == "Port" and o.properties.get("parent") == str(part.obj_id)}
+        for n in names:
+            if n not in existing:
+                port = SysMLObject(_get_next_id(), "Port", part.x + part.width/2 + 20, part.y,
+                                   properties={"name": n, "parent": str(part.obj_id), "side": "E"})
+                self.snap_port_to_parent(port, part)
+                self.objects.append(port)
+                existing[n] = port
+        for n, obj in list(existing.items()):
+            if n not in names:
+                self.objects.remove(obj)
+
     def zoom_in(self):
         self.zoom *= 1.2
         self.redraw()
@@ -246,7 +326,9 @@ class SysMLDiagramWindow(tk.Toplevel):
 
     def redraw(self):
         self.canvas.delete("all")
-        for obj in self.objects:
+        for obj in list(self.objects):
+            if obj.obj_type == "Part":
+                self.sync_ports(obj)
             self.draw_object(obj)
         for conn in self.connections:
             src = self.get_object(conn.src)
@@ -281,10 +363,33 @@ class SysMLDiagramWindow(tk.Toplevel):
             if obj.obj_type == "Part":
                 dash = (4, 2)
             if obj.obj_type == "Port":
-                fill = "black"
-                self.canvas.create_rectangle(x - 10 * self.zoom, y - 10 * self.zoom,
-                                            x + 10 * self.zoom, y + 10 * self.zoom,
-                                            fill=fill)
+                side = obj.properties.get("side", "E")
+                sz = 10 * self.zoom
+                if side == "E":
+                    pts = [
+                        (x - sz, y - sz),
+                        (x - sz, y + sz),
+                        (x + sz, y)
+                    ]
+                elif side == "W":
+                    pts = [
+                        (x + sz, y - sz),
+                        (x + sz, y + sz),
+                        (x - sz, y)
+                    ]
+                elif side == "N":
+                    pts = [
+                        (x - sz, y + sz),
+                        (x + sz, y + sz),
+                        (x, y - sz)
+                    ]
+                else:
+                    pts = [
+                        (x - sz, y - sz),
+                        (x + sz, y - sz),
+                        (x, y + sz)
+                    ]
+                self.canvas.create_polygon(*pts, fill="black")
             else:
                 self.canvas.create_rectangle(x - w, y - h, x + w, y + h,
                                             dash=dash, fill=fill)
@@ -343,8 +448,10 @@ class SysMLDiagramWindow(tk.Toplevel):
             self.canvas.create_text(x, y, text="\n".join(label_lines), anchor="center")
 
     def draw_connection(self, a: SysMLObject, b: SysMLObject, conn: DiagramConnection):
-        ax, ay = a.x * self.zoom, a.y * self.zoom
-        bx, by = b.x * self.zoom, b.y * self.zoom
+        axc, ayc = a.x * self.zoom, a.y * self.zoom
+        bxc, byc = b.x * self.zoom, b.y * self.zoom
+        ax, ay = self.edge_point(a, bxc, byc)
+        bx, by = self.edge_point(b, axc, ayc)
         dash = ()
         label = None
         if conn.conn_type in ("Include", "Extend"):
@@ -398,22 +505,34 @@ class SysMLObjectDialog(simpledialog.Dialog):
         self.height_var = tk.StringVar(value=str(self.obj.height))
         ttk.Entry(master, textvariable=self.height_var).grid(row=2, column=1, padx=4, pady=2)
         self.entries = {}
+        self.listboxes = {}
         row = 3
         key = f"{self.obj.obj_type.replace(' ', '')}Usage"
+        list_props = {
+            "ports",
+            "partProperties",
+            "referenceProperties",
+            "valueProperties",
+            "constraintProperties",
+            "operations",
+        }
         for prop in SYSML_PROPERTIES.get(key, []):
             ttk.Label(master, text=f"{prop}:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
-            if prop == "ports":
-                self.port_list = tk.Listbox(master, height=4)
-                ports = self.obj.properties.get("ports", "").split(",")
-                for p in ports:
-                    p = p.strip()
-                    if p:
-                        self.port_list.insert(tk.END, p)
-                self.port_list.grid(row=row, column=1, padx=4, pady=2, sticky="we")
+            if prop in list_props:
+                lb = tk.Listbox(master, height=4)
+                items = [p.strip() for p in self.obj.properties.get(prop, "").split(",") if p.strip()]
+                for it in items:
+                    lb.insert(tk.END, it)
+                lb.grid(row=row, column=1, padx=4, pady=2, sticky="we")
                 btnf = ttk.Frame(master)
                 btnf.grid(row=row, column=2, padx=2)
-                ttk.Button(btnf, text="Add", command=self.add_port).pack(side=tk.TOP)
-                ttk.Button(btnf, text="Remove", command=self.remove_port).pack(side=tk.TOP)
+                ttk.Button(btnf, text="Add", command=lambda p=prop: self.add_list_item(p)).pack(side=tk.TOP)
+                ttk.Button(btnf, text="Remove", command=lambda p=prop: self.remove_list_item(p)).pack(side=tk.TOP)
+                self.listboxes[prop] = lb
+            elif prop == "direction":
+                var = tk.StringVar(value=self.obj.properties.get(prop, "in"))
+                ttk.Combobox(master, textvariable=var, values=["in", "out", "inout"]).grid(row=row, column=1, padx=4, pady=2)
+                self.entries[prop] = var
             else:
                 var = tk.StringVar(value=self.obj.properties.get(prop, ""))
                 ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=4, pady=2)
@@ -443,16 +562,37 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.diagram_var = tk.StringVar(value=cur_name)
             ttk.Combobox(master, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=row, column=1, padx=4, pady=2)
             row += 1
+        elif self.obj.obj_type == "Part":
+            blocks = [e for e in repo.elements.values() if e.elem_type == "Block"]
+            idmap = {b.name or b.elem_id: b.elem_id for b in blocks}
+            ttk.Label(master, text="Definition:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            self.def_map = idmap
+            cur_id = self.obj.properties.get("definition", "")
+            cur_name = next((n for n, i in idmap.items() if i == cur_id), "")
+            self.def_var = tk.StringVar(value=cur_name)
+            ttk.Combobox(master, textvariable=self.def_var, values=list(idmap.keys())).grid(row=row, column=1, padx=4, pady=2)
+            row += 1
 
     def add_port(self):
         name = simpledialog.askstring("Port", "Name:", parent=self)
         if name:
-            self.port_list.insert(tk.END, name)
+            self.listboxes["ports"].insert(tk.END, name)
 
     def remove_port(self):
-        sel = list(self.port_list.curselection())
+        sel = list(self.listboxes["ports"].curselection())
         for idx in reversed(sel):
-            self.port_list.delete(idx)
+            self.listboxes["ports"].delete(idx)
+
+    def add_list_item(self, prop: str):
+        val = simpledialog.askstring(prop, "Value:", parent=self)
+        if val:
+            self.listboxes[prop].insert(tk.END, val)
+
+    def remove_list_item(self, prop: str):
+        lb = self.listboxes[prop]
+        sel = list(lb.curselection())
+        for idx in reversed(sel):
+            lb.delete(idx)
         
     def apply(self):
         self.obj.properties["name"] = self.name_var.get()
@@ -463,12 +603,12 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.obj.properties[prop] = var.get()
             if self.obj.element_id and self.obj.element_id in repo.elements:
                 repo.elements[self.obj.element_id].properties[prop] = var.get()
-        if hasattr(self, "port_list"):
-            ports = [self.port_list.get(i) for i in range(self.port_list.size())]
-            joined = ", ".join(ports)
-            self.obj.properties["ports"] = joined
+        for prop, lb in self.listboxes.items():
+            items = [lb.get(i) for i in range(lb.size())]
+            joined = ", ".join(items)
+            self.obj.properties[prop] = joined
             if self.obj.element_id and self.obj.element_id in repo.elements:
-                repo.elements[self.obj.element_id].properties["ports"] = joined
+                repo.elements[self.obj.element_id].properties[prop] = joined
         try:
             self.obj.width = float(self.width_var.get())
             self.obj.height = float(self.height_var.get())
@@ -479,6 +619,13 @@ class SysMLObjectDialog(simpledialog.Dialog):
             name = self.diagram_var.get()
             diag_id = self.diag_map.get(name)
             repo.link_diagram(self.obj.element_id, diag_id)
+        if hasattr(self, "def_var"):
+            name = self.def_var.get()
+            def_id = self.def_map.get(name)
+            if def_id:
+                self.obj.properties["definition"] = def_id
+                if self.obj.element_id and self.obj.element_id in repo.elements:
+                    repo.elements[self.obj.element_id].properties["definition"] = def_id
 
 class ConnectionDialog(simpledialog.Dialog):
     """Edit connection style and custom routing points."""

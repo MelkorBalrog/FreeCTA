@@ -27,6 +27,11 @@ class RepositoryTests(unittest.TestCase):
         self.assertIn("Car", js)
         self.assertIn(blk.elem_id, js)
 
+    def test_sysml_properties_port(self):
+        from sysml_spec import SYSML_PROPERTIES
+        self.assertIn("PortUsage", SYSML_PROPERTIES)
+        self.assertIn("direction", SYSML_PROPERTIES["PortUsage"])
+
     def test_packages_and_save_load(self):
         pkg = self.repo.create_package("PkgA")
         blk = self.repo.create_element("Block", name="Engine", owner=pkg.elem_id)

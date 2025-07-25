@@ -35,3 +35,8 @@ if 'BlockUsage' not in SYSML_PROPERTIES:
         'constraintProperties',
         'operations',
     ]
+if 'PortUsage' not in SYSML_PROPERTIES:
+    SYSML_PROPERTIES['PortUsage'] = []
+for p in ('direction', 'flow'):
+    if p not in SYSML_PROPERTIES['PortUsage']:
+        SYSML_PROPERTIES['PortUsage'].append(p)
