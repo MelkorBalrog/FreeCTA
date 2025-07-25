@@ -415,7 +415,6 @@ class InternalBlockDiagramWindow(SysMLDiagramWindow):
         ]
         super().__init__(master, "Internal Block Diagram", tools, diagram_id)
 
-
 class NewDiagramDialog(simpledialog.Dialog):
     """Dialog to create a new diagram and assign a name and type."""
 
@@ -436,8 +435,7 @@ class NewDiagramDialog(simpledialog.Dialog):
     def apply(self):
         self.name = self.name_var.get()
         self.diag_type = self.type_var.get()
-
-
+        
 class ArchitectureManagerDialog(tk.Toplevel):
     """Manage packages and diagrams in a hierarchical tree."""
 
