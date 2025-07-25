@@ -41,6 +41,10 @@ class ReliabilityComponent:
     is_passive: bool = False
     sub_boms: list = field(default_factory=list)
 
+    def __hash__(self) -> int:
+        """Allow instances to be used as dictionary keys based on identity."""
+        return id(self)
+
 QUALIFICATIONS = [
     "AEC-Q100",
     "AEC-Q101",
