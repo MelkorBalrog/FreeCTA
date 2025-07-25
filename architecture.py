@@ -2209,6 +2209,8 @@ class ArchitectureManagerDialog(tk.Toplevel):
         if item.startswith("obj_") or new_parent.startswith("obj_"):
             messagebox.showerror("Drop Error", "Cannot drop items on an object.")
             return
+        if new_parent == "":
+            new_parent = self.repo.root_package.elem_id
         if item.startswith("diag_"):
             self.repo.diagrams[item[5:]].package = new_parent
         else:
