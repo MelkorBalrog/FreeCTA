@@ -8929,7 +8929,7 @@ class FaultTreeApp:
             del self.node.safety_requirements[index]
             self.req_listbox.delete(index)
 
-class SelectBaseEventDialog(simpledialog.Dialog):
+    class SelectBaseEventDialog(simpledialog.Dialog):
         def __init__(self, parent, events, allow_new=False):
             self.events = events
             self.allow_new = allow_new
