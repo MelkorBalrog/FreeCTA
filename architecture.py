@@ -140,7 +140,8 @@ class SysMLDiagramWindow(tk.Toplevel):
                 self.start = None
                 self.redraw()
         elif t and t != "Select":
-            element = self.repo.create_element(t)
+            pkg = self.repo.diagrams[self.diagram_id].package
+            element = self.repo.create_element(t, owner=pkg)
             self.repo.add_element_to_diagram(self.diagram_id, element.elem_id)
             new_obj = SysMLObject(_get_next_id(), t, x / self.zoom, y / self.zoom,
                                   element_id=element.elem_id)
@@ -618,9 +619,8 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.diagram_var = tk.StringVar(value=cur_name)
             ttk.Combobox(master, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=row, column=1, padx=4, pady=2)
             row += 1
-        elif self.obj.obj_type == "Block" or self.obj.obj_type == "Action":
+        elif self.obj.obj_type == "Block":
             diags = [d for d in repo.diagrams.values() if d.diag_type == "Internal Block Diagram"]
-            names = [d.name or d.diag_id for d in diags]
             ids = {d.name or d.diag_id: d.diag_id for d in diags}
             ttk.Label(master, text="Internal Block Diagram:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
             self.diag_map = ids
@@ -629,6 +629,34 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.diagram_var = tk.StringVar(value=cur_name)
             ttk.Combobox(master, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=row, column=1, padx=4, pady=2)
             row += 1
+        elif self.obj.obj_type == "Action":
+            ad_diags = [d for d in repo.diagrams.values() if d.diag_type == "Activity Diagram"]
+            self.ad_map = {d.name or d.diag_id: d.diag_id for d in ad_diags}
+            ttk.Label(master, text="Activity Diagram:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            cur_id = repo.get_linked_diagram(self.obj.element_id)
+            cur_name = next((n for n, i in self.ad_map.items() if i == cur_id), "")
+            self.ad_var = tk.StringVar(value=cur_name)
+            ttk.Combobox(master, textvariable=self.ad_var, values=list(self.ad_map.keys())).grid(row=row, column=1, padx=4, pady=2)
+            row += 1
+
+            ibd_diags = [d for d in repo.diagrams.values() if d.diag_type == "Internal Block Diagram"]
+            self.ibd_map = {d.name or d.diag_id: d.diag_id for d in ibd_diags}
+            ttk.Label(master, text="Internal Block Diagram:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            cur_name = next((n for n, i in self.ibd_map.items() if i == cur_id), "") if cur_name == "" else ""
+            self.ibd_var = tk.StringVar(value=cur_name)
+            ttk.Combobox(master, textvariable=self.ibd_var, values=list(self.ibd_map.keys())).grid(row=row, column=1, padx=4, pady=2)
+            row += 1
+
+            def sync_ad(*_):
+                if self.ad_var.get():
+                    self.ibd_var.set("")
+
+            def sync_ibd(*_):
+                if self.ibd_var.get():
+                    self.ad_var.set("")
+
+            self.ad_var.trace_add("write", sync_ad)
+            self.ibd_var.trace_add("write", sync_ibd)
         elif self.obj.obj_type == "Part":
             blocks = [e for e in repo.elements.values() if e.elem_type == "Block"]
             idmap = {b.name or b.elem_id: b.elem_id for b in blocks}
@@ -682,10 +710,15 @@ class SysMLObjectDialog(simpledialog.Dialog):
         except ValueError:
             pass
         # Update linked diagram if applicable
-        if hasattr(self, "diagram_var"):
-            name = self.diagram_var.get()
-            diag_id = self.diag_map.get(name)
-            repo.link_diagram(self.obj.element_id, diag_id)
+        link_id = None
+        if hasattr(self, "ad_var") and self.ad_var.get():
+            link_id = self.ad_map.get(self.ad_var.get())
+        elif hasattr(self, "ibd_var") and self.ibd_var.get():
+            link_id = self.ibd_map.get(self.ibd_var.get())
+        elif hasattr(self, "diagram_var"):
+            link_id = self.diag_map.get(self.diagram_var.get())
+        if hasattr(self, "ad_var") or hasattr(self, "ibd_var") or hasattr(self, "diagram_var"):
+            repo.link_diagram(self.obj.element_id, link_id)
         if hasattr(self, "def_var"):
             name = self.def_var.get()
             def_id = self.def_map.get(name)
@@ -989,10 +1022,7 @@ class ArchitectureManagerDialog(tk.Toplevel):
         else:
             if target.startswith("diag_"):
                 diag = self.repo.diagrams.get(target[5:])
-                if self.drag_item.startswith("diag_"):
-                    messagebox.showerror("Drop Error", "Cannot drop a diagram onto another diagram.")
-                else:
-                    self._drop_on_diagram(self.drag_item, diag)
+                self._drop_on_diagram(self.drag_item, diag)
             else:
                 self.tree.move(self.drag_item, target, "end")
                 self._move_item(self.drag_item, target)
@@ -1006,10 +1036,24 @@ class ArchitectureManagerDialog(tk.Toplevel):
             self.repo.elements[item].owner = new_parent
 
     def _drop_on_diagram(self, elem_id, diagram):
+        repo = self.repo
+        # Dropping a diagram onto an Activity Diagram creates a referenced action
+        if elem_id.startswith("diag_"):
+            src_diag = repo.diagrams.get(elem_id[5:])
+            if src_diag and diagram.diag_type == "Activity Diagram" and src_diag.diag_type in ("Activity Diagram", "Internal Block Diagram"):
+                act = repo.create_element("Action", name=src_diag.name, owner=diagram.package)
+                repo.add_element_to_diagram(diagram.diag_id, act.elem_id)
+                obj = SysMLObject(_get_next_id(), "Action", 50.0, 50.0, element_id=act.elem_id, properties={"name": src_diag.name})
+                diagram.objects.append(obj.__dict__)
+                repo.link_diagram(act.elem_id, src_diag.diag_id)
+                return
+            messagebox.showerror("Drop Error", "This item cannot be dropped on that diagram.")
+            return
+
         allowed = diagram.diag_type == "Block Diagram"
-        if allowed and self.repo.elements[elem_id].elem_type == "Package":
-            block = self.repo.create_element("Block", name=self.repo.elements[elem_id].name, owner=elem_id)
-            self.repo.add_element_to_diagram(diagram.diag_id, block.elem_id)
+        if allowed and repo.elements[elem_id].elem_type == "Package":
+            block = repo.create_element("Block", name=repo.elements[elem_id].name, owner=elem_id)
+            repo.add_element_to_diagram(diagram.diag_id, block.elem_id)
             obj = SysMLObject(_get_next_id(), "Block", 50.0, 50.0, element_id=block.elem_id)
             diagram.objects.append(obj.__dict__)
         else:
