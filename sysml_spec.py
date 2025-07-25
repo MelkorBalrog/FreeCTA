@@ -26,3 +26,17 @@ def load_sysml_properties():
     return props
 
 SYSML_PROPERTIES = load_sysml_properties()
+if 'BlockUsage' not in SYSML_PROPERTIES:
+    SYSML_PROPERTIES['BlockUsage'] = [
+        'valueProperties',
+        'partProperties',
+        'referenceProperties',
+        'ports',
+        'constraintProperties',
+        'operations',
+    ]
+if 'PortUsage' not in SYSML_PROPERTIES:
+    SYSML_PROPERTIES['PortUsage'] = []
+for p in ('direction', 'flow'):
+    if p not in SYSML_PROPERTIES['PortUsage']:
+        SYSML_PROPERTIES['PortUsage'].append(p)
