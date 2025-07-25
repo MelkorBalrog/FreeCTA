@@ -148,6 +148,21 @@ class SysMLDiagramWindow(tk.Toplevel):
             if t == "Block":
                 new_obj.height = 140.0
                 new_obj.width = 160.0
+            elif t == "System Boundary":
+                new_obj.width = 200.0
+                new_obj.height = 120.0
+            elif t in ("Decision", "Merge"):
+                new_obj.width = 40.0
+                new_obj.height = 40.0
+            elif t == "Initial":
+                new_obj.width = 20.0
+                new_obj.height = 20.0
+            elif t == "Final":
+                new_obj.width = 30.0
+                new_obj.height = 30.0
+            elif t in ("Fork", "Join"):
+                new_obj.width = 60.0
+                new_obj.height = 10.0
             key = f"{t.replace(' ', '')}Usage"
             for prop in SYSML_PROPERTIES.get(key, []):
                 new_obj.properties.setdefault(prop, "")
@@ -361,19 +376,20 @@ class SysMLDiagramWindow(tk.Toplevel):
         w = obj.width * self.zoom / 2
         h = obj.height * self.zoom / 2
         if obj.obj_type == "Actor":
-            self.canvas.create_oval(x - 10 * self.zoom, y - 30 * self.zoom,
-                                    x + 10 * self.zoom, y - 10 * self.zoom)
-            self.canvas.create_line(x, y - 10 * self.zoom, x, y + 20 * self.zoom)
-            self.canvas.create_line(x - 15 * self.zoom, y, x + 15 * self.zoom, y)
-            self.canvas.create_line(x, y + 20 * self.zoom,
-                                    x - 10 * self.zoom, y + 40 * self.zoom)
-            self.canvas.create_line(x, y + 20 * self.zoom,
-                                    x + 10 * self.zoom, y + 40 * self.zoom)
+            sx = obj.width / 80.0 * self.zoom
+            sy = obj.height / 40.0 * self.zoom
+            self.canvas.create_oval(x - 10 * sx, y - 30 * sy,
+                                    x + 10 * sx, y - 10 * sy)
+            self.canvas.create_line(x, y - 10 * sy, x, y + 20 * sy)
+            self.canvas.create_line(x - 15 * sx, y, x + 15 * sx, y)
+            self.canvas.create_line(x, y + 20 * sy,
+                                    x - 10 * sx, y + 40 * sy)
+            self.canvas.create_line(x, y + 20 * sy,
+                                    x + 10 * sx, y + 40 * sy)
         elif obj.obj_type == "Use Case":
             self.canvas.create_oval(x - w, y - h, x + w, y + h)
         elif obj.obj_type == "System Boundary":
-            self.canvas.create_rectangle(x - 100 * self.zoom, y - 60 * self.zoom,
-                                        x + 100 * self.zoom, y + 60 * self.zoom,
+            self.canvas.create_rectangle(x - w, y - h, x + w, y + h,
                                         dash=(4, 2))
         elif obj.obj_type in ("Action", "Part", "Port"):
             dash = ()
@@ -434,24 +450,24 @@ class SysMLDiagramWindow(tk.Toplevel):
                 cy += 20 * self.zoom
         elif obj.obj_type in ("Initial", "Final"):
             if obj.obj_type == "Initial":
-                self.canvas.create_oval(x - 10 * self.zoom, y - 10 * self.zoom,
-                                        x + 10 * self.zoom, y + 10 * self.zoom,
-                                        fill="black")
+                r = min(obj.width, obj.height) / 2 * self.zoom
+                self.canvas.create_oval(x - r, y - r, x + r, y + r, fill="black")
             else:
-                self.canvas.create_oval(x - 15 * self.zoom, y - 15 * self.zoom,
-                                        x + 15 * self.zoom, y + 15 * self.zoom)
-                self.canvas.create_oval(x - 10 * self.zoom, y - 10 * self.zoom,
-                                        x + 10 * self.zoom, y + 10 * self.zoom,
+                r = min(obj.width, obj.height) / 2 * self.zoom
+                inner = max(r - 5 * self.zoom, 0)
+                self.canvas.create_oval(x - r, y - r, x + r, y + r)
+                self.canvas.create_oval(x - inner, y - inner, x + inner, y + inner,
                                         fill="black")
         elif obj.obj_type in ("Decision", "Merge"):
-            self.canvas.create_polygon(x, y - 20 * self.zoom,
-                                      x + 20 * self.zoom, y,
-                                      x, y + 20 * self.zoom,
-                                      x - 20 * self.zoom, y,
+            self.canvas.create_polygon(x, y - h,
+                                      x + w, y,
+                                      x, y + h,
+                                      x - w, y,
                                       fill="white", outline="black")
         elif obj.obj_type in ("Fork", "Join"):
-            self.canvas.create_rectangle(x - 30 * self.zoom, y - 5 * self.zoom,
-                                        x + 30 * self.zoom, y + 5 * self.zoom,
+            half = obj.width / 2 * self.zoom
+            self.canvas.create_rectangle(x - half, y - 5 * self.zoom,
+                                        x + half, y + 5 * self.zoom,
                                         fill="black")
         else:
             self.canvas.create_rectangle(x - w, y - h, x + w, y + h)
@@ -569,12 +585,16 @@ class SysMLObjectDialog(simpledialog.Dialog):
         ttk.Label(master, text="Width:").grid(row=1, column=0, sticky="e", padx=4, pady=2)
         self.width_var = tk.StringVar(value=str(self.obj.width))
         ttk.Entry(master, textvariable=self.width_var).grid(row=1, column=1, padx=4, pady=2)
-        ttk.Label(master, text="Height:").grid(row=2, column=0, sticky="e", padx=4, pady=2)
-        self.height_var = tk.StringVar(value=str(self.obj.height))
-        ttk.Entry(master, textvariable=self.height_var).grid(row=2, column=1, padx=4, pady=2)
+        row = 2
+        if self.obj.obj_type not in ("Fork", "Join"):
+            ttk.Label(master, text="Height:").grid(row=2, column=0, sticky="e", padx=4, pady=2)
+            self.height_var = tk.StringVar(value=str(self.obj.height))
+            ttk.Entry(master, textvariable=self.height_var).grid(row=2, column=1, padx=4, pady=2)
+            row = 3
+        else:
+            self.height_var = tk.StringVar(value=str(self.obj.height))
         self.entries = {}
         self.listboxes = {}
-        row = 3
         key = f"{self.obj.obj_type.replace(' ', '')}Usage"
         list_props = {
             "ports",
