@@ -1,6 +1,6 @@
 # AutoSafeguard Analyzer
 
-This repository contains a graphical fault tree analysis tool. The latest update adds a **Review Toolbox** supporting peer and joint review workflows. The explorer pane now includes an **Analyses** tab listing all FMEAs, FMEDAs, HAZOPs, HARAs and architecture diagrams so they can be opened directly.
+This repository contains a graphical fault tree analysis tool. The latest update adds a **Review Toolbox** supporting peer and joint review workflows. The explorer pane now includes an **Analyses** tab listing all FMEAs, FMEDAs, HAZOPs, HARAs and architecture diagrams so they can be opened directly. Objects drawn on these diagrams can now be resized by editing their width and height values. Fork and join bars keep a constant thickness and only their length may be changed.
 
 ## Review Toolbox
 
