@@ -24,5 +24,13 @@ class ActionNameTests(unittest.TestCase):
         self.assertIn("MainFlow", names)
         self.assertIn("DoThing", names)
 
+    def test_activity_actions_from_elements(self):
+        diag = self.repo.create_diagram("Activity Diagram", name="Flow")
+        act = self.repo.create_element("Action Usage", name="Act")
+        self.repo.add_element_to_diagram(diag.diag_id, act.elem_id)
+        names = self.repo.get_activity_actions()
+        self.assertIn("Flow", names)
+        self.assertIn("Act", names)
+
 if __name__ == '__main__':
     unittest.main()
