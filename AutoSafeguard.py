@@ -8879,8 +8879,6 @@ class FaultTreeApp:
                     refresh_tree()
 
             bom_combo.bind("<<ComboboxSelected>>", load_bom)
-            if bom_var.get():
-                load_bom()
 
         tree_frame = ttk.Frame(win)
         tree_frame.pack(fill=tk.BOTH, expand=True)
@@ -9044,7 +9042,10 @@ class FaultTreeApp:
                 )
                 metrics_lbl.config(text=text)
 
-        refresh_tree()
+        if fmeda and bom_var.get():
+            load_bom()
+        else:
+            refresh_tree()
 
         def on_double(event):
             sel = tree.focus()
