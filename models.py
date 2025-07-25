@@ -75,8 +75,12 @@ PASSIVE_QUAL_FACTORS = {
 
 
 def safe_float(value, default=0.0):
-    """Convert ``value`` to ``float`` returning ``default`` on error."""
+    """Safely convert ``value`` to ``float`` returning ``default`` on error."""
     try:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return default
         return float(value)
     except (TypeError, ValueError):
         return default
