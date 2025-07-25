@@ -73,6 +73,14 @@ PASSIVE_QUAL_FACTORS = {
     "None": 1.0,
 }
 
+
+def safe_float(value, default=0.0):
+    """Convert ``value`` to ``float`` returning ``default`` on error."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
 @dataclass
 class ReliabilityAnalysis:
     """Store the results of a reliability calculation including the BOM."""
@@ -191,35 +199,35 @@ RELIABILITY_MODELS = {
             "text": "Base*(1+T/100)*Duty*(1+V/100)",
             "formula": lambda a, mp: (0.02 if a.get("dielectric", "ceramic") == "ceramic" else 0.04)
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
-            * (1 + float(a.get("voltage_V", 0)) / 100.0)
+            * (1 + safe_float(a.get("voltage_V", 0)) / 100.0)
             * mp.duty_cycle,
         },
         "resistor": {
             "text": "0.005*(1+T/100)*Duty*(1+P/10)",
             "formula": lambda a, mp: 0.005
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
-            * (1 + float(a.get("power_W", 0)) / 10.0)
+            * (1 + safe_float(a.get("power_W", 0)) / 10.0)
             * mp.duty_cycle,
         },
         "inductor": {
             "text": "0.004*(1+T/100)*Duty*(1+I/10)",
             "formula": lambda a, mp: 0.004
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
-            * (1 + float(a.get("current_A", 0)) / 10.0)
+            * (1 + safe_float(a.get("current_A", 0)) / 10.0)
             * mp.duty_cycle,
         },
         "diode": {
             "text": "0.008*(1+T/100)*Duty*(1+VR/100)",
             "formula": lambda a, mp: 0.008
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
-            * (1 + float(a.get("reverse_V", 0)) / 100.0)
+            * (1 + safe_float(a.get("reverse_V", 0)) / 100.0)
             * mp.duty_cycle,
         },
         "transistor": {
             "text": "Base*(1+T/100)*Duty*(1+I/10) (base=0.01 BJT, 0.012 MOSFET)",
             "formula": lambda a, mp: (0.01 if a.get("transistor_type", "BJT") == "BJT" else 0.012)
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
-            * (1 + float(a.get("current_A", 0)) / 10.0)
+            * (1 + safe_float(a.get("current_A", 0)) / 10.0)
             * mp.duty_cycle,
         },
         "ic": {
@@ -227,14 +235,14 @@ RELIABILITY_MODELS = {
             "formula": lambda a, mp: (0.04 if a.get("type", "digital") == "analog" else 0.05 if a.get("type") == "mcu" else 0.03)
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
             * mp.duty_cycle
-            * (1 + float(a.get("pins", 0)) / 1000.0)
-            * (1 + float(a.get("transistors", 0)) / 1_000_000.0),
+            * (1 + safe_float(a.get("pins", 0)) / 1000.0)
+            * (1 + safe_float(a.get("transistors", 0)) / 1_000_000.0),
         },
         "connector": {
             "text": "0.002*(1+T/100)*Duty*(1+pins/100)",
             "formula": lambda a, mp: 0.002
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
-            * (1 + float(a.get("pins", 0)) / 100.0)
+            * (1 + safe_float(a.get("pins", 0)) / 100.0)
             * mp.duty_cycle,
         },
         "relay": {
@@ -242,16 +250,16 @@ RELIABILITY_MODELS = {
             "formula": lambda a, mp: 0.03
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
             * mp.duty_cycle
-            * (float(a.get("cycles", 1e6)) / 1e6)
-            * (1 + float(a.get("current_A", 0)) / 10.0),
+            * (safe_float(a.get("cycles", 1e6)) / 1e6)
+            * (1 + safe_float(a.get("current_A", 0)) / 10.0),
         },
         "switch": {
             "text": "0.02*(1+T/100)*Duty*(cycles/1e6)*(1+I/10)",
             "formula": lambda a, mp: 0.02
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
             * mp.duty_cycle
-            * (float(a.get("cycles", 1e6)) / 1e6)
-            * (1 + float(a.get("current_A", 0)) / 10.0),
+            * (safe_float(a.get("cycles", 1e6)) / 1e6)
+            * (1 + safe_float(a.get("current_A", 0)) / 10.0),
         },
     },
     "SN 29500": {
@@ -259,35 +267,35 @@ RELIABILITY_MODELS = {
             "text": "0.03*(1+T/100)*Duty*(1+V/100)",
             "formula": lambda a, mp: 0.03
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
-            * (1 + float(a.get("voltage_V", 0)) / 100.0)
+            * (1 + safe_float(a.get("voltage_V", 0)) / 100.0)
             * mp.duty_cycle,
         },
         "resistor": {
             "text": "0.006*(1+T/100)*Duty*(1+P/10)",
             "formula": lambda a, mp: 0.006
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
-            * (1 + float(a.get("power_W", 0)) / 10.0)
+            * (1 + safe_float(a.get("power_W", 0)) / 10.0)
             * mp.duty_cycle,
         },
         "inductor": {
             "text": "0.005*(1+T/100)*Duty*(1+I/10)",
             "formula": lambda a, mp: 0.005
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
-            * (1 + float(a.get("current_A", 0)) / 10.0)
+            * (1 + safe_float(a.get("current_A", 0)) / 10.0)
             * mp.duty_cycle,
         },
         "diode": {
             "text": "0.009*(1+T/100)*Duty*(1+VR/100)",
             "formula": lambda a, mp: 0.009
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
-            * (1 + float(a.get("reverse_V", 0)) / 100.0)
+            * (1 + safe_float(a.get("reverse_V", 0)) / 100.0)
             * mp.duty_cycle,
         },
         "transistor": {
             "text": "Base*(1+T/100)*Duty*(1+I/10) (base=0.012 BJT, 0.014 MOSFET)",
             "formula": lambda a, mp: (0.012 if a.get("transistor_type", "BJT") == "BJT" else 0.014)
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
-            * (1 + float(a.get("current_A", 0)) / 10.0)
+            * (1 + safe_float(a.get("current_A", 0)) / 10.0)
             * mp.duty_cycle,
         },
         "ic": {
@@ -295,14 +303,14 @@ RELIABILITY_MODELS = {
             "formula": lambda a, mp: (0.05 if a.get("type", "digital") == "analog" else 0.06 if a.get("type") == "mcu" else 0.04)
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
             * mp.duty_cycle
-            * (1 + float(a.get("pins", 0)) / 1000.0)
-            * (1 + float(a.get("transistors", 0)) / 1_000_000.0),
+            * (1 + safe_float(a.get("pins", 0)) / 1000.0)
+            * (1 + safe_float(a.get("transistors", 0)) / 1_000_000.0),
         },
         "connector": {
             "text": "0.003*(1+T/100)*Duty*(1+pins/100)",
             "formula": lambda a, mp: 0.003
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
-            * (1 + float(a.get("pins", 0)) / 100.0)
+            * (1 + safe_float(a.get("pins", 0)) / 100.0)
             * mp.duty_cycle,
         },
         "relay": {
@@ -310,16 +318,16 @@ RELIABILITY_MODELS = {
             "formula": lambda a, mp: 0.035
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
             * mp.duty_cycle
-            * (float(a.get("cycles", 1e6)) / 1e6)
-            * (1 + float(a.get("current_A", 0)) / 10.0),
+            * (safe_float(a.get("cycles", 1e6)) / 1e6)
+            * (1 + safe_float(a.get("current_A", 0)) / 10.0),
         },
         "switch": {
             "text": "0.025*(1+T/100)*Duty*(cycles/1e6)*(1+I/10)",
             "formula": lambda a, mp: 0.025
             * (1 + max(mp.board_temp_max, mp.ambient_temp_max) / 100.0)
             * mp.duty_cycle
-            * (float(a.get("cycles", 1e6)) / 1e6)
-            * (1 + float(a.get("current_A", 0)) / 10.0),
+            * (safe_float(a.get("cycles", 1e6)) / 1e6)
+            * (1 + safe_float(a.get("current_A", 0)) / 10.0),
         },
     },
 }
