@@ -28,6 +28,7 @@ class SysMLDiagram:
     diag_id: str
     diag_type: str
     name: str = ""
+    package: Optional[str] = None
     elements: List[str] = field(default_factory=list)
     relationships: List[str] = field(default_factory=list)
 
@@ -64,10 +65,18 @@ class SysMLRepository:
             parent = self.root_package.elem_id
         return self.create_element("Package", name=name, owner=parent)
 
-    def create_diagram(self, diag_type: str, name: str = "", diag_id: Optional[str] = None) -> SysMLDiagram:
+    def create_diagram(
+        self,
+        diag_type: str,
+        name: str = "",
+        diag_id: Optional[str] = None,
+        package: Optional[str] = None,
+    ) -> SysMLDiagram:
         if diag_id is None:
             diag_id = str(uuid.uuid4())
-        diagram = SysMLDiagram(diag_id, diag_type, name)
+        if package is None:
+            package = self.root_package.elem_id
+        diagram = SysMLDiagram(diag_id, diag_type, name, package)
         self.diagrams[diag_id] = diagram
         return diagram
 
@@ -86,6 +95,20 @@ class SysMLRepository:
         if elem_id in self.elements:
             del self.elements[elem_id]
         self.relationships = [r for r in self.relationships if r.source != elem_id and r.target != elem_id]
+
+    def delete_package(self, pkg_id: str) -> None:
+        """Delete a package and reassign its contents to the parent package."""
+        pkg = self.elements.get(pkg_id)
+        if not pkg or pkg.elem_type != "Package" or pkg_id == self.root_package.elem_id:
+            return
+        parent = pkg.owner or self.root_package.elem_id
+        for elem in self.elements.values():
+            if elem.owner == pkg_id:
+                elem.owner = parent
+        for diag in self.diagrams.values():
+            if diag.package == pkg_id:
+                diag.package = parent
+        self.delete_element(pkg_id)
 
     def delete_diagram(self, diag_id: str) -> None:
         if diag_id in self.diagrams:

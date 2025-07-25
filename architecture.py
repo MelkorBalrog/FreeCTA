@@ -235,7 +235,7 @@ class SysMLDiagramWindow(tk.Toplevel):
             self.canvas.create_rectangle(left, top, right, bottom)
             header = f"<<block>> {obj.properties.get('name', '')}".strip()
             self.canvas.create_line(left, top + 20 * self.zoom, right, top + 20 * self.zoom)
-            self.canvas.create_text(x, top + 10 * self.zoom, text=header, anchor="center")
+            self.canvas.create_text(left + 4 * self.zoom, top + 10 * self.zoom, text=header, anchor="w")
             compartments = [
                 ("Attributes", obj.properties.get("valueProperties", "")),
                 ("Parts", obj.properties.get("partProperties", "")),
@@ -247,8 +247,8 @@ class SysMLDiagramWindow(tk.Toplevel):
             cy = top + 20 * self.zoom
             for label, text in compartments:
                 self.canvas.create_line(left, cy, right, cy)
-                if text:
-                    self.canvas.create_text(x, cy + 10 * self.zoom, text=f"{label}: {text}", anchor="n")
+                display = f"{label}: {text}" if text else f"{label}:"
+                self.canvas.create_text(left + 4 * self.zoom, cy + 10 * self.zoom, text=display, anchor="w")
                 cy += 20 * self.zoom
         elif obj.obj_type in ("Initial", "Final"):
             if obj.obj_type == "Initial":
@@ -435,43 +435,54 @@ class NewDiagramDialog(simpledialog.Dialog):
     def apply(self):
         self.name = self.name_var.get()
         self.diag_type = self.type_var.get()
-
-
-class DiagramManagerDialog(tk.Toplevel):
-    """Simple manager to browse and open architecture diagrams."""
+        
+class ArchitectureManagerDialog(tk.Toplevel):
+    """Manage packages and diagrams in a hierarchical tree."""
 
     def __init__(self, master):
         super().__init__(master)
-        self.title("Diagrams")
+        self.title("Architecture")
         self.repo = SysMLRepository.get_instance()
-        self.geometry("300x300")
-        self.listbox = tk.Listbox(self)
-        self.listbox.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        self.geometry("350x400")
+        self.tree = ttk.Treeview(self)
+        self.tree.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
         btns = ttk.Frame(self)
         btns.pack(fill=tk.X, padx=4, pady=4)
         ttk.Button(btns, text="Open", command=self.open).pack(side=tk.LEFT, padx=2)
-        ttk.Button(btns, text="New", command=self.new).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btns, text="New Package", command=self.new_package).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btns, text="New Diagram", command=self.new_diagram).pack(side=tk.LEFT, padx=2)
         ttk.Button(btns, text="Delete", command=self.delete).pack(side=tk.LEFT, padx=2)
         ttk.Button(btns, text="Close", command=self.destroy).pack(side=tk.RIGHT, padx=2)
-        self.refresh()
+        self.populate()
+        self.tree.bind("<Double-1>", self.on_double)
 
-    def refresh(self):
-        self.listbox.delete(0, tk.END)
-        for d in self.repo.diagrams.values():
-            name = d.name or d.diag_id
-            self.listbox.insert(tk.END, f"{d.diag_id} | {name} ({d.diag_type})")
+    def populate(self):
+        self.tree.delete(*self.tree.get_children())
 
-    def selected_id(self) -> str | None:
-        if not self.listbox.curselection():
-            return None
-        value = self.listbox.get(self.listbox.curselection()[0])
-        return value.split(" | ")[0]
+        def add_pkg(pkg_id, parent=""):
+            pkg = self.repo.elements[pkg_id]
+            node = self.tree.insert(parent, "end", iid=pkg_id, text=pkg.name or pkg_id, open=True)
+            for p in self.repo.elements.values():
+                if p.elem_type == "Package" and p.owner == pkg_id:
+                    add_pkg(p.elem_id, node)
+            for d in self.repo.diagrams.values():
+                if d.package == pkg_id:
+                    label = d.name or d.diag_id
+                    self.tree.insert(node, "end", iid=f"diag_{d.diag_id}", text=label, values=(d.diag_type,))
+
+        add_pkg(self.repo.root_package.elem_id)
+
+    def selected(self):
+        item = self.tree.focus()
+        return item if item else None
 
     def open(self):
-        diag_id = self.selected_id()
-        if not diag_id:
-            return
-        self.open_diagram(diag_id)
+        item = self.selected()
+        if item and item.startswith("diag_"):
+            self.open_diagram(item[5:])
+
+    def on_double(self, event):
+        self.open()
 
     def open_diagram(self, diag_id: str):
         diag = self.repo.diagrams.get(diag_id)
@@ -486,14 +497,30 @@ class DiagramManagerDialog(tk.Toplevel):
         elif diag.diag_type == "Internal Block Diagram":
             InternalBlockDiagramWindow(self, diagram_id=diag_id)
 
-    def new(self):
+    def new_package(self):
+        item = self.selected() or self.repo.root_package.elem_id
+        if item.startswith("diag_"):
+            item = self.repo.diagrams[item[5:]].package
+        name = simpledialog.askstring("New Package", "Name:")
+        if name:
+            self.repo.create_package(name, parent=item)
+            self.populate()
+
+    def new_diagram(self):
+        item = self.selected() or self.repo.root_package.elem_id
+        if item.startswith("diag_"):
+            item = self.repo.diagrams[item[5:]].package
         dlg = NewDiagramDialog(self)
         if dlg.name:
-            self.repo.create_diagram(dlg.diag_type, name=dlg.name)
-            self.refresh()
+            self.repo.create_diagram(dlg.diag_type, name=dlg.name, package=item)
+            self.populate()
 
     def delete(self):
-        diag_id = self.selected_id()
-        if diag_id:
-            self.repo.delete_diagram(diag_id)
-            self.refresh()
+        item = self.selected()
+        if not item:
+            return
+        if item.startswith("diag_"):
+            self.repo.delete_diagram(item[5:])
+        else:
+            self.repo.delete_package(item)
+        self.populate()

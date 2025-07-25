@@ -68,5 +68,26 @@ class RepositoryTests(unittest.TestCase):
         os.remove(path)
         self.assertEqual(new_repo.get_linked_diagram(uc.elem_id), ad.diag_id)
 
+    def test_diagram_package(self):
+        pkg = self.repo.create_package("PkgA")
+        diag = self.repo.create_diagram("Use Case Diagram", name="UC2", package=pkg.elem_id)
+        self.assertEqual(diag.package, pkg.elem_id)
+        path = "repo_pkg.json"
+        self.repo.save(path)
+        SysMLRepository._instance = None
+        new_repo = SysMLRepository.get_instance()
+        new_repo.load(path)
+        os.remove(path)
+        self.assertEqual(new_repo.diagrams[diag.diag_id].package, pkg.elem_id)
+
+    def test_delete_package_reassign(self):
+        pkg = self.repo.create_package("P1")
+        sub = self.repo.create_package("Sub", parent=pkg.elem_id)
+        blk = self.repo.create_element("Block", owner=sub.elem_id)
+        diag = self.repo.create_diagram("Use Case Diagram", package=sub.elem_id)
+        self.repo.delete_package(sub.elem_id)
+        self.assertEqual(self.repo.elements[blk.elem_id].owner, pkg.elem_id)
+        self.assertEqual(self.repo.diagrams[diag.diag_id].package, pkg.elem_id)
+
 if __name__ == '__main__':
     unittest.main()

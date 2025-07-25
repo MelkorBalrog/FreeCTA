@@ -273,7 +273,7 @@ from architecture import (
     ActivityDiagramWindow,
     BlockDiagramWindow,
     InternalBlockDiagramWindow,
-    DiagramManagerDialog,
+    ArchitectureManagerDialog,
 )
 from sysml_repository import SysMLRepository
 import copy
@@ -1750,8 +1750,7 @@ class FaultTreeApp:
         architecture_menu.add_command(label="Block Diagram", command=self.open_block_diagram)
         architecture_menu.add_command(label="Internal Block Diagram", command=self.open_internal_block_diagram)
         architecture_menu.add_separator()
-        architecture_menu.add_command(label="Manage Diagrams", command=self.manage_diagrams)
-        architecture_menu.add_command(label="New Package", command=self.new_package)
+        architecture_menu.add_command(label="Manage Architecture", command=self.manage_architecture)
         menubar.add_cascade(label="Architecture", menu=architecture_menu)
 
         hara_menu = tk.Menu(menubar, tearoff=0)
@@ -10616,14 +10615,8 @@ class FaultTreeApp:
         win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.ibd_windows))
         self.ibd_windows.append(win)
 
-    def manage_diagrams(self):
-        DiagramManagerDialog(self.root)
-
-    def new_package(self):
-        name = simpledialog.askstring("New Package", "Package name:")
-        if name:
-            repo = SysMLRepository.get_instance()
-            repo.create_package(name)
+    def manage_architecture(self):
+        ArchitectureManagerDialog(self.root)
         
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
