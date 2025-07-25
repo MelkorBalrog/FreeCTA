@@ -442,6 +442,18 @@ class SysMLDiagramWindow(tk.Toplevel):
                 ("Operations", obj.properties.get("operations", "")),
                 ("Constraints", obj.properties.get("constraintProperties", "")),
                 ("Ports", obj.properties.get("ports", "")),
+                (
+                    "Reliability",
+                    " ".join(
+                        f"{label}={obj.properties.get(key,'')}"
+                        for label, key in (
+                            ("FIT", "fit"),
+                            ("Qual", "qualification"),
+                            ("FM", "failureModes"),
+                        )
+                        if obj.properties.get(key, "")
+                    ),
+                ),
             ]
             cy = top + 20 * self.zoom
             for label, text in compartments:
@@ -488,6 +500,18 @@ class SysMLDiagramWindow(tk.Toplevel):
                 val = obj.properties.get(prop)
                 if val:
                     label_lines.append(f"{prop}: {val}")
+            if obj.obj_type == "Part":
+                rel_items = []
+                for lbl, key in (
+                    ("FIT", "fit"),
+                    ("Qual", "qualification"),
+                    ("FM", "failureModes"),
+                ):
+                    val = obj.properties.get(key)
+                    if val:
+                        rel_items.append(f"{lbl}: {val}")
+                if rel_items:
+                    label_lines.extend(rel_items)
             self.canvas.create_text(x, y, text="\n".join(label_lines), anchor="center")
 
     def draw_connection(self, a: SysMLObject, b: SysMLObject, conn: DiagramConnection):
