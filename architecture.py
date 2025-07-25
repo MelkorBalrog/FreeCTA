@@ -170,6 +170,9 @@ class SysMLDiagramWindow(tk.Toplevel):
 
             for prop in SYSML_PROPERTIES.get(key, []):
                 new_obj.properties.setdefault(prop, "")
+            if t == "Port":
+                new_obj.properties.setdefault("labelX", "8")
+                new_obj.properties.setdefault("labelY", "-8")
             element.properties.update(new_obj.properties)
             self.objects.append(new_obj)
             self.redraw()
@@ -217,8 +220,18 @@ class SysMLDiagramWindow(tk.Toplevel):
                 self.selected_obj.y = y / self.zoom
                 self.snap_port_to_parent(self.selected_obj, parent)
         else:
+            old_x = self.selected_obj.x
+            old_y = self.selected_obj.y
             self.selected_obj.x = x / self.zoom - self.drag_offset[0]
             self.selected_obj.y = y / self.zoom - self.drag_offset[1]
+            dx = self.selected_obj.x - old_x
+            dy = self.selected_obj.y - old_y
+            if self.selected_obj.obj_type == "Part":
+                for p in self.objects:
+                    if p.obj_type == "Port" and p.properties.get("parent") == str(self.selected_obj.obj_id):
+                        p.x += dx
+                        p.y += dy
+                        self.snap_port_to_parent(p, self.selected_obj)
         self.redraw()
 
     def on_left_release(self, _event):
@@ -403,8 +416,19 @@ class SysMLDiagramWindow(tk.Toplevel):
         existing = {o.properties.get("name"): o for o in self.objects if o.obj_type == "Port" and o.properties.get("parent") == str(part.obj_id)}
         for n in names:
             if n not in existing:
-                port = SysMLObject(_get_next_id(), "Port", part.x + part.width/2 + 20, part.y,
-                                   properties={"name": n, "parent": str(part.obj_id), "side": "E"})
+                port = SysMLObject(
+                    _get_next_id(),
+                    "Port",
+                    part.x + part.width / 2 + 20,
+                    part.y,
+                    properties={
+                        "name": n,
+                        "parent": str(part.obj_id),
+                        "side": "E",
+                        "labelX": "8",
+                        "labelY": "-8",
+                    },
+                )
                 self.snap_port_to_parent(port, part)
                 self.objects.append(port)
                 existing[n] = port
@@ -454,6 +478,11 @@ class SysMLDiagramWindow(tk.Toplevel):
         elif obj.obj_type == "System Boundary":
             self.canvas.create_rectangle(x - w, y - h, x + w, y + h,
                                         dash=(4, 2))
+            label = obj.properties.get("name", "")
+            if label:
+                lx = x - w + 4 * self.zoom
+                ly = y - h - 4 * self.zoom
+                self.canvas.create_text(lx, ly, text=label, anchor="sw")
         elif obj.obj_type in ("Action Usage", "Action", "Part", "Port"):
             dash = ()
             fill = ""
@@ -461,32 +490,19 @@ class SysMLDiagramWindow(tk.Toplevel):
                 dash = (4, 2)
             if obj.obj_type == "Port":
                 side = obj.properties.get("side", "E")
-                sz = 10 * self.zoom
-                if side == "E":
-                    pts = [
-                        (x - sz, y - sz),
-                        (x - sz, y + sz),
-                        (x + sz, y)
-                    ]
-                elif side == "W":
-                    pts = [
-                        (x + sz, y - sz),
-                        (x + sz, y + sz),
-                        (x - sz, y)
-                    ]
-                elif side == "N":
-                    pts = [
-                        (x - sz, y + sz),
-                        (x + sz, y + sz),
-                        (x, y - sz)
-                    ]
+                sz = 6 * self.zoom
+                self.canvas.create_rectangle(x - sz, y - sz, x + sz, y + sz, fill="white")
+                arrow_len = sz * 1.2
+                direction = obj.properties.get("direction", "out")
+                if direction == "in":
+                    self.canvas.create_line(x + arrow_len/2, y, x - arrow_len/2, y, arrow=tk.LAST)
+                elif direction == "out":
+                    self.canvas.create_line(x - arrow_len/2, y, x + arrow_len/2, y, arrow=tk.LAST)
                 else:
-                    pts = [
-                        (x - sz, y - sz),
-                        (x + sz, y - sz),
-                        (x, y + sz)
-                    ]
-                self.canvas.create_polygon(*pts, fill="black")
+                    self.canvas.create_line(x - arrow_len/2, y, x + arrow_len/2, y, arrow=tk.BOTH)
+                lx = x + float(obj.properties.get("labelX", "8")) * self.zoom
+                ly = y + float(obj.properties.get("labelY", "-8")) * self.zoom
+                self.canvas.create_text(lx, ly, text=obj.properties.get("name", ""), anchor="center")
             else:
                 self.canvas.create_rectangle(x - w, y - h, x + w, y + h,
                                             dash=dash, fill=fill)
@@ -547,7 +563,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         else:
             self.canvas.create_rectangle(x - w, y - h, x + w, y + h)
 
-        if obj.obj_type != "Block":
+        if obj.obj_type not in ("Block", "System Boundary", "Port"):
             name = obj.properties.get("name", obj.obj_type)
             if obj.obj_type == "Part":
                 def_id = obj.properties.get("definition")
@@ -703,6 +719,7 @@ class SysMLObjectDialog(simpledialog.Dialog):
             "valueProperties",
             "constraintProperties",
             "operations",
+            "failureModes",
         }
         app = getattr(self.master, 'app', None)
         for prop in SYSML_PROPERTIES.get(key, []):
@@ -798,23 +815,15 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 cb.bind("<<ComboboxSelected>>", sync_component)
             else:
                 var = tk.StringVar(value=self.obj.properties.get(prop, ""))
-                ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=4, pady=2)
+                state = "normal"
+                if self.obj.obj_type == "Block" and prop in ("fit", "qualification"):
+                    state = "readonly"
+                ttk.Entry(master, textvariable=var, state=state).grid(row=row, column=1, padx=4, pady=2)
                 self.entries[prop] = var
             row += 1
 
         repo = SysMLRepository.get_instance()
-        if self.obj.obj_type == "Use Case":
-            diags = [d for d in repo.diagrams.values() if d.diag_type == "Activity Diagram"]
-            names = [d.name or d.diag_id for d in diags]
-            ids = {d.name or d.diag_id: d.diag_id for d in diags}
-            ttk.Label(master, text="Activity Diagram:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
-            self.diag_map = ids
-            cur_id = repo.get_linked_diagram(self.obj.element_id)
-            cur_name = next((n for n, i in ids.items() if i == cur_id), "")
-            self.diagram_var = tk.StringVar(value=cur_name)
-            ttk.Combobox(master, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=row, column=1, padx=4, pady=2)
-            row += 1
-        elif self.obj.obj_type == "Block":
+        if self.obj.obj_type == "Block":
             diags = [d for d in repo.diagrams.values() if d.diag_type == "Internal Block Diagram"]
             ids = {d.name or d.diag_id: d.diag_id for d in diags}
             ttk.Label(master, text="Internal Block Diagram:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
@@ -979,8 +988,6 @@ class UseCaseDiagramWindow(SysMLDiagramWindow):
             "Use Case",
             "System Boundary",
             "Association",
-            "Include",
-            "Extend",
         ]
         super().__init__(master, "Use Case Diagram", tools, diagram_id, app=app)
 
@@ -1068,7 +1075,7 @@ class ArchitectureManagerDialog(tk.Toplevel):
     def __init__(self, master, app=None):
         super().__init__(master)
         self.app = app
-        self.title("Architecture")
+        self.title("Architecture Explorer")
         self.repo = SysMLRepository.get_instance()
         self.geometry("350x400")
         self.tree = ttk.Treeview(self)
