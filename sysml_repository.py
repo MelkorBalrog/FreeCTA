@@ -6,7 +6,7 @@ import os
 
 @dataclass
 class SysMLElement:
-    """Basic SysML element stored in the repository."""
+    """Basic AutoML element stored in the repository."""
     elem_id: str
     elem_type: str
     name: str = ""
@@ -37,7 +37,7 @@ class SysMLDiagram:
     connections: List[dict] = field(default_factory=list)
 
 class SysMLRepository:
-    """Singleton repository for all SysML elements and relationships."""
+    """Singleton repository for all AutoML elements and relationships."""
     _instance = None
 
     def __init__(self):

@@ -1766,8 +1766,8 @@ class FaultTreeApp:
         architecture_menu.add_command(label="Block Diagram", command=self.open_block_diagram)
         architecture_menu.add_command(label="Internal Block Diagram", command=self.open_internal_block_diagram)
         architecture_menu.add_separator()
-        architecture_menu.add_command(label="Architecture Explorer", command=self.manage_architecture)
-        menubar.add_cascade(label="Architecture", menu=architecture_menu)
+        architecture_menu.add_command(label="AutoML Explorer", command=self.manage_architecture)
+        menubar.add_cascade(label="AutoML", menu=architecture_menu)
 
         hara_menu = tk.Menu(menubar, tearoff=0)
         hara_menu.add_command(label="HAZOP Analysis", command=self.open_hazop_window)
@@ -7337,7 +7337,7 @@ class FaultTreeApp:
             tc2fi_root = tree.insert("", "end", text="TC2FI Analyses", open=True)
             for idx, doc in enumerate(self.tc2fi_docs):
                 tree.insert(tc2fi_root, "end", text=doc.name, tags=("tc2fi", str(idx)))
-            arch_root = tree.insert("", "end", text="Architecture Diagrams", open=True)
+            arch_root = tree.insert("", "end", text="AutoML Diagrams", open=True)
             for idx, diag in enumerate(self.arch_diagrams):
                 name = diag.get('name', f'Diagram {idx+1}')
                 tree.insert(arch_root, "end", text=name, tags=("arch", str(idx)))

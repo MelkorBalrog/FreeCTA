@@ -12,7 +12,7 @@ from models import global_requirements
 # ---------------------------------------------------------------------------
 # Appearance customization
 # ---------------------------------------------------------------------------
-# Basic fill colors for different SysML object types. This provides a simple
+# Basic fill colors for different AutoML object types. This provides a simple
 # color palette so diagrams appear less bland and more professional.
 OBJECT_COLORS: dict[str, str] = {
     "Actor": "#E0F7FA",
@@ -148,7 +148,7 @@ class DiagramConnection:
 
 
 class SysMLDiagramWindow(tk.Toplevel):
-    """Base window for simple SysML diagrams with zoom and pan support."""
+    """Base window for AutoML diagrams with zoom and pan support."""
 
     def __init__(self, master, title, tools, diagram_id: str | None = None, app=None):
         super().__init__(master)
@@ -1176,7 +1176,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.destroy()
 
 class SysMLObjectDialog(simpledialog.Dialog):
-    """Simple dialog for editing SysML object properties."""
+    """Simple dialog for editing AutoML object properties."""
 
     def __init__(self, master, obj: SysMLObject):
         if not hasattr(obj, "requirements"):
@@ -1998,7 +1998,7 @@ class ArchitectureManagerDialog(tk.Toplevel):
     def __init__(self, master, app=None):
         super().__init__(master)
         self.app = app
-        self.title("Architecture Explorer")
+        self.title("AutoML Explorer")
         self.repo = SysMLRepository.get_instance()
         self.geometry("350x400")
         self.tree = ttk.Treeview(self)
