@@ -79,6 +79,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.clipboard: SysMLObject | None = None
         self.resizing_obj: SysMLObject | None = None
         self.resize_edge: str | None = None
+        self.temp_line_end: tuple[float, float] | None = None
 
         self.toolbox = ttk.Frame(self)
         self.toolbox.pack(side=tk.LEFT, fill=tk.Y)
@@ -99,6 +100,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.canvas.bind("<Double-Button-1>", self.on_double_click)
         self.canvas.bind("<ButtonPress-3>", self.on_rc_press)
         self.canvas.bind("<B3-Motion>", self.on_rc_drag)
+        self.canvas.bind("<Motion>", self.on_mouse_move)
         self.canvas.bind("<Control-MouseWheel>", self.on_ctrl_mousewheel)
         self.bind("<Control-c>", self.copy_selected)
         self.bind("<Control-x>", self.cut_selected)
@@ -110,6 +112,8 @@ class SysMLDiagramWindow(tk.Toplevel):
     def select_tool(self, tool):
         self.current_tool = tool
         self.start = None
+        self.temp_line_end = None
+        self.selected_obj = None
         cursor = "arrow"
         if tool != "Select":
             cursor = "crosshair" if tool in (
@@ -134,6 +138,9 @@ class SysMLDiagramWindow(tk.Toplevel):
             if self.start is None:
                 if obj:
                     self.start = obj
+                    self.selected_obj = obj
+                    self.temp_line_end = (x, y)
+                    self.redraw()
             else:
                 if obj and obj != self.start:
                     conn = DiagramConnection(self.start.obj_id, obj.obj_id, t)
@@ -146,6 +153,8 @@ class SysMLDiagramWindow(tk.Toplevel):
                     self._sync_to_repository()
                     ConnectionDialog(self, conn)
                 self.start = None
+                self.temp_line_end = None
+                self.selected_obj = None
                 self.redraw()
         elif t and t != "Select":
             pkg = self.repo.diagrams[self.diagram_id].package
@@ -243,8 +252,23 @@ class SysMLDiagramWindow(tk.Toplevel):
 
     def on_left_release(self, _event):
         self.start = None
+        self.temp_line_end = None
+        self.selected_obj = None
         self.resizing_obj = None
         self.resize_edge = None
+
+    def on_mouse_move(self, event):
+        if self.start and self.current_tool in (
+            "Association",
+            "Include",
+            "Extend",
+            "Flow",
+            "Connector",
+        ):
+            x = self.canvas.canvasx(event.x)
+            y = self.canvas.canvasy(event.y)
+            self.temp_line_end = (x, y)
+            self.redraw()
 
     def on_double_click(self, event):
         x = self.canvas.canvasx(event.x)
@@ -462,6 +486,20 @@ class SysMLDiagramWindow(tk.Toplevel):
             dst = self.get_object(conn.dst)
             if src and dst:
                 self.draw_connection(src, dst, conn)
+        if (
+            self.start
+            and self.temp_line_end
+            and self.current_tool in (
+                "Association",
+                "Include",
+                "Extend",
+                "Flow",
+                "Connector",
+            )
+        ):
+            sx, sy = self.edge_point(self.start, *self.temp_line_end)
+            ex, ey = self.temp_line_end
+            self.canvas.create_line(sx, sy, ex, ey, dash=(2, 2), arrow=tk.LAST)
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
 
     def draw_object(self, obj: SysMLObject):
