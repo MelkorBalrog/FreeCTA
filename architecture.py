@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, simpledialog
+from tkinter import ttk, simpledialog, messagebox
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
@@ -98,6 +98,16 @@ class SysMLDiagramWindow(tk.Toplevel):
     def select_tool(self, tool):
         self.current_tool = tool
         self.start = None
+        cursor = "arrow"
+        if tool != "Select":
+            cursor = "crosshair" if tool in (
+                "Association",
+                "Include",
+                "Extend",
+                "Flow",
+                "Connector",
+            ) else "tcross"
+        self.canvas.configure(cursor=cursor)
 
     # ------------------------------------------------------------
     # Event handlers
@@ -779,10 +789,17 @@ class ArchitectureManagerDialog(tk.Toplevel):
         ttk.Button(btns, text="Properties", command=self.properties).pack(side=tk.LEFT, padx=2)
         ttk.Button(btns, text="New Package", command=self.new_package).pack(side=tk.LEFT, padx=2)
         ttk.Button(btns, text="New Diagram", command=self.new_diagram).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btns, text="Cut", command=self.cut).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btns, text="Paste", command=self.paste).pack(side=tk.LEFT, padx=2)
         ttk.Button(btns, text="Delete", command=self.delete).pack(side=tk.LEFT, padx=2)
         ttk.Button(btns, text="Close", command=self.destroy).pack(side=tk.RIGHT, padx=2)
         self.populate()
         self.tree.bind("<Double-1>", self.on_double)
+        self.tree.bind("<ButtonPress-1>", self.on_drag_start)
+        self.tree.bind("<B1-Motion>", self.on_drag_motion)
+        self.tree.bind("<ButtonRelease-1>", self.on_drag_release)
+        self.drag_item = None
+        self.cut_item = None
 
     def populate(self):
         self.tree.delete(*self.tree.get_children())
@@ -868,3 +885,72 @@ class ArchitectureManagerDialog(tk.Toplevel):
             if diag:
                 DiagramPropertiesDialog(self, diag)
                 self.populate()
+
+    # ------------------------------------------------------------------
+    # Cut/Paste and Drag & Drop Handling
+    # ------------------------------------------------------------------
+    def cut(self):
+        item = self.selected()
+        if item:
+            self.cut_item = item
+
+    def paste(self):
+        if not self.cut_item:
+            return
+        target = self.selected() or self.repo.root_package.elem_id
+        if target.startswith("diag_"):
+            target = self.repo.diagrams[target[5:]].package
+        self._move_item(self.cut_item, target)
+        self.cut_item = None
+        self.populate()
+
+    def on_drag_start(self, event):
+        self.drag_item = self.tree.identify_row(event.y)
+
+    def on_drag_motion(self, _event):
+        pass
+
+    def on_drag_release(self, event):
+        if not self.drag_item:
+            return
+        target = self.tree.identify_row(event.y)
+        if not target:
+            self.drag_item = None
+            return
+        if target == self.drag_item:
+            self.drag_item = None
+            return
+        region = self.tree.identify_region(event.x, event.y)
+        if region in ("separator", "nothing"):
+            parent = self.tree.parent(target)
+            index = self.tree.index(target)
+            self.tree.move(self.drag_item, parent, index)
+            self._move_item(self.drag_item, parent)
+        else:
+            if target.startswith("diag_"):
+                diag = self.repo.diagrams.get(target[5:])
+                if self.drag_item.startswith("diag_"):
+                    messagebox.showerror("Drop Error", "Cannot drop a diagram onto another diagram.")
+                else:
+                    self._drop_on_diagram(self.drag_item, diag)
+            else:
+                self.tree.move(self.drag_item, target, "end")
+                self._move_item(self.drag_item, target)
+        self.drag_item = None
+        self.populate()
+
+    def _move_item(self, item, new_parent):
+        if item.startswith("diag_"):
+            self.repo.diagrams[item[5:]].package = new_parent
+        else:
+            self.repo.elements[item].owner = new_parent
+
+    def _drop_on_diagram(self, elem_id, diagram):
+        allowed = diagram.diag_type in ("Block Diagram", "Internal Block Diagram")
+        if allowed and self.repo.elements[elem_id].elem_type == "Package":
+            block = self.repo.create_element("Block", name=self.repo.elements[elem_id].name, owner=elem_id)
+            self.repo.add_element_to_diagram(diagram.diag_id, block.elem_id)
+            obj = SysMLObject(_get_next_id(), "Block", 50.0, 50.0, element_id=block.elem_id)
+            diagram.objects.append(obj.__dict__)
+        else:
+            messagebox.showerror("Drop Error", "This item cannot be dropped on that diagram.")
