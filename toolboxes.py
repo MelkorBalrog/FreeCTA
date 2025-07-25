@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import csv
 import copy
+import textwrap
 from models import (
     ReliabilityComponent,
     ReliabilityAnalysis,
@@ -15,6 +16,12 @@ from models import (
     PASSIVE_QUAL_FACTORS,
     calc_asil,
 )
+
+def _wrap_val(val, width=30):
+    """Return text wrapped value for tree view cells."""
+    if val is None:
+        return ""
+    return textwrap.fill(str(val), width)
 
 class ReliabilityWindow(tk.Toplevel):
     def __init__(self, app):
@@ -428,10 +435,11 @@ class FI2TCWindow(tk.Toplevel):
         super().__init__(app.root)
         self.app = app
         self.title("FI2TC Analysis")
+        self.geometry("800x400")
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill=tk.BOTH, expand=True)
         style = ttk.Style(self)
-        style.configure("FI2TC.Treeview", rowheight=60)
+        style.configure("FI2TC.Treeview", rowheight=80)
         self.tree = ttk.Treeview(
             tree_frame, columns=self.COLS, show="headings", style="FI2TC.Treeview"
         )
@@ -457,7 +465,8 @@ class FI2TCWindow(tk.Toplevel):
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
         for row in self.app.fi2tc_entries:
-            self.tree.insert("", "end", values=[row.get(k, "") for k in self.COLS])
+            vals = [_wrap_val(row.get(k, "")) for k in self.COLS]
+            self.tree.insert("", "end", values=vals)
 
     class RowDialog(simpledialog.Dialog):
         def __init__(self, parent, app, data=None):
@@ -487,48 +496,48 @@ class FI2TCWindow(tk.Toplevel):
                     w["values"] = func_opts
 
             for col in self.parent_win.COLS:
-                ttk.Label(master, text=col.replace("_", " ").title()).grid(row=r, column=0, sticky="e")
+                ttk.Label(master, text=col.replace("_", " ").title()).grid(row=r, column=0, sticky="e", padx=5, pady=2)
                 if col == "triggering_condition":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=tc_names, state="readonly")
-                    cb.grid(row=r, column=1)
+                    cb.grid(row=r, column=1, padx=5, pady=2)
                     self.widgets[col] = var
                 elif col == "insufficiency":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=fi_names, state="readonly")
-                    cb.grid(row=r, column=1)
+                    cb.grid(row=r, column=1, padx=5, pady=2)
                     self.widgets[col] = var
                 elif col == "system_function":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=func_names, state="readonly")
-                    cb.grid(row=r, column=1)
+                    cb.grid(row=r, column=1, padx=5, pady=2)
                     self.widgets[col] = var
                     self.widgets["system_function_widget"] = cb
                 elif col == "allocation":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=comp_names, state="readonly")
-                    cb.grid(row=r, column=1)
+                    cb.grid(row=r, column=1, padx=5, pady=2)
                     cb.bind("<<ComboboxSelected>>", refresh_funcs)
                     self.widgets[col] = var
                 elif col == "scene":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=scene_names, state="readonly")
-                    cb.grid(row=r, column=1)
+                    cb.grid(row=r, column=1, padx=5, pady=2)
                     self.widgets[col] = var
                 elif col == "scenario":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=scen_names, state="readonly")
-                    cb.grid(row=r, column=1)
+                    cb.grid(row=r, column=1, padx=5, pady=2)
                     self.widgets[col] = var
                 elif col == "severity":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=["1", "2", "3"], state="readonly")
-                    cb.grid(row=r, column=1)
+                    cb.grid(row=r, column=1, padx=5, pady=2)
                     self.widgets[col] = var
                 else:
-                    txt = tk.Text(master, width=30, height=3)
+                    txt = tk.Text(master, width=25, height=2, wrap="word")
                     txt.insert("1.0", self.data.get(col, ""))
-                    txt.grid(row=r, column=1)
+                    txt.grid(row=r, column=1, padx=5, pady=2)
                     self.widgets[col] = txt
                 r += 1
             refresh_funcs()
@@ -1077,10 +1086,11 @@ class TC2FIWindow(tk.Toplevel):
         super().__init__(app.root)
         self.app = app
         self.title("TC2FI Analysis")
+        self.geometry("800x400")
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill=tk.BOTH, expand=True)
         style = ttk.Style(self)
-        style.configure("TC2FI.Treeview", rowheight=60)
+        style.configure("TC2FI.Treeview", rowheight=80)
         self.tree = ttk.Treeview(
             tree_frame, columns=self.COLS, show="headings", style="TC2FI.Treeview"
         )
@@ -1107,7 +1117,8 @@ class TC2FIWindow(tk.Toplevel):
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
         for row in self.app.tc2fi_entries:
-            self.tree.insert("", "end", values=[row.get(k, "") for k in self.COLS])
+            vals = [_wrap_val(row.get(k, "")) for k in self.COLS]
+            self.tree.insert("", "end", values=vals)
 
     class RowDialog(simpledialog.Dialog):
         def __init__(self, parent, app, data=None):
@@ -1137,48 +1148,48 @@ class TC2FIWindow(tk.Toplevel):
                     w["values"] = opts
 
             for col in TC2FIWindow.COLS:
-                ttk.Label(master, text=col.replace("_", " ").title()).grid(row=r, column=0, sticky="e")
+                ttk.Label(master, text=col.replace("_", " ").title()).grid(row=r, column=0, sticky="e", padx=5, pady=2)
                 if col == "functional_insufficiency":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=fi_names, state="readonly")
-                    cb.grid(row=r, column=1)
+                    cb.grid(row=r, column=1, padx=5, pady=2)
                     self.widgets[col] = var
                 elif col == "triggering_condition":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=tc_names, state="readonly")
-                    cb.grid(row=r, column=1)
+                    cb.grid(row=r, column=1, padx=5, pady=2)
                     self.widgets[col] = var
                 elif col == "impacted_function":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=func_names, state="readonly")
-                    cb.grid(row=r, column=1)
+                    cb.grid(row=r, column=1, padx=5, pady=2)
                     self.widgets[col] = var
                     self.widgets["impacted_function_widget"] = cb
                 elif col == "arch_elements":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=comp_names, state="readonly")
-                    cb.grid(row=r, column=1)
+                    cb.grid(row=r, column=1, padx=5, pady=2)
                     cb.bind("<<ComboboxSelected>>", refresh_funcs)
                     self.widgets[col] = var
                 elif col == "scene":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=scene_names, state="readonly")
-                    cb.grid(row=r, column=1)
+                    cb.grid(row=r, column=1, padx=5, pady=2)
                     self.widgets[col] = var
                 elif col == "scenario":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=scen_names, state="readonly")
-                    cb.grid(row=r, column=1)
+                    cb.grid(row=r, column=1, padx=5, pady=2)
                     self.widgets[col] = var
                 elif col == "severity":
                     var = tk.StringVar(value=self.data.get(col, ""))
                     cb = ttk.Combobox(master, textvariable=var, values=["1", "2", "3"], state="readonly")
-                    cb.grid(row=r, column=1)
+                    cb.grid(row=r, column=1, padx=5, pady=2)
                     self.widgets[col] = var
                 else:
-                    txt = tk.Text(master, width=30, height=3)
+                    txt = tk.Text(master, width=25, height=2, wrap="word")
                     txt.insert("1.0", self.data.get(col, ""))
-                    txt.grid(row=r, column=1)
+                    txt.grid(row=r, column=1, padx=5, pady=2)
                     self.widgets[col] = txt
                 r += 1
             refresh_funcs()
