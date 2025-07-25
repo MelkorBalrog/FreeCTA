@@ -8648,6 +8648,19 @@ class FaultTreeApp:
             if preset_goals:
                 self.sg_entry.config(state='readonly')
             self.sg_entry.grid(row=5, column=1, padx=5, pady=5)
+            if not preset_goals:
+                def choose_goals():
+                    names = [g.strip() for g in self.sg_var.get().split(',') if g.strip()]
+                    dlg = self.app.SelectSafetyGoalsDialog(self, self.app.top_events, names)
+                    if dlg.result:
+                        self.sg_var.set(
+                            ", ".join(
+                                sg.user_name or sg.safety_goal_description or f"SG {sg.unique_id}"
+                                for sg in dlg.result
+                            )
+                        )
+
+                ttk.Button(master, text="Select", command=choose_goals).grid(row=5, column=2, padx=5, pady=5)
 
             ttk.Label(master, text="Severity (1-10):").grid(row=6, column=0, sticky="e", padx=5, pady=5)
             self.sev_spin = tk.Spinbox(master, from_=1, to=10, width=5)
@@ -8916,7 +8929,7 @@ class FaultTreeApp:
             del self.node.safety_requirements[index]
             self.req_listbox.delete(index)
 
-    class SelectBaseEventDialog(simpledialog.Dialog):
+class SelectBaseEventDialog(simpledialog.Dialog):
         def __init__(self, parent, events, allow_new=False):
             self.events = events
             self.allow_new = allow_new
@@ -8941,6 +8954,26 @@ class FaultTreeApp:
                     self.selected = "NEW"
                 else:
                     self.selected = self.events[idx]
+
+    class SelectSafetyGoalsDialog(simpledialog.Dialog):
+        def __init__(self, parent, goals, initial=None):
+            self.goals = goals
+            self.initial = initial or []
+            self.result = []
+            super().__init__(parent, title="Select Safety Goals")
+
+        def body(self, master):
+            ttk.Label(master, text="Select violated safety goals:").pack(padx=5, pady=5)
+            self.vars = {}
+            for sg in self.goals:
+                name = sg.user_name or sg.safety_goal_description or f"SG {sg.unique_id}"
+                var = tk.BooleanVar(value=name in self.initial)
+                self.vars[sg] = var
+                ttk.Checkbutton(master, text=name, variable=var).pack(anchor="w", padx=5, pady=2)
+            return master
+
+        def apply(self):
+            self.result = [sg for sg, var in self.vars.items() if var.get()]
 
     def show_fmea_table(self, fmea=None, fmeda=False):
         """Display an editable AIAG-compliant FMEA or FMEDA table."""
@@ -9146,7 +9179,7 @@ class FaultTreeApp:
         tree_frame.grid_columnconfigure(0, weight=1)
         tree_frame.grid_rowconfigure(0, weight=1)
 
-        metrics_lbl = ttk.Label(win, text="")
+        metrics_lbl = tk.Label(win, text="", anchor="w")
         metrics_lbl.pack(anchor="w", padx=5, pady=2)
 
         # alternating row colours and high RPN highlight
@@ -9285,7 +9318,14 @@ class FaultTreeApp:
                         symbol = CHECK_MARK if ok else CROSS_MARK
                         parts.append(f"{sg}:{symbol}")
                     text += " [" + "; ".join(parts) + "]"
-                metrics_lbl.config(text=text)
+                overall_ok = ok_dc and ok_spf and ok_lpf
+                if metrics.get("goal_metrics"):
+                    overall_ok = overall_ok and all(
+                        gm["ok_dc"] and gm["ok_spfm"] and gm["ok_lpfm"]
+                        for gm in metrics["goal_metrics"].values()
+                    )
+                color = "#c8ffc8" if overall_ok else "#ffc8c8"
+                metrics_lbl.config(text=text, bg=color)
 
         if fmeda and bom_var.get():
             load_bom()
