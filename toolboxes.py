@@ -19,6 +19,22 @@ from models import (
     component_fit_map,
     calc_asil,
 )
+from fmeda_utils import compute_fmeda_metrics
+from constants import CHECK_MARK, CROSS_MARK
+
+
+def _total_fit_from_boms(boms):
+    """Return the aggregated FIT of all components in ``boms``.
+
+    Each element of ``boms`` is a list of :class:`ReliabilityComponent` objects.
+    The stored ``fit`` values of the components are used so pre-calculated
+    analyses can be combined without a mission profile.
+    """
+
+    total = 0.0
+    for bom in boms:
+        total += sum(component_fit_map(bom).values())
+    return total
 
 def _wrap_val(val, width=30):
     """Return text wrapped value for tree view cells."""
@@ -320,63 +336,65 @@ class ReliabilityWindow(tk.Toplevel):
     def calculate_fit(self):
         prof_name = self.profile_var.get()
         mp = next((m for m in self.app.mission_profiles if m.name == prof_name), None)
-        if mp is None:
+        needs_profile = any(not c.sub_boms for c in self.components)
+        if mp is None and needs_profile:
             messagebox.showwarning("FIT", "Select a mission profile")
             return
         std = self.standard_var.get()
         total = 0.0
         for comp in self.components:
             if comp.sub_boms:
-                sub_total = 0.0
-                for bom in comp.sub_boms:
-                    for sub in bom:
-                        info = RELIABILITY_MODELS.get(std, {}).get(sub.comp_type)
-                        if info:
-                            qf = PASSIVE_QUAL_FACTORS.get(sub.qualification, 1.0) if sub.is_passive else 1.0
-                            sub.fit = info["formula"](sub.attributes, mp) * mp.tau * qf
-                        else:
-                            sub.fit = 0.0
-                        sub_total += sub.fit * sub.quantity
-                comp.fit = sub_total
+                # Aggregate FIT from the referenced BOMs without recomputation
+                comp.fit = _total_fit_from_boms(comp.sub_boms)
             else:
                 info = RELIABILITY_MODELS.get(std, {}).get(comp.comp_type)
                 if info:
                     qf = PASSIVE_QUAL_FACTORS.get(comp.qualification, 1.0) if comp.is_passive else 1.0
-                    comp.fit = info["formula"](comp.attributes, mp) * mp.tau * qf
+                    if mp is not None:
+                        comp.fit = info["formula"](comp.attributes, mp) * mp.tau * qf
+                    else:
+                        comp.fit = 0.0
                 else:
                     comp.fit = 0.0
             total += comp.fit * comp.quantity
 
-        comp_fit = component_fit_map(self.components)
-        spf = 0.0
-        lpf = 0.0
-        total_modes = 0.0
+        sg_targets = {sg.user_name: {
+            "dc": getattr(sg, "sg_dc_target", 0.0),
+            "spfm": getattr(sg, "sg_spfm_target", 0.0),
+            "lpfm": getattr(sg, "sg_lpfm_target", 0.0),
+        } for sg in self.app.top_events}
         for be in self.app.fmea_entries:
-            comp_name = (
-                be.parents[0].user_name if be.parents else getattr(be, "fmea_component", "")
-            )
-            fit = comp_fit.get(comp_name)
-            frac = be.fmeda_fault_fraction
-            if frac > 1.0:
-                frac /= 100.0
-            if fit is not None:
-                fit_mode = fit * frac
-            else:
-                fit_mode = getattr(be, "fmeda_fit", 0.0) * frac
-            total_modes += fit_mode
-            if be.fmeda_fault_type == "permanent":
-                spf += fit_mode * (1 - be.fmeda_diag_cov)
-            else:
-                lpf += fit_mode * (1 - be.fmeda_diag_cov)
-        dc = 1 - (spf + lpf) / total_modes if total_modes else 0.0
+            sg = getattr(be, "fmeda_safety_goal", "")
+            if sg and sg not in sg_targets:
+                sg_targets[sg] = {
+                    "dc": getattr(be, "fmeda_dc_target", 0.0),
+                    "spfm": getattr(be, "fmeda_spfm_target", 0.0),
+                    "lpfm": getattr(be, "fmeda_lpfm_target", 0.0),
+                }
+
+        metrics = compute_fmeda_metrics(
+            self.app.fmea_entries,
+            self.components,
+            self.app.get_safety_goal_asil,
+            sg_targets=sg_targets,
+        )
         self.app.reliability_components = list(self.components)
-        self.app.reliability_total_fit = total_modes
-        self.app.spfm = spf
-        self.app.lpfm = lpf
-        self.app.reliability_dc = dc
+        self.app.reliability_total_fit = metrics["total"]
+        self.app.spfm = metrics["spfm_raw"]
+        self.app.lpfm = metrics["lpfm_raw"]
+        self.app.reliability_dc = metrics["dc"]
         self.refresh_tree()
+        goal_res = []
+        for sg, gm in metrics.get("goal_metrics", {}).items():
+            ok = gm["ok_dc"] and gm["ok_spfm"] and gm["ok_lpfm"]
+            symbol = CHECK_MARK if ok else CROSS_MARK
+            goal_res.append(f"{sg}:{symbol}")
+        extra = f"  [{' ; '.join(goal_res)}]" if goal_res else ""
         self.formula_label.config(
-            text=f"Total FIT: {total_modes:.2f}  DC: {dc:.2f}  SPFM: {spf:.2f}  LPFM: {lpf:.2f}"
+            text=(
+                f"Total FIT: {metrics['total']:.2f}  DC: {metrics['dc']:.2f}  "
+                f"SPFM: {metrics['spfm_raw']:.2f}  LPFM: {metrics['lpfm_raw']:.2f}" + extra
+            )
         )
 
     def save_analysis(self):
