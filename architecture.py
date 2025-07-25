@@ -138,7 +138,8 @@ class SysMLDiagramWindow(tk.Toplevel):
             if self.start is None:
                 if obj:
                     self.start = obj
-                    self.selected_obj = obj
+                    # Do not highlight objects while adding a connection
+                    self.selected_obj = None
                     self.temp_line_end = (x, y)
                     self.redraw()
             else:
@@ -285,7 +286,8 @@ class SysMLDiagramWindow(tk.Toplevel):
                 ConnectionDialog(self, conn)
         self.start = None
         self.temp_line_end = None
-        self.selected_obj = None
+        if self.current_tool != "Select":
+            self.selected_obj = None
         self.resizing_obj = None
         self.resize_edge = None
         self.redraw()
