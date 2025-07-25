@@ -72,6 +72,8 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.selected_obj: SysMLObject | None = None
         self.drag_offset = (0, 0)
         self.clipboard: SysMLObject | None = None
+        self.resizing_obj: SysMLObject | None = None
+        self.resize_edge: str | None = None
 
         self.toolbox = ttk.Frame(self)
         self.toolbox.pack(side=tk.LEFT, fill=tk.Y)
@@ -174,14 +176,31 @@ class SysMLDiagramWindow(tk.Toplevel):
             if obj:
                 self.selected_obj = obj
                 self.drag_offset = (x / self.zoom - obj.x, y / self.zoom - obj.y)
+                self.resizing_obj = None
+                self.resize_edge = self.hit_resize_handle(obj, x, y)
+                if self.resize_edge:
+                    self.resizing_obj = obj
             else:
                 self.selected_obj = None
+                self.resizing_obj = None
+                self.resize_edge = None
 
     def on_left_drag(self, event):
         if not self.selected_obj:
             return
         x = self.canvas.canvasx(event.x)
         y = self.canvas.canvasy(event.y)
+        if self.resizing_obj:
+            obj = self.resizing_obj
+            cx = obj.x * self.zoom
+            cy = obj.y * self.zoom
+            if "e" in self.resize_edge or "w" in self.resize_edge:
+                obj.width = max(10.0, 2 * abs(x - cx) / self.zoom)
+            if "n" in self.resize_edge or "s" in self.resize_edge:
+                if obj.obj_type not in ("Fork", "Join"):
+                    obj.height = max(10.0, 2 * abs(y - cy) / self.zoom)
+            self.redraw()
+            return
         if self.selected_obj.obj_type == "Port" and "parent" in self.selected_obj.properties:
             parent = self.get_object(int(self.selected_obj.properties["parent"]))
             if parent:
@@ -195,6 +214,8 @@ class SysMLDiagramWindow(tk.Toplevel):
 
     def on_left_release(self, _event):
         self.start = None
+        self.resizing_obj = None
+        self.resize_edge = None
 
     def on_double_click(self, event):
         x = self.canvas.canvasx(event.x)
@@ -241,6 +262,38 @@ class SysMLDiagramWindow(tk.Toplevel):
             h = obj.height * self.zoom / 2
             if ox - w <= x <= ox + w and oy - h <= y <= oy + h:
                 return obj
+        return None
+
+    def hit_resize_handle(self, obj: SysMLObject, x: float, y: float) -> str | None:
+        margin = 5
+        ox = obj.x * self.zoom
+        oy = obj.y * self.zoom
+        w = obj.width * self.zoom / 2
+        h = obj.height * self.zoom / 2
+        left = ox - w
+        right = ox + w
+        top = oy - h
+        bottom = oy + h
+        near_left = abs(x - left) <= margin
+        near_right = abs(x - right) <= margin
+        near_top = abs(y - top) <= margin
+        near_bottom = abs(y - bottom) <= margin
+        if near_left and near_top:
+            return "nw"
+        if near_right and near_top:
+            return "ne"
+        if near_left and near_bottom:
+            return "sw"
+        if near_right and near_bottom:
+            return "se"
+        if near_left:
+            return "w"
+        if near_right:
+            return "e"
+        if near_top:
+            return "n"
+        if near_bottom:
+            return "s"
         return None
 
     def _dist_to_segment(self, p, a, b) -> float:
@@ -513,6 +566,17 @@ class SysMLDiagramWindow(tk.Toplevel):
                 if rel_items:
                     label_lines.extend(rel_items)
             self.canvas.create_text(x, y, text="\n".join(label_lines), anchor="center")
+
+        if obj == self.selected_obj:
+            bx = x - w
+            by = y - h
+            ex = x + w
+            ey = y + h
+            self.canvas.create_rectangle(bx, by, ex, ey, outline="red", dash=(2, 2))
+            s = 4
+            for hx, hy in [(bx, by), (bx, ey), (ex, by), (ex, ey)]:
+                self.canvas.create_rectangle(hx - s, hy - s, hx + s, hy + s,
+                                             outline="red", fill="white")
 
     def draw_connection(self, a: SysMLObject, b: SysMLObject, conn: DiagramConnection):
         axc, ayc = a.x * self.zoom, a.y * self.zoom
@@ -896,7 +960,7 @@ class ArchitectureManagerDialog(tk.Toplevel):
 
     def __init__(self, master):
         super().__init__(master)
-        self.title("Architecture")
+        self.title("Architecture Explorer")
         self.repo = SysMLRepository.get_instance()
         self.geometry("350x400")
         self.tree = ttk.Treeview(self)
@@ -935,7 +999,11 @@ class ArchitectureManagerDialog(tk.Toplevel):
             for d in self.repo.diagrams.values():
                 if d.package == pkg_id:
                     label = d.name or d.diag_id
-                    self.tree.insert(node, "end", iid=f"diag_{d.diag_id}", text=label, values=(d.diag_type,))
+                    diag_node = self.tree.insert(node, "end", iid=f"diag_{d.diag_id}", text=label, values=(d.diag_type,))
+                    for obj in d.objects:
+                        name = obj.get("properties", {}).get("name", obj.get("obj_type"))
+                        oid = obj.get("obj_id")
+                        self.tree.insert(diag_node, "end", iid=f"obj_{d.diag_id}_{oid}", text=name, values=(obj.get("obj_type"),))
 
         add_pkg(self.repo.root_package.elem_id)
 
@@ -948,8 +1016,19 @@ class ArchitectureManagerDialog(tk.Toplevel):
 
     def open(self):
         item = self.selected()
-        if item and item.startswith("diag_"):
+        if not item:
+            return
+        if item.startswith("diag_"):
             self.open_diagram(item[5:])
+        elif item.startswith("obj_"):
+            diag_id, oid = item[4:].split("_", 1)
+            win = self.open_diagram(diag_id)
+            if win:
+                for o in win.objects:
+                    if o.obj_id == int(oid):
+                        win.selected_obj = o
+                        win.redraw()
+                        break
 
     def on_double(self, event):
         item = self.tree.identify_row(event.y)
@@ -957,20 +1036,24 @@ class ArchitectureManagerDialog(tk.Toplevel):
             self.tree.selection_set(item)
             if item.startswith("diag_"):
                 self.open_diagram(item[5:])
+            elif item.startswith("obj_"):
+                self.open()
 
     def open_diagram(self, diag_id: str):
         diag = self.repo.diagrams.get(diag_id)
         if not diag:
-            return
+            return None
         master = self.master if self.master else self
+        win = None
         if diag.diag_type == "Use Case Diagram":
-            UseCaseDiagramWindow(master, diagram_id=diag_id)
+            win = UseCaseDiagramWindow(master, diagram_id=diag_id)
         elif diag.diag_type == "Activity Diagram":
-            ActivityDiagramWindow(master, diagram_id=diag_id)
+            win = ActivityDiagramWindow(master, diagram_id=diag_id)
         elif diag.diag_type == "Block Diagram":
-            BlockDiagramWindow(master, diagram_id=diag_id)
+            win = BlockDiagramWindow(master, diagram_id=diag_id)
         elif diag.diag_type == "Internal Block Diagram":
-            InternalBlockDiagramWindow(master, diagram_id=diag_id)
+            win = InternalBlockDiagramWindow(master, diagram_id=diag_id)
+        return win
 
     def new_package(self):
         item = self.selected() or self.repo.root_package.elem_id
