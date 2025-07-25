@@ -1426,7 +1426,6 @@ class TC2FIWindow(tk.Toplevel):
         self.refresh()
         self.app.update_views()
 
-
 class HazardExplorerWindow(tk.Toplevel):
     """Read-only list of hazards per HARA."""
 

@@ -90,6 +90,13 @@ Use case, activity, block and internal block diagrams can be created from the
 documents. Each object keeps its saved size and properties so layouts remain
 stable when returning to the project.
 
+Activity diagrams list individual **actions** that describe the expected
+behavior for a block. These actions can be referenced directly in HAZOP tables
+as potential malfunctions. When a block is linked to a circuit, any actions in
+its internal block diagram are inherited as additional failure modes for that
+circuit. The inherited actions automatically show up in new FMEDA tables along
+with the failure modes already defined for the circuit's components.
+
 Elements on a diagram may reference reliability analyses. Choosing a
 **circuit** or **component** automatically fills the **fit**, **qualification**
 and **failureModes** fields using data from FMEA and FMEDA tables. These values
