@@ -1166,7 +1166,11 @@ class ArchitectureManagerDialog(tk.Toplevel):
                 if p.elem_type == "Package" and p.owner == pkg_id:
                     add_pkg(p.elem_id, node)
             for e in self.repo.elements.values():
-                if e.owner == pkg_id and e.elem_type != "Package":
+                if (
+                    e.owner == pkg_id
+                    and e.elem_type != "Package"
+                    and e.name
+                ):
                     add_elem(e.elem_id, node)
             for d in self.repo.diagrams.values():
                 if d.package == pkg_id:
