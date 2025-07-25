@@ -2057,14 +2057,25 @@ class ArchitectureManagerDialog(tk.Toplevel):
                         values=(d.diag_type,),
                         image=icon,
                     )
-                    for obj in d.objects:
+                    objs = sorted(
+                        d.objects,
+                        key=lambda o: 1 if getattr(o, "obj_type", o.get("obj_type")) == "Port" else 0,
+                    )
+                    for obj in objs:
                         props = getattr(obj, "properties", obj.get("properties", {}))
                         name = props.get("name", getattr(obj, "obj_type", obj.get("obj_type")))
                         oid = getattr(obj, "obj_id", obj.get("obj_id"))
                         otype = getattr(obj, "obj_type", obj.get("obj_type"))
                         icon = self.elem_icons.get(otype, self.default_elem_icon)
+                        parent_node = diag_node
+                        if (
+                            otype == "Port"
+                            and props.get("parent")
+                            and self.tree.exists(f"obj_{d.diag_id}_{props.get('parent')}")
+                        ):
+                            parent_node = f"obj_{d.diag_id}_{props.get('parent')}"
                         self.tree.insert(
-                            diag_node,
+                            parent_node,
                             "end",
                             iid=f"obj_{d.diag_id}_{oid}",
                             text=name,
