@@ -198,6 +198,8 @@ class ReliabilityWindow(tk.Toplevel):
                 ),
             )
         self.profile_combo.config(values=[mp.name for mp in self.app.mission_profiles])
+        # keep application level components updated so property dialogs see them
+        self.app.reliability_components = list(self.components)
 
     def load_csv(self):
         path = filedialog.askopenfilename(filetypes=[("CSV", "*.csv")])
