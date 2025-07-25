@@ -2027,6 +2027,21 @@ class ArchitectureManagerDialog(tk.Toplevel):
 
         visited: set[str] = set()
 
+        # collect all elements that already appear on a diagram so they don't
+        # show up twice in the hierarchy
+        diagram_elems = {
+            elem_id
+            for diag in self.repo.diagrams.values()
+            for elem_id in (
+                list(getattr(diag, "elements", []))
+                + [
+                    getattr(o, "element_id", o.get("element_id"))
+                    for o in getattr(diag, "objects", [])
+                    if getattr(o, "element_id", o.get("element_id"))
+                ]
+            )
+        }
+
         def add_elem(elem_id: str, parent: str):
             if elem_id in visited:
                 return
@@ -2067,6 +2082,7 @@ class ArchitectureManagerDialog(tk.Toplevel):
                     e.owner == pkg_id
                     and e.elem_type not in ("Package", "Part")
                     and e.name
+                    and e.elem_id not in diagram_elems
                 ):
                     add_elem(e.elem_id, node)
             for d in self.repo.diagrams.values():
