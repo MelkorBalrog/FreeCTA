@@ -91,6 +91,7 @@ class SysMLDiagramWindow(tk.Toplevel):
             if "requirements" not in data:
                 data["requirements"] = []
             self.objects.append(SysMLObject(**data))
+        self.sort_objects()
         self.connections: List[DiagramConnection] = [
             DiagramConnection(**data) for data in getattr(diagram, "connections", [])
         ]
@@ -220,7 +221,11 @@ class SysMLDiagramWindow(tk.Toplevel):
                     new_obj.properties["parent"] = str(parent_obj.obj_id)
                     self.snap_port_to_parent(new_obj, parent_obj)
             element.properties.update(new_obj.properties)
-            self.objects.append(new_obj)
+            if t == "System Boundary":
+                self.objects.insert(0, new_obj)
+            else:
+                self.objects.append(new_obj)
+            self.sort_objects()
             self._sync_to_repository()
             self.redraw()
         else:
@@ -291,6 +296,22 @@ class SysMLDiagramWindow(tk.Toplevel):
                         p.x += dx
                         p.y += dy
                         self.snap_port_to_parent(p, self.selected_obj)
+            if self.selected_obj.obj_type == "System Boundary":
+                for o in self.objects:
+                    if o.properties.get("boundary") == str(self.selected_obj.obj_id):
+                        o.x += dx
+                        o.y += dy
+            else:
+                b_id = self.selected_obj.properties.get("boundary")
+                if b_id:
+                    b = self.get_object(int(b_id))
+                    if b:
+                        b.x += dx
+                        b.y += dy
+                        for o in self.objects:
+                            if o is not self.selected_obj and o.properties.get("boundary") == b_id:
+                                o.x += dx
+                                o.y += dy
         self.redraw()
         self._sync_to_repository()
 
@@ -321,6 +342,14 @@ class SysMLDiagramWindow(tk.Toplevel):
             self.selected_obj = None
         self.resizing_obj = None
         self.resize_edge = None
+        if self.selected_obj and self.current_tool == "Select":
+            if self.selected_obj.obj_type != "System Boundary":
+                b = self.find_boundary_for_obj(self.selected_obj)
+                if b:
+                    self.selected_obj.properties["boundary"] = str(b.obj_id)
+                else:
+                    self.selected_obj.properties.pop("boundary", None)
+            self._sync_to_repository()
         self.redraw()
 
     def on_mouse_move(self, event):
@@ -545,6 +574,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         for n, obj in list(existing.items()):
             if n not in names:
                 self.objects.remove(obj)
+        self.sort_objects()
 
     def zoom_in(self):
         self.zoom *= 1.2
@@ -554,8 +584,13 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.zoom /= 1.2
         self.redraw()
 
+    def sort_objects(self) -> None:
+        """Ensure System Boundaries are drawn and selected behind others."""
+        self.objects.sort(key=lambda o: 0 if o.obj_type == "System Boundary" else 1)
+
     def redraw(self):
         self.canvas.delete("all")
+        self.sort_objects()
         for obj in list(self.objects):
             if obj.obj_type == "Part":
                 self.sync_ports(obj)
@@ -866,6 +901,21 @@ class SysMLDiagramWindow(tk.Toplevel):
                 return o
         return None
 
+    def _object_within(self, obj: SysMLObject, boundary: SysMLObject) -> bool:
+        left = boundary.x - boundary.width / 2
+        right = boundary.x + boundary.width / 2
+        top = boundary.y - boundary.height / 2
+        bottom = boundary.y + boundary.height / 2
+        ox = obj.x
+        oy = obj.y
+        return left <= ox <= right and top <= oy <= bottom
+
+    def find_boundary_for_obj(self, obj: SysMLObject) -> SysMLObject | None:
+        for b in self.objects:
+            if b.obj_type == "System Boundary" and self._object_within(obj, b):
+                return b
+        return None
+
     # ------------------------------------------------------------
     # Clipboard operations
     # ------------------------------------------------------------
@@ -890,7 +940,11 @@ class SysMLDiagramWindow(tk.Toplevel):
             new_obj.obj_id = _get_next_id()
             new_obj.x += 20
             new_obj.y += 20
-            self.objects.append(new_obj)
+            if new_obj.obj_type == "System Boundary":
+                self.objects.insert(0, new_obj)
+            else:
+                self.objects.append(new_obj)
+            self.sort_objects()
             diag = self.repo.diagrams.get(self.diagram_id)
             if diag and new_obj.element_id and new_obj.element_id not in diag.elements:
                 diag.elements.append(new_obj.element_id)
@@ -1397,6 +1451,7 @@ class SysMLObjectDialog(simpledialog.Dialog):
                                     for win in getattr(app, "ibd_windows", []):
                                         if win.diagram_id == diag_id:
                                             win.objects.append(obj)
+                                            win.sort_objects()
                                             win.redraw()
                                             win._sync_to_repository()
                             repo.diagrams[diag_id] = diag
