@@ -1995,7 +1995,7 @@ class ArchitectureManagerDialog(tk.Toplevel):
             for e in self.repo.elements.values():
                 if (
                     e.owner == pkg_id
-                    and e.elem_type != "Package"
+                    and e.elem_type not in ("Package", "Part")
                     and e.name
                 ):
                     add_elem(e.elem_id, node)
