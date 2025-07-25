@@ -4264,6 +4264,35 @@ class FaultTreeApp:
                 return result
         return None
 
+    def get_safety_goal_asil(self, sg_name):
+        """Return the ASIL level for a safety goal name."""
+        for te in self.top_events:
+            if sg_name and (sg_name == te.user_name or sg_name == te.safety_goal_description):
+                return te.safety_goal_asil or "QM"
+        return "QM"
+
+    def compute_fmeda_metrics(self, events):
+        """Return totals and metrics for a list of FMEDA events."""
+        total = 0.0
+        spf = 0.0
+        lpf = 0.0
+        asil = "QM"
+        for be in events:
+            fit_mode = getattr(be, "fmeda_fit", 0.0)
+            total += fit_mode
+            if getattr(be, "fmeda_fault_type", "permanent") == "permanent":
+                spf += fit_mode * (1 - getattr(be, "fmeda_diag_cov", 0.0))
+            else:
+                lpf += fit_mode * (1 - getattr(be, "fmeda_diag_cov", 0.0))
+            sg = getattr(be, "fmeda_safety_goal", "")
+            a = self.get_safety_goal_asil(sg)
+            if ASIL_ORDER.get(a, 0) > ASIL_ORDER.get(asil, 0):
+                asil = a
+        dc = (total - (spf + lpf)) / total if total else 0.0
+        spfm_metric = 1 - spf / total if total else 0.0
+        lpfm_metric = 1 - lpf / (total - spf) if total > spf else 0.0
+        return total, spf, lpf, dc, spfm_metric, lpfm_metric, asil
+
     def edit_selected(self):
         sel = self.treeview.selection()
         target = None
@@ -10014,27 +10043,10 @@ class FaultTreeApp:
                 tree.item(iid, open=True)
 
             if fmeda:
-                total = 0.0
-                spf = 0.0
-                lpf = 0.0
-                asil = "QM"
-                for be in events:
-                    fit_mode = be.fmeda_fit
-                    total += fit_mode
-                    if be.fmeda_fault_type == "permanent":
-                        spf += fit_mode * (1 - be.fmeda_diag_cov)
-                    else:
-                        lpf += fit_mode * (1 - be.fmeda_diag_cov)
-                    sg = getattr(be, "fmeda_safety_goal", "")
-                    a = self.get_safety_goal_asil(sg)
-                    if ASIL_ORDER.get(a,0) > ASIL_ORDER.get(asil,0):
-                        asil = a
-                dc = (total - (spf + lpf)) / total if total else 0.0
+                total, spf, lpf, dc, spfm_metric, lpfm_metric, asil = self.compute_fmeda_metrics(events)
                 self.reliability_total_fit = total
                 self.spfm = spf
                 self.lpfm = lpf
-                spfm_metric = 1 - spf / total if total else 0.0
-                lpfm_metric = 1 - lpf / (total - spf) if total > spf else 0.0
                 thresh = ASIL_TARGETS.get(asil, ASIL_TARGETS["QM"])
                 ok_dc = dc >= thresh["dc"]
                 ok_spf = spfm_metric >= thresh["spfm"]
@@ -10743,6 +10755,8 @@ class FaultTreeApp:
         def refresh():
             listbox.delete(0, tk.END)
             for mp in self.mission_profiles:
+                if mp is None:
+                    continue
                 info = (
                     f"{mp.name} (on: {mp.tau_on}h, off: {mp.tau_off}h, "
                     f"board: {mp.board_temp}\u00b0C, ambient: {mp.ambient_temp}\u00b0C)"
@@ -10813,7 +10827,7 @@ class FaultTreeApp:
 
         def add_profile():
             dlg = MPDialog(win)
-            if hasattr(dlg, "result"):
+            if getattr(dlg, "result", None) is not None:
                 self.mission_profiles.append(dlg.result)
                 refresh()
 
@@ -10823,7 +10837,7 @@ class FaultTreeApp:
                 return
             mp = self.mission_profiles[sel[0]]
             dlg = MPDialog(win, mp)
-            if hasattr(dlg, "result"):
+            if getattr(dlg, "result", None) is not None:
                 refresh()
 
         def delete_profile():
