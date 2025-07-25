@@ -1790,8 +1790,8 @@ class FaultTreeApp:
         architecture_menu.add_command(label="AutoML Explorer", command=self.manage_architecture)
         menubar.add_cascade(label="AutoML", menu=architecture_menu)
 
-        analysis_menu = tk.Menu(menubar, tearoff=0)
-        qualitative_menu = tk.Menu(analysis_menu, tearoff=0)
+        # --- Qualitative Analysis Menu ---
+        qualitative_menu = tk.Menu(menubar, tearoff=0)
         qualitative_menu.add_command(label="HAZOP Analysis", command=self.open_hazop_window)
         qualitative_menu.add_command(label="HARA Analysis", command=self.open_hara_window)
         qualitative_menu.add_command(label="Hazard Explorer", command=self.show_hazard_explorer)
@@ -1801,17 +1801,17 @@ class FaultTreeApp:
         qualitative_menu.add_separator()
         qualitative_menu.add_command(label="FI2TC Analysis", command=self.open_fi2tc_window)
         qualitative_menu.add_command(label="TC2FI Analysis", command=self.open_tc2fi_window)
-        analysis_menu.add_cascade(label="Qualitative Analysis", menu=qualitative_menu)
-
-        quantitative_menu = tk.Menu(analysis_menu, tearoff=0)
+        qualitative_menu.add_separator()
+        qualitative_menu.add_command(label="FMEA Manager", command=self.show_fmea_list)
+        menubar.add_cascade(label="Qualitative Analysis", menu=qualitative_menu)
+        # --- Quantitative Analysis Menu ---
+        quantitative_menu = tk.Menu(menubar, tearoff=0)
         quantitative_menu.add_command(label="Mission Profiles", command=self.manage_mission_profiles)
         quantitative_menu.add_command(label="Mechanism Libraries", command=self.manage_mechanism_libraries)
         quantitative_menu.add_command(label="Reliability Analysis", command=self.open_reliability_window)
         quantitative_menu.add_command(label="FMEDA Analysis", command=self.open_fmeda_window)
         quantitative_menu.add_command(label="FMEDA Manager", command=self.show_fmeda_list)
-        analysis_menu.add_cascade(label="Quantitative Analysis", menu=quantitative_menu)
-
-        menubar.add_cascade(label="Analysis", menu=analysis_menu)
+        menubar.add_cascade(label="Quantitative Analysis", menu=quantitative_menu)
 
         libs_menu = tk.Menu(menubar, tearoff=0)
         libs_menu.add_command(label="Scenario Libraries", command=self.manage_scenario_libraries)
