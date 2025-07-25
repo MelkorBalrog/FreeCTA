@@ -187,6 +187,10 @@ class SysMLDiagramWindow(tk.Toplevel):
             if t == "Port":
                 new_obj.properties.setdefault("labelX", "8")
                 new_obj.properties.setdefault("labelY", "-8")
+                parent_obj = obj if obj and obj.obj_type == "Part" else None
+                if parent_obj:
+                    new_obj.properties["parent"] = str(parent_obj.obj_id)
+                    self.snap_port_to_parent(new_obj, parent_obj)
             element.properties.update(new_obj.properties)
             self.objects.append(new_obj)
             self._sync_to_repository()
@@ -584,13 +588,36 @@ class SysMLDiagramWindow(tk.Toplevel):
                 sz = 6 * self.zoom
                 self.canvas.create_rectangle(x - sz, y - sz, x + sz, y + sz, fill="white")
                 arrow_len = sz * 1.2
+                half = arrow_len / 2
                 direction = obj.properties.get("direction", "out")
-                if direction == "in":
-                    self.canvas.create_line(x + arrow_len/2, y, x - arrow_len/2, y, arrow=tk.LAST)
-                elif direction == "out":
-                    self.canvas.create_line(x - arrow_len/2, y, x + arrow_len/2, y, arrow=tk.LAST)
-                else:
-                    self.canvas.create_line(x - arrow_len/2, y, x + arrow_len/2, y, arrow=tk.BOTH)
+
+                if side in ("E", "W"):
+                    if side == "E":
+                        inside = -half
+                        outside = half
+                    else:
+                        inside = half
+                        outside = -half
+                    if direction == "in":
+                        self.canvas.create_line(x + outside, y, x + inside, y, arrow=tk.LAST)
+                    elif direction == "out":
+                        self.canvas.create_line(x + inside, y, x + outside, y, arrow=tk.LAST)
+                    else:
+                        self.canvas.create_line(x - half, y, x + half, y, arrow=tk.BOTH)
+                else:  # N or S
+                    if side == "S":
+                        inside = -half
+                        outside = half
+                    else:
+                        inside = half
+                        outside = -half
+                    if direction == "in":
+                        self.canvas.create_line(x, y + outside, x, y + inside, arrow=tk.LAST)
+                    elif direction == "out":
+                        self.canvas.create_line(x, y + inside, x, y + outside, arrow=tk.LAST)
+                    else:
+                        self.canvas.create_line(x, y - half, x, y + half, arrow=tk.BOTH)
+
                 lx = x + float(obj.properties.get("labelX", "8")) * self.zoom
                 ly = y + float(obj.properties.get("labelY", "-8")) * self.zoom
                 self.canvas.create_text(lx, ly, text=obj.properties.get("name", ""), anchor="center")
