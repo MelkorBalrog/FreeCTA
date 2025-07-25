@@ -169,5 +169,16 @@ class RepositoryTests(unittest.TestCase):
         self.assertEqual(len(nd.connections), 1)
         self.assertEqual(nd.connections[0]["conn_type"], "Association")
 
+    def test_to_from_dict(self):
+        diag = self.repo.create_diagram("Use Case Diagram", name="UC")
+        actor = self.repo.create_element("Actor", name="User")
+        self.repo.add_element_to_diagram(diag.diag_id, actor.elem_id)
+        data = self.repo.to_dict()
+        SysMLRepository._instance = None
+        new_repo = SysMLRepository.get_instance()
+        new_repo.from_dict(data)
+        self.assertIn(diag.diag_id, new_repo.diagrams)
+        self.assertIn(actor.elem_id, new_repo.diagrams[diag.diag_id].elements)
+
 if __name__ == '__main__':
     unittest.main()

@@ -10963,6 +10963,7 @@ class FaultTreeApp:
                 "hara_names": getattr(r, 'hara_names', []),
             })
         current_name = self.review_data.name if self.review_data else None
+        repo = SysMLRepository.get_instance()
         data = {
             "top_events": [event.to_dict() for event in self.top_events],
             "fmeas": [
@@ -11038,6 +11039,7 @@ class FaultTreeApp:
             "global_requirements": global_requirements,
             "reviews": reviews,
             "current_review": current_name,
+            "sysml_repository": repo.to_dict(),
         }
         if include_versions:
             data["versions"] = self.versions
@@ -11086,6 +11088,11 @@ class FaultTreeApp:
                     f"Failed to parse JSON file:\n{exc}",
                 )
                 return
+
+        repo_data = data.get("sysml_repository")
+        if repo_data:
+            repo = SysMLRepository.get_instance()
+            repo.from_dict(repo_data)
 
         if "top_events" in data:
             self.top_events = [FaultTreeNode.from_dict(e) for e in data["top_events"]]
