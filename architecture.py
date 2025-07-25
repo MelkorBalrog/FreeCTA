@@ -565,11 +565,12 @@ class SysMLDiagramWindow(tk.Toplevel):
 
         if obj.obj_type not in ("Block", "System Boundary", "Port"):
             name = obj.properties.get("name", obj.obj_type)
+            label = name
             if obj.obj_type == "Part":
                 def_id = obj.properties.get("definition")
                 if def_id and def_id in self.repo.elements:
                     def_name = self.repo.elements[def_id].name or def_id
-                    label = f"{obj_name} : {def_name}" if obj_name else def_name
+                    label = f"{name} : {def_name}" if name else def_name
             diag_id = self.repo.get_linked_diagram(obj.element_id)
             label_lines = []
             if diag_id and diag_id in self.repo.diagrams:
