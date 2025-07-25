@@ -755,6 +755,9 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.result = [rid for rid, var in self.selected_vars.items() if var.get()]
 
     def body(self, master):
+        # Disable window resizing so the layout remains consistent
+        self.resizable(False, False)
+
         # Use a notebook to keep the dialog compact by grouping fields
         self.nb = ttk.Notebook(master)
         self.nb.grid(row=0, column=0, columnspan=3, sticky="nsew")
@@ -919,6 +922,15 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 rel_row += 1
             else:
                 prop_row += 1
+
+        # Always display FIT and qualification values if present
+        for prop in ("fit", "qualification"):
+            if prop not in self.entries and self.obj.properties.get(prop, ""):
+                ttk.Label(rel_frame, text=f"{prop}:").grid(row=rel_row, column=0, sticky="e", padx=4, pady=2)
+                var = tk.StringVar(value=self.obj.properties.get(prop, ""))
+                ttk.Entry(rel_frame, textvariable=var, state="readonly").grid(row=rel_row, column=1, padx=4, pady=2)
+                self.entries[prop] = var
+                rel_row += 1
 
         repo = SysMLRepository.get_instance()
         link_row = 0
