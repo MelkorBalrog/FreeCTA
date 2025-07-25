@@ -1020,6 +1020,8 @@ class SysMLDiagramWindow(tk.Toplevel):
             if not key.endswith('Usage'):
                 key += 'Usage'
             for prop in SYSML_PROPERTIES.get(key, []):
+                if obj.obj_type == "Part" and prop in ("fit", "qualification", "failureModes"):
+                    continue
                 val = obj.properties.get(prop)
                 if val:
                     label_lines.append(f"{prop}: {val}")
@@ -1436,14 +1438,15 @@ class SysMLObjectDialog(simpledialog.Dialog):
             else:
                 prop_row += 1
 
-        # Always display inherited FIT and qualification values if present
-        for prop in ("fit", "qualification"):
-            if prop not in self.entries and self.obj.properties.get(prop, ""):
-                ttk.Label(rel_frame, text=f"{prop}:").grid(row=rel_row, column=0, sticky="e", padx=4, pady=2)
-                var = tk.StringVar(value=self.obj.properties.get(prop, ""))
-                ttk.Entry(rel_frame, textvariable=var, state="readonly").grid(row=rel_row, column=1, padx=4, pady=2)
-                self.entries[prop] = var
-                rel_row += 1
+        # Display inherited reliability values only for Blocks
+        if self.obj.obj_type == "Block":
+            for prop in ("fit", "qualification"):
+                if prop not in self.entries and self.obj.properties.get(prop, ""):
+                    ttk.Label(rel_frame, text=f"{prop}:").grid(row=rel_row, column=0, sticky="e", padx=4, pady=2)
+                    var = tk.StringVar(value=self.obj.properties.get(prop, ""))
+                    ttk.Entry(rel_frame, textvariable=var, state="readonly").grid(row=rel_row, column=1, padx=4, pady=2)
+                    self.entries[prop] = var
+                    rel_row += 1
 
         repo = SysMLRepository.get_instance()
         link_row = 0
