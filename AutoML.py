@@ -247,7 +247,7 @@ try:
 except Exception:  # openpyxl may not be installed
     load_workbook = None
 from drawing_helper import FTADrawingHelper, fta_drawing_helper
-from risk_assessment import DERIVED_MATURITY_TABLE, ASSURANCE_AGGREGATION_AND, AND_DECOMPOSITION_TABLE, OR_DECOMPOSITION_TABLE, boolify, ADRiskAssessmentHelper
+from risk_assessment import DERIVED_MATURITY_TABLE, ASSURANCE_AGGREGATION_AND, AND_DECOMPOSITION_TABLE, OR_DECOMPOSITION_TABLE, boolify, AutoMLHelper
 from models import (
     MissionProfile,
     ReliabilityComponent,
@@ -710,7 +710,7 @@ dynamic_recommendations = {
     }
 }
 
-AD_RiskAssessment_Helper = ADRiskAssessmentHelper()
+AutoML_Helper = AutoMLHelper()
 
 ##########################################
 # Edit Dialog 
@@ -1580,7 +1580,7 @@ class EditNodeDialog(simpledialog.Dialog):
             target_node.input_subtype = self.subtype_var.get()
 
         self.app.sync_nodes_by_id(target_node)
-        AD_RiskAssessment_Helper.calculate_assurance_recursive(
+        AutoML_Helper.calculate_assurance_recursive(
             self.app.root_node,
             self.app.top_events,
         )
@@ -1619,7 +1619,7 @@ class FaultTreeApp:
         self.top_events = []
         self.selected_node = None
         self.clone_offset_counter = {}
-        self.root.title("AutoSafeguard-Analyzer")
+        self.root.title("AutoML-Analyzer")
         self.zoom = 1.0
         self.diagram_font = tkFont.Font(family="Arial", size=int(8 * self.zoom))
         self.style = ttk.Style()
@@ -1632,7 +1632,7 @@ class FaultTreeApp:
         self.cut_mode = False
         self.page_history = []
         self.project_properties = {
-            "pdf_report_name": "AutoSafeguard-Analyzer PDF Report",
+            "pdf_report_name": "AutoML-Analyzer PDF Report",
             "pdf_detailed_formulas": True,
             "show_grid": True,
             "black_white": False,
@@ -2627,7 +2627,7 @@ class FaultTreeApp:
 
     def generate_recommendations_for_top_event(self, node):
         # Determine the Prototype Assurance Level (PAL) based on the node’s quantitative score.
-        level = AD_RiskAssessment_Helper.discretize_level(node.quant_value) if node.quant_value is not None else 1
+        level = AutoML_Helper.discretize_level(node.quant_value) if node.quant_value is not None else 1
         rec = dynamic_recommendations.get(level, {})
         rec_text = f"<b>Recommendations for Prototype Assurance Level (PAL) {level}:</b><br/>"
         for category in ["Testing Requirements", "IFTD Responsibilities", "Preventive Maintenance Actions", "Relevant AVSC Guidelines"]:
@@ -2819,7 +2819,7 @@ class FaultTreeApp:
 
         ttk.Label(prop_win, text="PDF Report Name:", font=dialog_font).grid(row=0, column=0, padx=10, pady=10, sticky="w")
         pdf_entry = tk.Entry(prop_win, width=40, font=dialog_font)
-        pdf_entry.insert(0, self.project_properties.get("pdf_report_name", "AutoSafeguard-Analyzer PDF Report"))
+        pdf_entry.insert(0, self.project_properties.get("pdf_report_name", "AutoML-Analyzer PDF Report"))
         pdf_entry.grid(row=0, column=1, padx=10, pady=10)
 
         # New checkbox to choose between detailed formulas or score results only.
@@ -5300,7 +5300,7 @@ class FaultTreeApp:
     def metric_to_text(self, metric_type, value):
         if value is None:
             return "unknown"
-        disc = AD_RiskAssessment_Helper.discretize_level(value)
+        disc = AutoML_Helper.discretize_level(value)
         if metric_type == "maturity":
             return "high maturity" if disc == 5 else "low maturity" if disc == 1 else f"a maturity of {disc}"
         elif metric_type == "rigor":
@@ -5423,7 +5423,7 @@ class FaultTreeApp:
         for node in primary_nodes:
             # Only consider nodes with a quant_value and a nonempty description.
             if node.quant_value is not None and node.description:
-                discrete = AD_RiskAssessment_Helper.discretize_level(node.quant_value)
+                discrete = AutoML_Helper.discretize_level(node.quant_value)
                 extra_dict = dynamic_recommendations.get(discrete, {}).get("Extra Recommendations", {})
                 desc_lower = node.description.lower()
                 for keyword, rec_text in extra_dict.items():
@@ -5554,7 +5554,7 @@ class FaultTreeApp:
             return ""
         header = ""
         if node.node_type.upper() == "TOP EVENT":
-            disc = AD_RiskAssessment_Helper.discretize_level(node.quant_value)
+            disc = AutoML_Helper.discretize_level(node.quant_value)
             assurance_descr = self.assurance_level_text(disc)
             severity_str = f"{node.severity}" if node.severity is not None else "N/A"
             controllability_str = f"{node.controllability}" if node.controllability is not None else "N/A"
@@ -5603,7 +5603,7 @@ class FaultTreeApp:
         filtered by the node’s description. For non–top-level nodes, simply display the node's input score,
         description, and rationale.
         """
-        level = AD_RiskAssessment_Helper.discretize_level(node.quant_value) if node.quant_value is not None else 1
+        level = AutoML_Helper.discretize_level(node.quant_value) if node.quant_value is not None else 1
 
         if node.node_type.upper() == "TOP EVENT" and not suppress_top_event_recommendations:
             assurance_descr = self.assurance_level_text(level)
@@ -5650,7 +5650,7 @@ class FaultTreeApp:
         """
         # Ensure a quant_value exists; default to 1.
         quant = event.quant_value if event.quant_value is not None else 1
-        level = AD_RiskAssessment_Helper.discretize_level(quant)
+        level = AutoML_Helper.discretize_level(quant)
         assurance_level = self.assurance_level_text(level)
         severity = event.severity if event.severity is not None else "N/A"
         controllability = event.controllability if event.controllability is not None else "N/A"
@@ -6036,7 +6036,7 @@ class FaultTreeApp:
         for event in events:
             event_name = event.name if event.name else f"Node {event.unique_id}"
             if event.quant_value is not None:
-                disc_level = AD_RiskAssessment_Helper.discretize_level(event.quant_value)
+                disc_level = AutoML_Helper.discretize_level(event.quant_value)
                 assurance_str = app.assurance_level_text(disc_level)
             else:
                 assurance_str = "N/A"
@@ -6207,7 +6207,7 @@ class FaultTreeApp:
         return summary_sentence
 
     def _generate_pdf_report(self, include_assurance=True):
-        report_title = self.project_properties.get("pdf_report_name", "AutoSafeguard-Analyzer PDF Report")
+        report_title = self.project_properties.get("pdf_report_name", "AutoML-Analyzer PDF Report")
         path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
         if not path:
             return
@@ -6425,7 +6425,7 @@ class FaultTreeApp:
                     # (You can adjust this method as needed.)
                     linked_rec = self.generate_recommendations_for_top_event(node)
                     extra_recs = self.get_extra_recommendations_list(node.description,
-                                                                      AD_RiskAssessment_Helper.discretize_level(node.quant_value))
+                                                                      AutoML_Helper.discretize_level(node.quant_value))
                     if not extra_recs:
                         extra_recs = ["No Extra Recommendation"]
                     # Group by the linked recommendation text.
@@ -6709,7 +6709,7 @@ class FaultTreeApp:
             if node.quant_value is not None:
                 # Convert quant_value to float and discretize
                 score_value = float(node.quant_value)
-                discrete = AD_RiskAssessment_Helper.discretize_level(score_value)
+                discrete = AutoML_Helper.discretize_level(score_value)
             else:
                 discrete = "N/A"
             top_text = (f"Type: {node.node_type}\n"
@@ -6878,7 +6878,7 @@ class FaultTreeApp:
         if not messagebox.askyesno("New Model", "This will close the current project and start a new one. Continue?"):
             return
 
-        AD_RiskAssessment_Helper.unique_node_id_counter = 1
+        AutoML_Helper.unique_node_id_counter = 1
         self.zoom = 1.0
         self.diagram_font.config(size=int(8 * self.zoom))
         self.scenario_libraries = []
@@ -7911,12 +7911,12 @@ class FaultTreeApp:
 
     def calculate_overall(self):
         for top_event in self.top_events:
-            AD_RiskAssessment_Helper.calculate_assurance_recursive(top_event, self.top_events)
+            AutoML_Helper.calculate_assurance_recursive(top_event, self.top_events)
         self.update_views()
         results = ""
         for top_event in self.top_events:
             if top_event.quant_value is not None:
-                disc = AD_RiskAssessment_Helper.discretize_level(top_event.quant_value)
+                disc = AutoML_Helper.discretize_level(top_event.quant_value)
                 results += (f"Top Event {top_event.display_label}\n"
                             f"(Continuous: {top_event.quant_value:.2f}, Discrete: {disc})\n\n")
         messagebox.showinfo("Calculation", results.strip())
@@ -7940,7 +7940,7 @@ class FaultTreeApp:
 
         pmhf = 0.0
         for te in self.top_events:
-            prob = AD_RiskAssessment_Helper.calculate_probability_recursive(te)
+            prob = AutoML_Helper.calculate_probability_recursive(te)
             te.probability = prob
             pmhf += prob
 
@@ -10822,7 +10822,7 @@ class FaultTreeApp:
             messagebox.showinfo("Paste", "Node pasted successfully (copied).")
 
         # 8) Recalculate and update views.
-        AD_RiskAssessment_Helper.calculate_assurance_recursive(
+        AutoML_Helper.calculate_assurance_recursive(
             self.root_node,
             self.top_events,
         )
@@ -10831,7 +10831,7 @@ class FaultTreeApp:
     def clone_node_preserving_id(self, node):
         # Create a new node with the same properties, but assign a new unique ID.
         new_node = FaultTreeNode(node.user_name, node.node_type)
-        new_node.unique_id = AD_RiskAssessment_Helper.get_next_unique_id()
+        new_node.unique_id = AutoML_Helper.get_next_unique_id()
         new_node.quant_value = node.quant_value
         new_node.gate_type = node.gate_type
         new_node.description = node.description
@@ -11156,9 +11156,9 @@ class FaultTreeApp:
             self.set_last_saved_state()
 
     def load_model(self):
-        global AD_RiskAssessment_Helper
+        global AutoML_Helper
         # Reinitialize the helper so that the counter is reset.
-        AD_RiskAssessment_Helper = ADRiskAssessmentHelper()
+        AutoML_Helper = AutoMLHelper()
         
         path = filedialog.askopenfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
         if not path:
@@ -11356,10 +11356,10 @@ class FaultTreeApp:
 
         # Fix clone references for each top event.
         for event in self.top_events:
-            AD_RiskAssessment_Helper.fix_clone_references(self.top_events)
+            AutoML_Helper.fix_clone_references(self.top_events)
 
         # Update the unique ID counter.
-        AD_RiskAssessment_Helper.update_unique_id_counter_for_top_events(self.top_events)
+        AutoML_Helper.update_unique_id_counter_for_top_events(self.top_events)
         
         # *** Add this loop to update your global_requirements database ***
         for event in self.top_events:
@@ -11483,11 +11483,11 @@ class FaultTreeApp:
 <html>
 <head>
 <meta charset="UTF-8">
-<title>AutoSafeguard-Analyzer</title>
+<title>AutoML-Analyzer</title>
 <style>body {{ font-family: Arial; }} details {{ margin-left: 20px; }}</style>
 </head>
 <body>
-<h1>AutoSafeguard-Analyzer</h1>
+<h1>AutoML-Analyzer</h1>
 {node_to_html(self.root_node)}
 </body>
 </html>"""
@@ -12469,7 +12469,7 @@ class FaultTreeApp:
 ##########################################
 class FaultTreeNode:
     def __init__(self, user_name, node_type, parent=None):
-        self.unique_id = AD_RiskAssessment_Helper.get_next_unique_id()
+        self.unique_id = AutoML_Helper.get_next_unique_id()
         # Assign a sequential default name if none is provided
         self.user_name = user_name if user_name else f"Node {self.unique_id}"
         self.node_type = node_type
@@ -12635,7 +12635,7 @@ class FaultTreeNode:
         if "unique_id" in data:
             node.unique_id = data["unique_id"]
         else:
-            node.unique_id = AD_RiskAssessment_Helper.get_next_unique_id()
+            node.unique_id = AutoML_Helper.get_next_unique_id()
         if not node.is_primary_instance and "original_id" in data:
             node._original_id = data["original_id"]
         else:
@@ -13102,8 +13102,8 @@ class PageDiagram:
 def main():
     root = tk.Tk()
     # Create a fresh helper each session:
-    global AD_RiskAssessment_Helper
-    AD_RiskAssessment_Helper = ADRiskAssessmentHelper()
+    global AutoML_Helper
+    AutoML_Helper = AutoMLHelper()
     
     app = FaultTreeApp(root)
     root.mainloop()
