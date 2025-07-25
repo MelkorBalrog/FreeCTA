@@ -785,13 +785,13 @@ class SysMLDiagramWindow(tk.Toplevel):
             )
             label = obj.properties.get("name", "")
             if label:
-                lx = x - w + 4 * self.zoom
+                lx = x
                 ly = y - h - 4 * self.zoom
                 self.canvas.create_text(
                     lx,
                     ly,
                     text=label,
-                    anchor="sw",
+                    anchor="s",
                     font=self.font,
                 )
         elif obj.obj_type in ("Action Usage", "Action", "Part", "Port"):
