@@ -99,7 +99,7 @@ class HazopEntry:
 @dataclass
 class HaraEntry:
     malfunction: str
-    hazard: str = ""
+    hazard: str
     severity: int
     sev_rationale: str
     controllability: int
