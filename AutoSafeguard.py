@@ -8428,8 +8428,10 @@ class FaultTreeApp:
                     if name:
                         comp_names.add(name)
             self.comp_var = tk.StringVar(value=comp)
-            self.comp_combo = ttk.Combobox(master, textvariable=self.comp_var,
-                                           values=sorted(comp_names), width=30)
+            self.comp_combo = ttk.Combobox(
+                master, textvariable=self.comp_var,
+                values=sorted(comp_names), width=30
+            )
             self.comp_combo.grid(row=0, column=1, padx=5, pady=5)
 
             ttk.Label(master, text="Failure Mode:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
@@ -8465,6 +8467,7 @@ class FaultTreeApp:
                         comp_name = getattr(src, "fmea_component", "")
                     if comp_name:
                         self.comp_var.set(comp_name)
+                        comp_sel()
 
             self.mode_combo.bind("<<ComboboxSelected>>", mode_sel)
 
@@ -8535,13 +8538,22 @@ class FaultTreeApp:
 
             row += 1
             ttk.Label(master, text="Fault Fraction:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
-            self.ffrac_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_fault_fraction', 0.0))
+            self.ffrac_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_fault_fraction', 1.0))
             ttk.Entry(master, textvariable=self.ffrac_var, width=5).grid(row=row, column=1, sticky="w", padx=5, pady=5)
 
             row += 1
             ttk.Label(master, text="FIT Rate:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
             self.fit_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_fit', 0.0))
             ttk.Entry(master, textvariable=self.fit_var, width=10).grid(row=row, column=1, sticky="w", padx=5, pady=5)
+
+            def comp_sel(_=None):
+                name = self.comp_var.get()
+                comp = next((c for c in self.app.reliability_components if c.name == name), None)
+                if comp is not None:
+                    self.fit_var.set(comp.fit)
+
+            self.comp_combo.bind("<<ComboboxSelected>>", comp_sel)
+            comp_sel()
 
             row += 1
             ttk.Label(master, text="Requirements:").grid(row=row, column=0, sticky="ne", padx=5, pady=5)
@@ -8942,15 +8954,24 @@ class FaultTreeApp:
                 if frac > 1.0:
                     frac /= 100.0
                 if fit is not None:
-                    be.fmeda_fit = fit * frac
+                    value = fit * frac
                 else:
-                    be.fmeda_fit = getattr(src, "fmeda_fit", 0.0)
+                    value = getattr(src, "fmeda_fit", 0.0)
+
+                be.fmeda_fit = value
+                src.fmeda_fit = value
+
                 if src.fmeda_fault_type == "permanent":
-                    be.fmeda_spfm = be.fmeda_fit * (1 - src.fmeda_diag_cov)
-                    be.fmeda_lpfm = 0.0
+                    spfm = value * (1 - src.fmeda_diag_cov)
+                    lpfm = 0.0
                 else:
-                    be.fmeda_lpfm = be.fmeda_fit * (1 - src.fmeda_diag_cov)
-                    be.fmeda_spfm = 0.0
+                    lpfm = value * (1 - src.fmeda_diag_cov)
+                    spfm = 0.0
+
+                be.fmeda_spfm = spfm
+                be.fmeda_lpfm = lpfm
+                src.fmeda_spfm = spfm
+                src.fmeda_lpfm = lpfm
                 frac_totals[comp_name] = frac_totals.get(comp_name, 0.0) + frac
 
             warnings = [f"{name} fractions={val:.2f}" for name, val in frac_totals.items() if abs(val - 1.0) > 0.01]
