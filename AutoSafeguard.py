@@ -8937,11 +8937,14 @@ class FaultTreeApp:
                 comp_name = (
                     src.parents[0].user_name if src.parents else getattr(src, "fmea_component", "")
                 )
-                fit = comp_fit.get(comp_name, 0.0)
+                fit = comp_fit.get(comp_name)
                 frac = src.fmeda_fault_fraction
                 if frac > 1.0:
                     frac /= 100.0
-                be.fmeda_fit = fit * frac
+                if fit is not None:
+                    be.fmeda_fit = fit * frac
+                else:
+                    be.fmeda_fit = getattr(src, "fmeda_fit", 0.0)
                 if src.fmeda_fault_type == "permanent":
                     be.fmeda_spfm = be.fmeda_fit * (1 - src.fmeda_diag_cov)
                     be.fmeda_lpfm = 0.0
