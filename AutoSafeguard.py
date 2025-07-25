@@ -8538,7 +8538,7 @@ class FaultTreeApp:
 
             row += 1
             ttk.Label(master, text="Fault Fraction:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
-            self.ffrac_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_fault_fraction', 0.0))
+            self.ffrac_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_fault_fraction', 1.0))
             ttk.Entry(master, textvariable=self.ffrac_var, width=5).grid(row=row, column=1, sticky="w", padx=5, pady=5)
 
             row += 1
@@ -8954,15 +8954,24 @@ class FaultTreeApp:
                 if frac > 1.0:
                     frac /= 100.0
                 if fit is not None:
-                    be.fmeda_fit = fit * frac
+                    value = fit * frac
                 else:
-                    be.fmeda_fit = getattr(src, "fmeda_fit", 0.0)
+                    value = getattr(src, "fmeda_fit", 0.0)
+
+                be.fmeda_fit = value
+                src.fmeda_fit = value
+
                 if src.fmeda_fault_type == "permanent":
-                    be.fmeda_spfm = be.fmeda_fit * (1 - src.fmeda_diag_cov)
-                    be.fmeda_lpfm = 0.0
+                    spfm = value * (1 - src.fmeda_diag_cov)
+                    lpfm = 0.0
                 else:
-                    be.fmeda_lpfm = be.fmeda_fit * (1 - src.fmeda_diag_cov)
-                    be.fmeda_spfm = 0.0
+                    lpfm = value * (1 - src.fmeda_diag_cov)
+                    spfm = 0.0
+
+                be.fmeda_spfm = spfm
+                be.fmeda_lpfm = lpfm
+                src.fmeda_spfm = spfm
+                src.fmeda_lpfm = lpfm
                 frac_totals[comp_name] = frac_totals.get(comp_name, 0.0) + frac
 
             warnings = [f"{name} fractions={val:.2f}" for name, val in frac_totals.items() if abs(val - 1.0) > 0.01]
