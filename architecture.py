@@ -1330,6 +1330,33 @@ class PackagePropertiesDialog(simpledialog.Dialog):
     def apply(self):
         self.package.name = self.name_var.get()
 
+
+class ElementPropertiesDialog(simpledialog.Dialog):
+    """Dialog to edit a generic element's name and properties."""
+
+    def __init__(self, master, element: SysMLElement):
+        self.element = element
+        super().__init__(master, title=f"{element.elem_type} Properties")
+
+    def body(self, master):
+        ttk.Label(master, text="Name:").grid(row=0, column=0, sticky="e", padx=4, pady=2)
+        self.name_var = tk.StringVar(value=self.element.name)
+        ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, padx=4, pady=2)
+        self.entries = {}
+        key = f"{self.element.elem_type.replace(' ', '')}Usage"
+        row = 1
+        for prop in SYSML_PROPERTIES.get(key, []):
+            ttk.Label(master, text=f"{prop}:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            var = tk.StringVar(value=self.element.properties.get(prop, ""))
+            ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=4, pady=2)
+            self.entries[prop] = var
+            row += 1
+
+    def apply(self):
+        self.element.name = self.name_var.get()
+        for prop, var in self.entries.items():
+            self.element.properties[prop] = var.get()
+
 class ArchitectureManagerDialog(tk.Toplevel):
     """Manage packages and diagrams in a hierarchical tree."""
 
@@ -1342,13 +1369,23 @@ class ArchitectureManagerDialog(tk.Toplevel):
         self.tree = ttk.Treeview(self)
         self.tree.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
 
-        # simple colored square icons for packages, diagrams and elements
-        self.pkg_icon = tk.PhotoImage(width=16, height=16)
-        self.pkg_icon.put("#f4d742", to=(0, 0, 15, 15))
-        self.diag_icon = tk.PhotoImage(width=16, height=16)
-        self.diag_icon.put("#58a6ff", to=(0, 0, 15, 15))
-        self.elem_icon = tk.PhotoImage(width=16, height=16)
-        self.elem_icon.put("#7ec77e", to=(0, 0, 15, 15))
+        # simple icons to visually distinguish packages, diagrams and objects
+        self.pkg_icon = self._create_icon("folder")
+        self.diagram_icons = {
+            "Use Case Diagram": self._create_icon("circle"),
+            "Activity Diagram": self._create_icon("arrow"),
+            "Block Diagram": self._create_icon("rect"),
+            "Internal Block Diagram": self._create_icon("nested"),
+        }
+        self.elem_icons = {
+            "Actor": self._create_icon("circle"),
+            "Use Case": self._create_icon("circle"),
+            "Block": self._create_icon("rect"),
+            "Part": self._create_icon("rect"),
+            "Port": self._create_icon("circle"),
+        }
+        self.default_diag_icon = self._create_icon("rect")
+        self.default_elem_icon = self._create_icon("rect")
         btns = ttk.Frame(self)
         btns.pack(fill=tk.X, padx=4, pady=4)
         ttk.Button(btns, text="Open", command=self.open).pack(side=tk.LEFT, padx=2)
@@ -1384,9 +1421,15 @@ class ArchitectureManagerDialog(tk.Toplevel):
                 return
             visited.add(elem_id)
             elem = self.repo.elements[elem_id]
-            node = self.tree.insert(parent, "end", iid=elem_id,
-                                   text=elem.name or elem_id,
-                                   values=(elem.elem_type,), image=self.elem_icon)
+            icon = self.elem_icons.get(elem.elem_type, self.default_elem_icon)
+            node = self.tree.insert(
+                parent,
+                "end",
+                iid=elem_id,
+                text=elem.name or elem_id,
+                values=(elem.elem_type,),
+                image=icon,
+            )
             for rel_id, tgt_id, rtype in rel_children.get(elem_id, []):
                 if tgt_id in self.repo.elements:
                     rel_node = self.tree.insert(node, "end", iid=f"rel_{rel_id}",
@@ -1418,18 +1461,29 @@ class ArchitectureManagerDialog(tk.Toplevel):
             for d in self.repo.diagrams.values():
                 if d.package == pkg_id:
                     label = d.name or d.diag_id
-                    self.tree.insert(node, "end", iid=f"diag_{d.diag_id}",
-                                     text=label, values=(d.diag_type,), image=self.diag_icon)
+                    icon = self.diagram_icons.get(d.diag_type, self.default_diag_icon)
+                    diag_node = self.tree.insert(
+                        node,
+                        "end",
+                        iid=f"diag_{d.diag_id}",
+                        text=label,
+                        values=(d.diag_type,),
+                        image=icon,
+                    )
                     for obj in d.objects:
                         props = getattr(obj, "properties", obj.get("properties", {}))
                         name = props.get("name", getattr(obj, "obj_type", obj.get("obj_type")))
                         oid = getattr(obj, "obj_id", obj.get("obj_id"))
                         otype = getattr(obj, "obj_type", obj.get("obj_type"))
-                        self.tree.insert(node, "end",
-                                         iid=f"obj_{d.diag_id}_{oid}",
-                                         text=name,
-                                        values=(obj.get("obj_type"),),
-                                         image=self.elem_icon)
+                        icon = self.elem_icons.get(otype, self.default_elem_icon)
+                        self.tree.insert(
+                            diag_node,
+                            "end",
+                            iid=f"obj_{d.diag_id}_{oid}",
+                            text=name,
+                            values=(obj.get("obj_type"),),
+                            image=icon,
+                        )
 
         add_pkg(root_pkg.elem_id)
 
@@ -1525,10 +1579,29 @@ class ArchitectureManagerDialog(tk.Toplevel):
             if diag:
                 DiagramPropertiesDialog(self, diag)
                 self.populate()
+        elif item.startswith("obj_"):
+            diag_id, oid = item[4:].split("_", 1)
+            diag = self.repo.diagrams.get(diag_id)
+            if diag:
+                obj_data = next(
+                    (o for o in diag.objects if str(o.get("obj_id")) == oid),
+                    None,
+                )
+                if obj_data:
+                    obj = SysMLObject(**obj_data)
+                    SysMLObjectDialog(self, obj)
+                    diag.objects = [
+                        obj.__dict__ if str(o.get("obj_id")) == oid else o
+                        for o in diag.objects
+                    ]
+                    self.populate()
         else:
             elem = self.repo.elements.get(item)
-            if elem and elem.elem_type == "Package":
-                PackagePropertiesDialog(self, elem)
+            if elem:
+                if elem.elem_type == "Package":
+                    PackagePropertiesDialog(self, elem)
+                else:
+                    ElementPropertiesDialog(self, elem)
                 self.populate()
 
     # ------------------------------------------------------------------
@@ -1551,6 +1624,8 @@ class ArchitectureManagerDialog(tk.Toplevel):
 
     def on_drag_start(self, event):
         self.drag_item = self.tree.identify_row(event.y)
+        if self.drag_item:
+            self.tree.selection_set(self.drag_item)
 
     def on_drag_motion(self, _event):
         pass
@@ -1625,3 +1700,57 @@ class ArchitectureManagerDialog(tk.Toplevel):
             diagram.objects.append(obj.__dict__)
         else:
             messagebox.showerror("Drop Error", "This item cannot be dropped on that diagram.")
+
+    def _create_icon(self, shape: str) -> tk.PhotoImage:
+        """Return a simple 16x16 PhotoImage representing the given shape."""
+        size = 16
+        img = tk.PhotoImage(width=size, height=size)
+        img.put("white", to=(0, 0, size - 1, size - 1))
+        if shape == "circle":
+            r = size // 2 - 2
+            cx = cy = size // 2
+            for y in range(size):
+                for x in range(size):
+                    if (x - cx) ** 2 + (y - cy) ** 2 <= r * r:
+                        img.put("black", (x, y))
+        elif shape == "arrow":
+            mid = size // 2
+            for x in range(2, mid + 1):
+                img.put("black", to=(x, mid - 1, x + 1, mid + 1))
+            for i in range(4):
+                img.put("black", to=(mid + i, mid - 2 - i, mid + i + 1, mid - i))
+                img.put("black", to=(mid + i, mid + i, mid + i + 1, mid + 2 + i))
+        elif shape == "rect":
+            for x in range(3, size - 3):
+                img.put("black", (x, 3))
+                img.put("black", (x, size - 4))
+            for y in range(3, size - 3):
+                img.put("black", (3, y))
+                img.put("black", (size - 4, y))
+        elif shape == "nested":
+            for x in range(1, size - 1):
+                img.put("black", (x, 1))
+                img.put("black", (x, size - 2))
+            for y in range(1, size - 1):
+                img.put("black", (1, y))
+                img.put("black", (size - 2, y))
+            for x in range(5, size - 5):
+                img.put("black", (x, 5))
+                img.put("black", (x, size - 6))
+            for y in range(5, size - 5):
+                img.put("black", (5, y))
+                img.put("black", (size - 6, y))
+        elif shape == "folder":
+            for x in range(1, size - 1):
+                img.put("black", (x, 4))
+                img.put("black", (x, size - 2))
+            for y in range(4, size - 1):
+                img.put("black", (1, y))
+                img.put("black", (size - 2, y))
+            for x in range(3, size - 3):
+                img.put("black", (x, 2))
+            img.put("black", to=(1, 3, size - 2, 4))
+        else:
+            img.put("black", to=(2, 2, size - 2, size - 2))
+        return img
+
