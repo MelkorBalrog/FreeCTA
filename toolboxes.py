@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import csv
 import copy
+import textwrap
 from models import (
     ReliabilityComponent,
     ReliabilityAnalysis,
@@ -15,6 +16,12 @@ from models import (
     PASSIVE_QUAL_FACTORS,
     calc_asil,
 )
+
+def _wrap_val(val, width=30):
+    """Return text wrapped value for tree view cells."""
+    if val is None:
+        return ""
+    return textwrap.fill(str(val), width)
 
 class ReliabilityWindow(tk.Toplevel):
     def __init__(self, app):
@@ -428,6 +435,7 @@ class FI2TCWindow(tk.Toplevel):
         super().__init__(app.root)
         self.app = app
         self.title("FI2TC Analysis")
+        self.geometry("800x400")
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill=tk.BOTH, expand=True)
         style = ttk.Style(self)
@@ -458,7 +466,8 @@ class FI2TCWindow(tk.Toplevel):
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
         for row in self.app.fi2tc_entries:
-            self.tree.insert("", "end", values=[row.get(k, "") for k in self.COLS])
+            vals = [_wrap_val(row.get(k, "")) for k in self.COLS]
+            self.tree.insert("", "end", values=vals)
 
     class RowDialog(simpledialog.Dialog):
         def __init__(self, parent, app, data=None):
@@ -1109,6 +1118,7 @@ class TC2FIWindow(tk.Toplevel):
         super().__init__(app.root)
         self.app = app
         self.title("TC2FI Analysis")
+        self.geometry("800x400")
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill=tk.BOTH, expand=True)
         style = ttk.Style(self)
@@ -1139,7 +1149,8 @@ class TC2FIWindow(tk.Toplevel):
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
         for row in self.app.tc2fi_entries:
-            self.tree.insert("", "end", values=[row.get(k, "") for k in self.COLS])
+            vals = [_wrap_val(row.get(k, "")) for k in self.COLS]
+            self.tree.insert("", "end", values=vals)
 
     class RowDialog(simpledialog.Dialog):
         def __init__(self, parent, app, data=None):
