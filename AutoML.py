@@ -286,6 +286,7 @@ from architecture import (
     ArchitectureManagerDialog,
 )
 from sysml_repository import SysMLRepository
+from fmeda_utils import compute_fmeda_metrics
 import copy
 import tkinter.font as tkFont
 from PIL import Image, ImageDraw, ImageFont, ImageTk
@@ -9039,37 +9040,20 @@ class FaultTreeApp:
                 tree.item(iid, open=True)
 
             if fmeda:
-                total = 0.0
-                spf = 0.0
-                lpf = 0.0
-                asil = "QM"
-                for be in events:
-                    src = self.get_failure_mode_node(be)
-                    fit_mode = be.fmeda_fit
-                    total += fit_mode
-                    if src.fmeda_fault_type == "permanent":
-                        spf += fit_mode * (1 - src.fmeda_diag_cov)
-                    else:
-                        lpf += fit_mode * (1 - src.fmeda_diag_cov)
-                    sg = getattr(src, "fmeda_safety_goal", "")
-                    a = self.get_safety_goal_asil(sg)
-                    if ASIL_ORDER.get(a,0) > ASIL_ORDER.get(asil,0):
-                        asil = a
-                dc = (total - (spf + lpf)) / total if total else 0.0
-                self.reliability_total_fit = total
-                self.spfm = spf
-                self.lpfm = lpf
-                spfm_metric = 1 - spf / total if total else 0.0
-                lpfm_metric = 1 - lpf / (total - spf) if total > spf else 0.0
-                thresh = ASIL_TARGETS.get(asil, ASIL_TARGETS["QM"])
-                ok_dc = dc >= thresh["dc"]
-                ok_spf = spfm_metric >= thresh["spfm"]
-                ok_lpf = lpfm_metric >= thresh["lpfm"]
+                metrics = compute_fmeda_metrics(
+                    events,
+                    self.reliability_components,
+                    self.get_safety_goal_asil,
+                    get_node=self.get_failure_mode_node,
+                )
+                self.reliability_total_fit = metrics["total"]
+                self.spfm = metrics["spfm_raw"]
+                self.lpfm = metrics["lpfm_raw"]
                 text = (
-                    f"Total FIT: {total:.2f}  DC: {dc:.2f}{CHECK_MARK if ok_dc else CROSS_MARK}"
-                    f"  SPFM: {spfm_metric:.2f}{CHECK_MARK if ok_spf else CROSS_MARK}"
-                    f"  LPFM: {lpfm_metric:.2f}{CHECK_MARK if ok_lpf else CROSS_MARK}"
-                    f"  (ASIL {asil})"
+                    f"Total FIT: {metrics['total']:.2f}  DC: {metrics['dc']:.2f}{CHECK_MARK if metrics['ok_dc'] else CROSS_MARK}"
+                    f"  SPFM: {metrics['spfm_metric']:.2f}{CHECK_MARK if metrics['ok_spfm'] else CROSS_MARK}"
+                    f"  LPFM: {metrics['lpfm_metric']:.2f}{CHECK_MARK if metrics['ok_lpfm'] else CROSS_MARK}"
+                    f"  (ASIL {metrics['asil']})"
                 )
                 metrics_lbl.config(text=text)
 
