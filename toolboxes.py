@@ -19,6 +19,7 @@ from models import (
     component_fit_map,
     calc_asil,
 )
+from fmeda_utils import compute_fmeda_metrics
 
 def _wrap_val(val, width=30):
     """Return text wrapped value for tree view cells."""
@@ -347,36 +348,22 @@ class ReliabilityWindow(tk.Toplevel):
                     comp.fit = 0.0
             total += comp.fit * comp.quantity
 
-        comp_fit = component_fit_map(self.components)
-        spf = 0.0
-        lpf = 0.0
-        total_modes = 0.0
-        for be in self.app.fmea_entries:
-            comp_name = (
-                be.parents[0].user_name if be.parents else getattr(be, "fmea_component", "")
-            )
-            fit = comp_fit.get(comp_name)
-            frac = be.fmeda_fault_fraction
-            if frac > 1.0:
-                frac /= 100.0
-            if fit is not None:
-                fit_mode = fit * frac
-            else:
-                fit_mode = getattr(be, "fmeda_fit", 0.0) * frac
-            total_modes += fit_mode
-            if be.fmeda_fault_type == "permanent":
-                spf += fit_mode * (1 - be.fmeda_diag_cov)
-            else:
-                lpf += fit_mode * (1 - be.fmeda_diag_cov)
-        dc = 1 - (spf + lpf) / total_modes if total_modes else 0.0
+        metrics = compute_fmeda_metrics(
+            self.app.fmea_entries,
+            self.components,
+            self.app.get_safety_goal_asil,
+        )
         self.app.reliability_components = list(self.components)
-        self.app.reliability_total_fit = total_modes
-        self.app.spfm = spf
-        self.app.lpfm = lpf
-        self.app.reliability_dc = dc
+        self.app.reliability_total_fit = metrics["total"]
+        self.app.spfm = metrics["spfm_raw"]
+        self.app.lpfm = metrics["lpfm_raw"]
+        self.app.reliability_dc = metrics["dc"]
         self.refresh_tree()
         self.formula_label.config(
-            text=f"Total FIT: {total_modes:.2f}  DC: {dc:.2f}  SPFM: {spf:.2f}  LPFM: {lpf:.2f}"
+            text=(
+                f"Total FIT: {metrics['total']:.2f}  DC: {metrics['dc']:.2f}  "
+                f"SPFM: {metrics['spfm_raw']:.2f}  LPFM: {metrics['lpfm_raw']:.2f}"
+            )
         )
 
     def save_analysis(self):
