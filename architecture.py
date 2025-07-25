@@ -38,12 +38,69 @@ def _get_next_id() -> int:
     return val
 
 
-def _parse_float(value: str | None, default: float) -> float:
-    """Safely convert a string to float, returning *default* on failure."""
-    try:
-        return float(value) if value not in (None, "") else default
-    except (TypeError, ValueError):
-        return default
+def _find_parent_blocks(repo: SysMLRepository, block_id: str) -> set[str]:
+    """Return all blocks that directly use ``block_id`` as a part or are
+    associated with it."""
+    parents: set[str] = set()
+    # check IBDs for parts referencing this block
+    for parent_id, diag_id in repo.element_diagrams.items():
+        diag = repo.diagrams.get(diag_id)
+        if not diag:
+            continue
+        for obj in getattr(diag, "objects", []):
+            if obj.get("obj_type") != "Part":
+                continue
+            if obj.get("properties", {}).get("definition") == block_id:
+                parents.add(parent_id)
+                break
+    # also follow Association relationships
+    for rel in repo.relationships:
+        if rel.rel_type != "Association":
+            continue
+        if rel.source == block_id and rel.target in repo.elements:
+            parents.add(rel.target)
+        elif rel.target == block_id and rel.source in repo.elements:
+            parents.add(rel.source)
+    return parents
+
+
+def _collect_parent_parts(repo: SysMLRepository, block_id: str, visited=None) -> list[str]:
+    """Recursively gather parts from all parent blocks of ``block_id``."""
+    if visited is None:
+        visited = set()
+    parts: list[str] = []
+    for parent in _find_parent_blocks(repo, block_id):
+        if parent in visited:
+            continue
+        visited.add(parent)
+        elem = repo.elements.get(parent)
+        if elem:
+            parts.extend(
+                [p.strip() for p in elem.properties.get("partProperties", "").split(",") if p.strip()]
+            )
+        parts.extend(_collect_parent_parts(repo, parent, visited))
+    seen = []
+    for p in parts:
+        if p not in seen:
+            seen.append(p)
+    return seen
+
+
+def extend_block_parts_with_parents(repo: SysMLRepository, block_id: str) -> None:
+    """Merge parent block parts into the given block's ``partProperties``."""
+    block = repo.elements.get(block_id)
+    if not block:
+        return
+    names = [p.strip() for p in block.properties.get("partProperties", "").split(",") if p.strip()]
+    for p in _collect_parent_parts(repo, block_id):
+        if p not in names:
+            names.append(p)
+    joined = ", ".join(names)
+    block.properties["partProperties"] = joined
+    for d in repo.diagrams.values():
+        for o in getattr(d, "objects", []):
+            if o.get("element_id") == block_id:
+                o.setdefault("properties", {})["partProperties"] = joined
 
 
 @dataclass
@@ -1206,35 +1263,35 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 self.entries[prop] = var
                 self._circuit_map = {c.name: c for c in circuits}
 
-        def sync_circuit(_):
-            name = var.get()
-            comp = self._circuit_map.get(name)
-            if not comp:
-                return
-            if 'fit' in self.entries:
-                self.entries['fit'].set(f"{comp.fit:.2f}")
-            else:
-                self.obj.properties['fit'] = f"{comp.fit:.2f}"
-            if 'qualification' in self.entries:
-                self.entries['qualification'].set(comp.qualification)
-            else:
-                self.obj.properties['qualification'] = comp.qualification
-            modes = self._get_failure_modes(app, comp.name)
-            if 'failureModes' in self.entries:
-                self.entries['failureModes'].set(modes)
-            else:
-                self.obj.properties['failureModes'] = modes
-            # update part list preview from circuit BOM
-            if comp.sub_boms:
-                names = [c.name for bom in comp.sub_boms for c in bom]
-                joined = ", ".join(names)
-                if 'partProperties' in self.listboxes:
-                    lb = self.listboxes['partProperties']
-                    lb.delete(0, tk.END)
-                    for n in names:
-                        lb.insert(tk.END, n)
-                else:
-                    self.obj.properties['partProperties'] = joined
+                def sync_circuit(_):
+                    name = var.get()
+                    comp = self._circuit_map.get(name)
+                    if not comp:
+                        return
+                    if 'fit' in self.entries:
+                        self.entries['fit'].set(f"{comp.fit:.2f}")
+                    else:
+                        self.obj.properties['fit'] = f"{comp.fit:.2f}"
+                    if 'qualification' in self.entries:
+                        self.entries['qualification'].set(comp.qualification)
+                    else:
+                        self.obj.properties['qualification'] = comp.qualification
+                    modes = self._get_failure_modes(app, comp.name)
+                    if 'failureModes' in self.entries:
+                        self.entries['failureModes'].set(modes)
+                    else:
+                        self.obj.properties['failureModes'] = modes
+                    # update part list preview from circuit BOM
+                    if comp.sub_boms:
+                        names = [c.name for bom in comp.sub_boms for c in bom]
+                        joined = ", ".join(names)
+                        if 'partProperties' in self.listboxes:
+                            lb = self.listboxes['partProperties']
+                            lb.delete(0, tk.END)
+                            for n in names:
+                                lb.insert(tk.END, n)
+                        else:
+                            self.obj.properties['partProperties'] = joined
 
                 cb.bind("<<ComboboxSelected>>", sync_circuit)
             elif prop == "component" and app:
@@ -1438,6 +1495,9 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 self.obj.properties["partProperties"] = joined
                 if self.obj.element_id and self.obj.element_id in repo.elements:
                     repo.elements[self.obj.element_id].properties["partProperties"] = joined
+                if self.obj.element_id:
+                    extend_block_parts_with_parents(repo, self.obj.element_id)
+                    self.obj.properties["partProperties"] = repo.elements[self.obj.element_id].properties["partProperties"]
 
         # Update linked diagram if applicable
         link_id = None
@@ -1539,6 +1599,11 @@ class SysMLObjectDialog(simpledialog.Dialog):
                                     for o in getattr(d, "objects", []):
                                         if o.get("element_id") == self.obj.element_id:
                                             o.setdefault("properties", {})["partProperties"] = joined
+                                # include parent block parts
+                                if self.obj.element_id:
+                                    extend_block_parts_with_parents(repo, self.obj.element_id)
+                                    joined = repo.elements[self.obj.element_id].properties["partProperties"]
+                                    self.obj.properties["partProperties"] = joined
                             repo.diagrams[diag_id] = diag
                             if hasattr(self.master, "_sync_to_repository"):
                                 self.master._sync_to_repository()
@@ -1736,6 +1801,8 @@ class InternalBlockDiagramWindow(SysMLDiagramWindow):
                     names.append(name)
             joined = ", ".join(names)
             block.properties["partProperties"] = joined
+            extend_block_parts_with_parents(repo, block_id)
+            joined = repo.elements[block_id].properties["partProperties"]
             for d in repo.diagrams.values():
                 for o in getattr(d, "objects", []):
                     if o.get("element_id") == block_id:
