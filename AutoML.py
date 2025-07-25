@@ -270,14 +270,6 @@ from models import (
     calc_asil,
     global_requirements,
 )
-from toolboxes import (
-    ReliabilityWindow,
-    FI2TCWindow,
-    HazopWindow,
-    HaraWindow,
-    TC2FIWindow,
-    HazardExplorerWindow,
-)
 from architecture import (
     UseCaseDiagramWindow,
     ActivityDiagramWindow,
@@ -322,6 +314,15 @@ styles.add(preformatted_style)
 # Characters used to display pass/fail status in metrics labels.
 CHECK_MARK = "\u2713"
 CROSS_MARK = "\u2717"
+
+from toolboxes import (
+    ReliabilityWindow,
+    FI2TCWindow,
+    HazopWindow,
+    HaraWindow,
+    TC2FIWindow,
+    HazardExplorerWindow,
+)
 
 # Target PMHF limits per ASIL level (events per hour)
 PMHF_TARGETS = {

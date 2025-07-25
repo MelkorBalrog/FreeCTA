@@ -371,6 +371,7 @@ class ReliabilityWindow(tk.Toplevel):
                     "spfm": getattr(be, "fmeda_spfm_target", 0.0),
                     "lpfm": getattr(be, "fmeda_lpfm_target", 0.0),
                 }
+
         metrics = compute_fmeda_metrics(
             self.app.fmea_entries,
             self.components,
