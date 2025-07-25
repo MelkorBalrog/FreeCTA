@@ -40,3 +40,21 @@ if 'PortUsage' not in SYSML_PROPERTIES:
 for p in ('direction', 'flow'):
     if p not in SYSML_PROPERTIES['PortUsage']:
         SYSML_PROPERTIES['PortUsage'].append(p)
+
+# ----------------------------------------------------------------------
+# Additional properties for reliability annotations
+# ----------------------------------------------------------------------
+# Blocks can represent circuits while parts map to components. Include
+# dedicated attributes to reference BOM items and store FIT, qualification
+# and failure mode details so they can be displayed in diagrams.
+
+SYSML_PROPERTIES.setdefault('BlockUsage', [])
+SYSML_PROPERTIES.setdefault('PartUsage', [])
+
+for prop in ('circuit', 'fit', 'qualification', 'failureModes'):
+    if prop not in SYSML_PROPERTIES['BlockUsage']:
+        SYSML_PROPERTIES['BlockUsage'].append(prop)
+
+for prop in ('component', 'fit', 'qualification', 'failureModes'):
+    if prop not in SYSML_PROPERTIES['PartUsage']:
+        SYSML_PROPERTIES['PartUsage'].append(prop)

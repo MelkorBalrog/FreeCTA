@@ -69,6 +69,19 @@ Additional datasheet parameters such as diode forward voltage or MOSFET
 `RDS(on)` can be entered when configuring components to better document the
 parts used in the analysis.
 
+### BOM Integration with SysML Diagrams
+
+Blocks in block diagrams may reference circuits defined in a saved BOM via the
+new **circuit** property while parts reference individual components using the
+**component** property.  Both element types also provide **fit**,
+**qualification** and **failureModes** attributes.  Entering values for these
+fields shows them in a *Reliability* compartment for blocks or as additional
+lines beneath parts so FIT rates and qualification information remain visible in
+the architecture model. When editing a block or part you can now pick from
+drop-down lists containing all circuits or components from saved reliability
+analyses. Selecting an item automatically fills in its FIT rate, qualification
+certificate and any failure modes found in FMEA tables.
+
 ### HAZOP Analysis
 
 The **HAZOP Analysis** window lets you list system functions with one or more

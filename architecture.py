@@ -42,8 +42,9 @@ class DiagramConnection:
 class SysMLDiagramWindow(tk.Toplevel):
     """Base window for simple SysML diagrams with zoom and pan support."""
 
-    def __init__(self, master, title, tools, diagram_id: str | None = None):
+    def __init__(self, master, title, tools, diagram_id: str | None = None, app=None):
         super().__init__(master)
+        self.app = app
         self.title(title)
         self.geometry("800x600")
 
@@ -189,10 +190,10 @@ class SysMLDiagramWindow(tk.Toplevel):
             if diag_id and diag_id in self.repo.diagrams:
                 diag = self.repo.diagrams[diag_id]
                 if diag.diag_type == "Activity Diagram":
-                    ActivityDiagramWindow(self.master, diagram_id=diag_id)
+                    ActivityDiagramWindow(self.master, self.app, diagram_id=diag_id)
                     return
                 if diag.diag_type == "Internal Block Diagram":
-                    InternalBlockDiagramWindow(self.master, diagram_id=diag_id)
+                    InternalBlockDiagramWindow(self.master, self.app, diagram_id=diag_id)
                     return
             SysMLObjectDialog(self, obj)
             self.redraw()
@@ -425,6 +426,18 @@ class SysMLDiagramWindow(tk.Toplevel):
                 ("Operations", obj.properties.get("operations", "")),
                 ("Constraints", obj.properties.get("constraintProperties", "")),
                 ("Ports", obj.properties.get("ports", "")),
+                (
+                    "Reliability",
+                    " ".join(
+                        f"{label}={obj.properties.get(key,'')}"
+                        for label, key in (
+                            ("FIT", "fit"),
+                            ("Qual", "qualification"),
+                            ("FM", "failureModes"),
+                        )
+                        if obj.properties.get(key, "")
+                    ),
+                ),
             ]
             cy = top + 20 * self.zoom
             for label, text in compartments:
@@ -469,6 +482,18 @@ class SysMLDiagramWindow(tk.Toplevel):
                 val = obj.properties.get(prop)
                 if val:
                     label_lines.append(f"{prop}: {val}")
+            if obj.obj_type == "Part":
+                rel_items = []
+                for lbl, key in (
+                    ("FIT", "fit"),
+                    ("Qual", "qualification"),
+                    ("FM", "failureModes"),
+                ):
+                    val = obj.properties.get(key)
+                    if val:
+                        rel_items.append(f"{lbl}: {val}")
+                if rel_items:
+                    label_lines.extend(rel_items)
             self.canvas.create_text(x, y, text="\n".join(label_lines), anchor="center")
 
     def draw_connection(self, a: SysMLObject, b: SysMLObject, conn: DiagramConnection):
@@ -584,6 +609,7 @@ class SysMLObjectDialog(simpledialog.Dialog):
             "constraintProperties",
             "operations",
         }
+        app = getattr(self.master, 'app', None)
         for prop in SYSML_PROPERTIES.get(key, []):
             ttk.Label(master, text=f"{prop}:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
             if prop in list_props:
@@ -601,6 +627,70 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 var = tk.StringVar(value=self.obj.properties.get(prop, "in"))
                 ttk.Combobox(master, textvariable=var, values=["in", "out", "inout"]).grid(row=row, column=1, padx=4, pady=2)
                 self.entries[prop] = var
+            elif prop == "circuit" and app:
+                circuits = [
+                    c for ra in getattr(app, 'reliability_analyses', [])
+                    for c in ra.components if c.comp_type == 'circuit'
+                ]
+                names = [c.name for c in circuits]
+                var = tk.StringVar(value=self.obj.properties.get(prop, ""))
+                cb = ttk.Combobox(master, textvariable=var, values=names, state="readonly")
+                cb.grid(row=row, column=1, padx=4, pady=2)
+                self.entries[prop] = var
+                self._circuit_map = {c.name: c for c in circuits}
+
+                def sync_circuit(_):
+                    name = var.get()
+                    comp = self._circuit_map.get(name)
+                    if not comp:
+                        return
+                    if 'fit' in self.entries:
+                        self.entries['fit'].set(f"{comp.fit:.2f}")
+                    else:
+                        self.obj.properties['fit'] = f"{comp.fit:.2f}"
+                    if 'qualification' in self.entries:
+                        self.entries['qualification'].set(comp.qualification)
+                    else:
+                        self.obj.properties['qualification'] = comp.qualification
+                    modes = self._get_failure_modes(app, comp.name)
+                    if 'failureModes' in self.entries:
+                        self.entries['failureModes'].set(modes)
+                    else:
+                        self.obj.properties['failureModes'] = modes
+
+                cb.bind("<<ComboboxSelected>>", sync_circuit)
+            elif prop == "component" and app:
+                comps = [
+                    c for ra in getattr(app, 'reliability_analyses', [])
+                    for c in ra.components if c.comp_type != 'circuit'
+                ]
+                names = [c.name for c in comps]
+                var = tk.StringVar(value=self.obj.properties.get(prop, ""))
+                cb = ttk.Combobox(master, textvariable=var, values=names, state="readonly")
+                cb.grid(row=row, column=1, padx=4, pady=2)
+                self.entries[prop] = var
+                self._comp_map = {c.name: c for c in comps}
+
+                def sync_component(_):
+                    name = var.get()
+                    comp = self._comp_map.get(name)
+                    if not comp:
+                        return
+                    if 'fit' in self.entries:
+                        self.entries['fit'].set(f"{comp.fit:.2f}")
+                    else:
+                        self.obj.properties['fit'] = f"{comp.fit:.2f}"
+                    if 'qualification' in self.entries:
+                        self.entries['qualification'].set(comp.qualification)
+                    else:
+                        self.obj.properties['qualification'] = comp.qualification
+                    modes = self._get_failure_modes(app, comp.name)
+                    if 'failureModes' in self.entries:
+                        self.entries['failureModes'].set(modes)
+                    else:
+                        self.obj.properties['failureModes'] = modes
+
+                cb.bind("<<ComboboxSelected>>", sync_component)
             else:
                 var = tk.StringVar(value=self.obj.properties.get(prop, ""))
                 ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=4, pady=2)
@@ -688,6 +778,22 @@ class SysMLObjectDialog(simpledialog.Dialog):
         sel = list(lb.curselection())
         for idx in reversed(sel):
             lb.delete(idx)
+
+    def _get_failure_modes(self, app, comp_name: str) -> str:
+        """Return comma separated failure modes for a component name."""
+        modes = set()
+        for e in getattr(app, 'fmea_entries', []):
+            if getattr(e, 'fmea_component', '') == comp_name:
+                label = getattr(e, 'description', '') or getattr(e, 'user_name', '')
+                if label:
+                    modes.add(label)
+        for fmea in getattr(app, 'fmeas', []):
+            for e in fmea.get('entries', []):
+                if getattr(e, 'fmea_component', '') == comp_name:
+                    label = getattr(e, 'description', '') or getattr(e, 'user_name', '')
+                    if label:
+                        modes.add(label)
+        return ", ".join(sorted(modes))
         
     def apply(self):
         self.obj.properties["name"] = self.name_var.get()
@@ -773,7 +879,7 @@ class ConnectionDialog(simpledialog.Dialog):
         self.connection.points = pts
 
 class UseCaseDiagramWindow(SysMLDiagramWindow):
-    def __init__(self, master, diagram_id: str | None = None):
+    def __init__(self, master, app, diagram_id: str | None = None):
         tools = [
             "Actor",
             "Use Case",
@@ -782,11 +888,11 @@ class UseCaseDiagramWindow(SysMLDiagramWindow):
             "Include",
             "Extend",
         ]
-        super().__init__(master, "Use Case Diagram", tools, diagram_id)
+        super().__init__(master, "Use Case Diagram", tools, diagram_id, app=app)
 
 
 class ActivityDiagramWindow(SysMLDiagramWindow):
-    def __init__(self, master, diagram_id: str | None = None):
+    def __init__(self, master, app, diagram_id: str | None = None):
         tools = [
             "Action",
             "Initial",
@@ -797,26 +903,26 @@ class ActivityDiagramWindow(SysMLDiagramWindow):
             "Join",
             "Flow",
         ]
-        super().__init__(master, "Activity Diagram", tools, diagram_id)
+        super().__init__(master, "Activity Diagram", tools, diagram_id, app=app)
 
 
 class BlockDiagramWindow(SysMLDiagramWindow):
-    def __init__(self, master, diagram_id: str | None = None):
+    def __init__(self, master, app, diagram_id: str | None = None):
         tools = [
             "Block",
             "Association",
         ]
-        super().__init__(master, "Block Diagram", tools, diagram_id)
+        super().__init__(master, "Block Diagram", tools, diagram_id, app=app)
 
 
 class InternalBlockDiagramWindow(SysMLDiagramWindow):
-    def __init__(self, master, diagram_id: str | None = None):
+    def __init__(self, master, app, diagram_id: str | None = None):
         tools = [
             "Part",
             "Port",
             "Connector",
         ]
-        super().__init__(master, "Internal Block Diagram", tools, diagram_id)
+        super().__init__(master, "Internal Block Diagram", tools, diagram_id, app=app)
 
 class NewDiagramDialog(simpledialog.Dialog):
     """Dialog to create a new diagram and assign a name and type."""
@@ -865,8 +971,9 @@ class DiagramPropertiesDialog(simpledialog.Dialog):
 class ArchitectureManagerDialog(tk.Toplevel):
     """Manage packages and diagrams in a hierarchical tree."""
 
-    def __init__(self, master):
+    def __init__(self, master, app=None):
         super().__init__(master)
+        self.app = app
         self.title("Architecture")
         self.repo = SysMLRepository.get_instance()
         self.geometry("350x400")
@@ -935,13 +1042,13 @@ class ArchitectureManagerDialog(tk.Toplevel):
             return
         master = self.master if self.master else self
         if diag.diag_type == "Use Case Diagram":
-            UseCaseDiagramWindow(master, diagram_id=diag_id)
+            UseCaseDiagramWindow(master, self.app, diagram_id=diag_id)
         elif diag.diag_type == "Activity Diagram":
-            ActivityDiagramWindow(master, diagram_id=diag_id)
+            ActivityDiagramWindow(master, self.app, diagram_id=diag_id)
         elif diag.diag_type == "Block Diagram":
-            BlockDiagramWindow(master, diagram_id=diag_id)
+            BlockDiagramWindow(master, self.app, diagram_id=diag_id)
         elif diag.diag_type == "Internal Block Diagram":
-            InternalBlockDiagramWindow(master, diagram_id=diag_id)
+            InternalBlockDiagramWindow(master, self.app, diagram_id=diag_id)
 
     def new_package(self):
         item = self.selected() or self.repo.root_package.elem_id
