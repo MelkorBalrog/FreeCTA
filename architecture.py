@@ -838,6 +838,37 @@ class SysMLObjectDialog(simpledialog.Dialog):
         def apply(self):
             self.result = [rid for rid, var in self.selected_vars.items() if var.get()]
 
+    class SelectComponentsDialog(simpledialog.Dialog):
+        """Dialog to choose which components should become parts."""
+
+        def __init__(self, parent, components):
+            self.components = components
+            self.selected = {}
+            super().__init__(parent, title="Select Components")
+
+        def body(self, master):
+            ttk.Label(master, text="Select components:").pack(padx=5, pady=5)
+            frame = ttk.Frame(master)
+            frame.pack(fill=tk.BOTH, expand=True)
+            canvas = tk.Canvas(frame, borderwidth=0)
+            scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+            self.check_frame = ttk.Frame(canvas)
+            self.check_frame.bind(
+                "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+            canvas.create_window((0, 0), window=self.check_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+            for comp in self.components:
+                var = tk.BooleanVar(value=True)
+                self.selected[comp] = var
+                ttk.Checkbutton(self.check_frame, text=comp.name, variable=var).pack(anchor="w", padx=2, pady=2)
+            return self.check_frame
+
+        def apply(self):
+            self.result = [c for c, var in self.selected.items() if var.get()]
+
     def body(self, master):
         # Disable window resizing so the layout remains consistent
         self.resizable(False, False)
@@ -950,24 +981,35 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 self.entries[prop] = var
                 self._circuit_map = {c.name: c for c in circuits}
 
-                def sync_circuit(_):
-                    name = var.get()
-                    comp = self._circuit_map.get(name)
-                    if not comp:
-                        return
-                    if 'fit' in self.entries:
-                        self.entries['fit'].set(f"{comp.fit:.2f}")
-                    else:
-                        self.obj.properties['fit'] = f"{comp.fit:.2f}"
-                    if 'qualification' in self.entries:
-                        self.entries['qualification'].set(comp.qualification)
-                    else:
-                        self.obj.properties['qualification'] = comp.qualification
-                    modes = self._get_failure_modes(app, comp.name)
-                    if 'failureModes' in self.entries:
-                        self.entries['failureModes'].set(modes)
-                    else:
-                        self.obj.properties['failureModes'] = modes
+        def sync_circuit(_):
+            name = var.get()
+            comp = self._circuit_map.get(name)
+            if not comp:
+                return
+            if 'fit' in self.entries:
+                self.entries['fit'].set(f"{comp.fit:.2f}")
+            else:
+                self.obj.properties['fit'] = f"{comp.fit:.2f}"
+            if 'qualification' in self.entries:
+                self.entries['qualification'].set(comp.qualification)
+            else:
+                self.obj.properties['qualification'] = comp.qualification
+            modes = self._get_failure_modes(app, comp.name)
+            if 'failureModes' in self.entries:
+                self.entries['failureModes'].set(modes)
+            else:
+                self.obj.properties['failureModes'] = modes
+            # update part list preview from circuit BOM
+            if comp.sub_boms:
+                names = [c.name for bom in comp.sub_boms for c in bom]
+                joined = ", ".join(names)
+                if 'partProperties' in self.listboxes:
+                    lb = self.listboxes['partProperties']
+                    lb.delete(0, tk.END)
+                    for n in names:
+                        lb.insert(tk.END, n)
+                else:
+                    self.obj.properties['partProperties'] = joined
 
                 cb.bind("<<ComboboxSelected>>", sync_circuit)
             elif prop == "component" and app:
@@ -1153,6 +1195,25 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.obj.height = float(self.height_var.get())
         except ValueError:
             pass
+
+        # ensure block shows BOM components as part names when a circuit is set
+        if (
+            self.obj.obj_type == "Block"
+            and "circuit" in self.obj.properties
+            and hasattr(self, "_circuit_map")
+        ):
+            comp = self._circuit_map.get(self.obj.properties["circuit"], None)
+            if comp and comp.sub_boms:
+                cur = [p.strip() for p in self.obj.properties.get("partProperties", "").split(",") if p.strip()]
+                names = [c.name for bom in comp.sub_boms for c in bom]
+                for n in names:
+                    if n not in cur:
+                        cur.append(n)
+                joined = ", ".join(cur)
+                self.obj.properties["partProperties"] = joined
+                if self.obj.element_id and self.obj.element_id in repo.elements:
+                    repo.elements[self.obj.element_id].properties["partProperties"] = joined
+
         # Update linked diagram if applicable
         link_id = None
         if hasattr(self, "behavior_var") and self.behavior_var.get():
@@ -1175,7 +1236,89 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 self.obj.properties["useCaseDefinition"] = def_id
                 if self.obj.element_id and self.obj.element_id in repo.elements:
                     repo.elements[self.obj.element_id].properties["useCaseDefinition"] = def_id
-                    
+
+        # ------------------------------------------------------------
+        # Add parts from selected circuit BOM
+        # ------------------------------------------------------------
+        if (
+            self.obj.obj_type == "Block"
+            and "circuit" in self.obj.properties
+            and hasattr(self, "diag_map")
+        ):
+            diag_id = repo.get_linked_diagram(self.obj.element_id)
+            if diag_id:
+                circuit_name = self.obj.properties.get("circuit", "")
+                comp = getattr(self, "_circuit_map", {}).get(circuit_name)
+                if comp and comp.sub_boms:
+                    comps = [c for bom in comp.sub_boms for c in bom]
+                    dlg = self.SelectComponentsDialog(self, comps)
+                    selected = dlg.result or []
+                    if selected:
+                        diag = repo.diagrams.get(diag_id)
+                        if diag is not None:
+                            diag.objects = getattr(diag, "objects", [])
+                            existing = {
+                                o.get("properties", {}).get("component")
+                                for o in diag.objects
+                                if o.get("obj_type") == "Part"
+                            }
+                            base_x = 50.0
+                            base_y = 50.0
+                            offset = 60.0
+                            for idx, c in enumerate(selected):
+                                if c.name in existing:
+                                    continue
+                                elem = repo.create_element(
+                                    "Part",
+                                    name=c.name,
+                                    properties={
+                                        "component": c.name,
+                                        "fit": f"{c.fit:.2f}",
+                                        "qualification": c.qualification,
+                                        "failureModes": self._get_failure_modes(getattr(self.master, "app", None), c.name),
+                                    },
+                                    owner=repo.root_package.elem_id,
+                                )
+                                repo.add_element_to_diagram(diag_id, elem.elem_id)
+                                obj = SysMLObject(
+                                    _get_next_id(),
+                                    "Part",
+                                    base_x,
+                                    base_y + offset * idx,
+                                    element_id=elem.elem_id,
+                                    properties=elem.properties.copy(),
+                                )
+                                diag.objects.append(obj.__dict__)
+                                # update any open windows for this diagram
+                                app = getattr(self.master, "app", None)
+                                if app:
+                                    for win in getattr(app, "ibd_windows", []):
+                                        if win.diagram_id == diag_id:
+                                            win.objects.append(obj)
+                                            win.redraw()
+                                            win._sync_to_repository()
+                            # update block partProperties with newly added components
+                            new_names = [c.name for c in selected if c.name not in existing]
+                            if new_names:
+                                cur = self.obj.properties.get("partProperties", "")
+                                names = [n.strip() for n in cur.split(",") if n.strip()]
+                                for name in new_names:
+                                    if name not in names:
+                                        names.append(name)
+                                joined = ", ".join(names)
+                                self.obj.properties["partProperties"] = joined
+                                if self.obj.element_id and self.obj.element_id in repo.elements:
+                                    repo.elements[self.obj.element_id].properties["partProperties"] = joined
+                                # update all diagram objects referencing this block element
+                                for d in repo.diagrams.values():
+                                    for o in getattr(d, "objects", []):
+                                        if o.get("element_id") == self.obj.element_id:
+                                            o.setdefault("properties", {})["partProperties"] = joined
+                            repo.diagrams[diag_id] = diag
+                            if hasattr(self.master, "_sync_to_repository"):
+                                self.master._sync_to_repository()
+
+        
 class ConnectionDialog(simpledialog.Dialog):
     """Edit connection style and custom routing points."""
 
@@ -1266,6 +1409,112 @@ class InternalBlockDiagramWindow(SysMLDiagramWindow):
             "Connector",
         ]
         super().__init__(master, "Internal Block Diagram", tools, diagram_id, app=app)
+        ttk.Button(self.toolbox, text="Add Block Parts", command=self.add_block_parts).pack(
+            fill=tk.X, padx=2, pady=2
+        )
+
+    def _get_failure_modes(self, comp_name: str) -> str:
+        """Return comma separated failure modes for a component name."""
+        app = getattr(self, "app", None)
+        modes = set()
+        for e in getattr(app, "fmea_entries", []):
+            if getattr(e, "fmea_component", "") == comp_name:
+                label = getattr(e, "description", "") or getattr(e, "user_name", "")
+                if label:
+                    modes.add(label)
+        for fmea in getattr(app, "fmeas", []):
+            for entry in fmea.get("entries", []):
+                if getattr(entry, "fmea_component", "") == comp_name:
+                    label = getattr(entry, "description", "") or getattr(entry, "user_name", "")
+                    if label:
+                        modes.add(label)
+        return ", ".join(sorted(modes))
+
+    def add_block_parts(self) -> None:
+        repo = self.repo
+        # determine which block this IBD represents
+        block_id = next((eid for eid, did in repo.element_diagrams.items() if did == self.diagram_id), None)
+        if not block_id or block_id not in repo.elements:
+            messagebox.showinfo("Add Parts", "No block is linked to this diagram")
+            return
+        block = repo.elements[block_id]
+        circuit_name = block.properties.get("circuit", "")
+        if not circuit_name:
+            messagebox.showinfo("Add Parts", "Block has no circuit assigned")
+            return
+        circuits = [
+            c
+            for ra in getattr(self.app, "reliability_analyses", [])
+            for c in ra.components
+            if c.comp_type == "circuit"
+        ]
+        circuits.extend(
+            c
+            for c in getattr(self.app, "reliability_components", [])
+            if c.comp_type == "circuit"
+        )
+        comp_map = {c.name: c for c in circuits}
+        comp = comp_map.get(circuit_name)
+        if not comp or not comp.sub_boms:
+            messagebox.showinfo("Add Parts", "Circuit has no BOM components")
+            return
+        comps = [c for bom in comp.sub_boms for c in bom]
+        dlg = SysMLObjectDialog.SelectComponentsDialog(self, comps)
+        selected = dlg.result or []
+        if not selected:
+            return
+        diag = repo.diagrams.get(self.diagram_id)
+        if diag is None:
+            return
+        diag.objects = getattr(diag, "objects", [])
+        existing = {
+            o.get("properties", {}).get("component")
+            for o in diag.objects
+            if o.get("obj_type") == "Part"
+        }
+        base_x = 50.0
+        base_y = 50.0
+        offset = 60.0
+        added = []
+        for idx, c in enumerate(selected):
+            if c.name in existing:
+                continue
+            elem = repo.create_element(
+                "Part",
+                name=c.name,
+                properties={
+                    "component": c.name,
+                    "fit": f"{c.fit:.2f}",
+                    "qualification": c.qualification,
+                    "failureModes": self._get_failure_modes(c.name),
+                },
+                owner=repo.root_package.elem_id,
+            )
+            repo.add_element_to_diagram(self.diagram_id, elem.elem_id)
+            obj = SysMLObject(
+                _get_next_id(),
+                "Part",
+                base_x,
+                base_y + offset * idx,
+                element_id=elem.elem_id,
+                properties=elem.properties.copy(),
+            )
+            diag.objects.append(obj.__dict__)
+            self.objects.append(obj)
+            added.append(c.name)
+        self.redraw()
+        self._sync_to_repository()
+        if added:
+            names = [n.strip() for n in block.properties.get("partProperties", "").split(",") if n.strip()]
+            for name in added:
+                if name not in names:
+                    names.append(name)
+            joined = ", ".join(names)
+            block.properties["partProperties"] = joined
+            for d in repo.diagrams.values():
+                for o in getattr(d, "objects", []):
+                    if o.get("element_id") == block_id:
+                        o.setdefault("properties", {})["partProperties"] = joined
 
 class NewDiagramDialog(simpledialog.Dialog):
     """Dialog to create a new diagram and assign a name and type."""
