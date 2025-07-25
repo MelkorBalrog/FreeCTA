@@ -146,5 +146,28 @@ class RepositoryTests(unittest.TestCase):
         obj = new_repo.diagrams[diag.diag_id].objects[0]
         self.assertEqual(obj.get("requirements")[0]["id"], "REQ1")
 
+    def test_connection_persistence(self):
+        diag = self.repo.create_diagram("Block Diagram", name="BD")
+        a = self.repo.create_element("Block", name="A")
+        b = self.repo.create_element("Block", name="B")
+        self.repo.add_element_to_diagram(diag.diag_id, a.elem_id)
+        self.repo.add_element_to_diagram(diag.diag_id, b.elem_id)
+        diag.objects = [
+            {"obj_id": 1, "obj_type": "Block", "x": 0, "y": 0, "element_id": a.elem_id, "width": 80.0, "height": 40.0},
+            {"obj_id": 2, "obj_type": "Block", "x": 100, "y": 0, "element_id": b.elem_id, "width": 80.0, "height": 40.0},
+        ]
+        diag.connections = [
+            {"src": 1, "dst": 2, "conn_type": "Association", "style": "Straight", "points": []}
+        ]
+        path = "repo_conn.json"
+        self.repo.save(path)
+        SysMLRepository._instance = None
+        new_repo = SysMLRepository.get_instance()
+        new_repo.load(path)
+        os.remove(path)
+        nd = new_repo.diagrams[diag.diag_id]
+        self.assertEqual(len(nd.connections), 1)
+        self.assertEqual(nd.connections[0]["conn_type"], "Association")
+
 if __name__ == '__main__':
     unittest.main()

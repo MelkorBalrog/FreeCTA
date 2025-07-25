@@ -79,6 +79,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.clipboard: SysMLObject | None = None
         self.resizing_obj: SysMLObject | None = None
         self.resize_edge: str | None = None
+        self.temp_line_end: tuple[float, float] | None = None
 
         self.toolbox = ttk.Frame(self)
         self.toolbox.pack(side=tk.LEFT, fill=tk.Y)
@@ -99,6 +100,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.canvas.bind("<Double-Button-1>", self.on_double_click)
         self.canvas.bind("<ButtonPress-3>", self.on_rc_press)
         self.canvas.bind("<B3-Motion>", self.on_rc_drag)
+        self.canvas.bind("<Motion>", self.on_mouse_move)
         self.canvas.bind("<Control-MouseWheel>", self.on_ctrl_mousewheel)
         self.bind("<Control-c>", self.copy_selected)
         self.bind("<Control-x>", self.cut_selected)
@@ -110,6 +112,8 @@ class SysMLDiagramWindow(tk.Toplevel):
     def select_tool(self, tool):
         self.current_tool = tool
         self.start = None
+        self.temp_line_end = None
+        self.selected_obj = None
         cursor = "arrow"
         if tool != "Select":
             cursor = "crosshair" if tool in (
@@ -134,6 +138,9 @@ class SysMLDiagramWindow(tk.Toplevel):
             if self.start is None:
                 if obj:
                     self.start = obj
+                    self.selected_obj = obj
+                    self.temp_line_end = (x, y)
+                    self.redraw()
             else:
                 if obj and obj != self.start:
                     conn = DiagramConnection(self.start.obj_id, obj.obj_id, t)
@@ -143,8 +150,11 @@ class SysMLDiagramWindow(tk.Toplevel):
                     if src_id and dst_id:
                         rel = self.repo.create_relationship(t, src_id, dst_id)
                         self.repo.add_relationship_to_diagram(self.diagram_id, rel.rel_id)
+                    self._sync_to_repository()
                     ConnectionDialog(self, conn)
                 self.start = None
+                self.temp_line_end = None
+                self.selected_obj = None
                 self.redraw()
         elif t and t != "Select":
             pkg = self.repo.diagrams[self.diagram_id].package
@@ -179,6 +189,7 @@ class SysMLDiagramWindow(tk.Toplevel):
                 new_obj.properties.setdefault("labelY", "-8")
             element.properties.update(new_obj.properties)
             self.objects.append(new_obj)
+            self._sync_to_repository()
             self.redraw()
         else:
             if obj:
@@ -237,11 +248,27 @@ class SysMLDiagramWindow(tk.Toplevel):
                         p.y += dy
                         self.snap_port_to_parent(p, self.selected_obj)
         self.redraw()
+        self._sync_to_repository()
 
     def on_left_release(self, _event):
         self.start = None
+        self.temp_line_end = None
+        self.selected_obj = None
         self.resizing_obj = None
         self.resize_edge = None
+
+    def on_mouse_move(self, event):
+        if self.start and self.current_tool in (
+            "Association",
+            "Include",
+            "Extend",
+            "Flow",
+            "Connector",
+        ):
+            x = self.canvas.canvasx(event.x)
+            y = self.canvas.canvasy(event.y)
+            self.temp_line_end = (x, y)
+            self.redraw()
 
     def on_double_click(self, event):
         x = self.canvas.canvasx(event.x)
@@ -459,6 +486,20 @@ class SysMLDiagramWindow(tk.Toplevel):
             dst = self.get_object(conn.dst)
             if src and dst:
                 self.draw_connection(src, dst, conn)
+        if (
+            self.start
+            and self.temp_line_end
+            and self.current_tool in (
+                "Association",
+                "Include",
+                "Extend",
+                "Flow",
+                "Connector",
+            )
+        ):
+            sx, sy = self.edge_point(self.start, *self.temp_line_end)
+            ex, ey = self.temp_line_end
+            self.canvas.create_line(sx, sy, ex, ey, dash=(2, 2), arrow=tk.LAST)
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
 
     def draw_object(self, obj: SysMLObject):
@@ -668,6 +709,7 @@ class SysMLDiagramWindow(tk.Toplevel):
             self.clipboard = copy.deepcopy(self.selected_obj)
             self.remove_object(self.selected_obj)
             self.selected_obj = None
+            self._sync_to_repository()
             self.redraw()
 
     def paste_selected(self, _event=None):
@@ -682,12 +724,14 @@ class SysMLDiagramWindow(tk.Toplevel):
             if diag and new_obj.element_id and new_obj.element_id not in diag.elements:
                 diag.elements.append(new_obj.element_id)
             self.selected_obj = new_obj
+            self._sync_to_repository()
             self.redraw()
 
     def delete_selected(self, _event=None):
         if self.selected_obj:
             self.remove_object(self.selected_obj)
             self.selected_obj = None
+            self._sync_to_repository()
             self.redraw()
 
     def remove_object(self, obj: SysMLObject) -> None:
@@ -697,12 +741,17 @@ class SysMLDiagramWindow(tk.Toplevel):
         diag = self.repo.diagrams.get(self.diagram_id)
         if diag and obj.element_id in diag.elements:
             diag.elements.remove(obj.element_id)
+        self._sync_to_repository()
 
-    def on_close(self):
+    def _sync_to_repository(self) -> None:
+        """Persist current objects and connections back to the repository."""
         diag = self.repo.diagrams.get(self.diagram_id)
         if diag:
             diag.objects = [obj.__dict__ for obj in self.objects]
             diag.connections = [conn.__dict__ for conn in self.connections]
+
+    def on_close(self):
+        self._sync_to_repository()
         self.destroy()
 
 class SysMLObjectDialog(simpledialog.Dialog):
@@ -1071,6 +1120,8 @@ class ConnectionDialog(simpledialog.Dialog):
             except ValueError:
                 continue
         self.connection.points = pts
+        if hasattr(self.master, "_sync_to_repository"):
+            self.master._sync_to_repository()
 
 class UseCaseDiagramWindow(SysMLDiagramWindow):
     def __init__(self, master, app, diagram_id: str | None = None):
