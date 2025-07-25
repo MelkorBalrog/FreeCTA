@@ -8796,7 +8796,13 @@ class FaultTreeApp:
         comment_btn = ttk.Button(btn_frame, text="Comment")
         comment_btn.pack(side=tk.LEFT, padx=2)
         if fmeda:
-            calc_btn = ttk.Button(btn_frame, text="Calculate FMEDA", command=lambda: refresh_tree())
+            def calculate_fmeda():
+                if bom_var.get():
+                    load_bom()
+                else:
+                    refresh_tree()
+
+            calc_btn = ttk.Button(btn_frame, text="Calculate FMEDA", command=calculate_fmeda)
             calc_btn.pack(side=tk.LEFT, padx=2)
             ttk.Label(btn_frame, text="BOM:").pack(side=tk.LEFT, padx=2)
             bom_var = tk.StringVar(value=fmea.get('bom', ''))
