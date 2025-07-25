@@ -626,7 +626,7 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 self.obj.properties["definition"] = def_id
                 if self.obj.element_id and self.obj.element_id in repo.elements:
                     repo.elements[self.obj.element_id].properties["definition"] = def_id
-
+                    
 class ConnectionDialog(simpledialog.Dialog):
     """Edit connection style and custom routing points."""
 
