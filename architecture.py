@@ -1391,7 +1391,7 @@ class SysMLObjectDialog(simpledialog.Dialog):
             else:
                 prop_row += 1
 
-        # Always display FIT and qualification values if present
+        # Always display inherited FIT and qualification values if present
         for prop in ("fit", "qualification"):
             if prop not in self.entries and self.obj.properties.get(prop, ""):
                 ttk.Label(rel_frame, text=f"{prop}:").grid(row=rel_row, column=0, sticky="e", padx=4, pady=2)
