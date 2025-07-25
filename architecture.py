@@ -1124,6 +1124,10 @@ class ArchitectureManagerDialog(tk.Toplevel):
         self.bind("<FocusIn>", lambda _e: self.populate())
         self.drag_item = None
         self.cut_item = None
+
+    def populate(self):
+        """Populate the tree view with packages, diagrams and elements."""
+        self.tree.delete(*self.tree.get_children())
         from collections import defaultdict
 
         rel_children = defaultdict(list)
