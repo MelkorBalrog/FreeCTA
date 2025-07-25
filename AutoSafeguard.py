@@ -27,11 +27,11 @@ of an autonomous system’s subsystems. It produces an Prototype Assurance Level
 from 1 to 5) using qualitative labels that describe the required level of safety 
 measures. For example, the scale is defined as:
 
-   1 → Extra Low  
-   2 → Low  
-   3 → Moderate  
-   4 → High  
-   5 → High+  
+   1 → PAL1
+   2 → PAL2
+   3 → PAL3
+   4 → PAL4
+   5 → PAL5
 
 The goal is to identify potential safety gaps and determine the extra assurance 
 (i.e. additional testing, validation, design modifications) needed before a 
@@ -53,23 +53,23 @@ Computation Logic and Manual Calculation
 
 ### 1. Deriving an Prototype Assurance Level (PAL) from Base Inputs
 When only Confidence and Robustness values are provided, the tool “inverts” these 
-inputs to yield a base Prototype Assurance Level (PAL). In this method, low confidence and low robustness 
-result in a high assurance requirement (i.e. “High+”), while high confidence and high robustness 
-yield a low assurance requirement (i.e. “Extra Low”).
+inputs to yield a base Prototype Assurance Level (PAL). In this method, low confidence and low robustness
+result in a high assurance requirement (i.e. “PAL5”), while high confidence and high robustness
+yield a low assurance requirement (i.e. “PAL1”).
 
 **Assurance Matrix for Base Inputs (Qualitative Labels)**
 
 |                           | **Confidence: Extra Low** | **Confidence: Low**   | **Confidence: Moderate** | **Confidence: High** | **Confidence: High+** |
 |---------------------------|---------------------------|-----------------------|--------------------------|----------------------|-----------------------|
-| **Robustness: Extra Low** | High+                     | High+                 | High                     | High                 | High                  |
-| **Robustness: Low**       | High+                     | High+                 | High                     | Moderate             | Moderate              |
-| **Robustness: Moderate**  | High                      | High                  | Moderate                 | Moderate             | Extra Low             |
-| **Robustness: High**      | High                      | Moderate              | Moderate                 | Extra Low            | Extra Low             |
-| **Robustness: High+**     | High                      | Moderate              | Extra Low                | Extra Low            | Extra Low             |
+| **Robustness: Extra Low** | PAL5                     | PAL5                 | PAL4                     | PAL4                 | PAL4                  |
+| **Robustness: Low**       | PAL5                     | PAL5                 | PAL4                     | PAL3                 | PAL3                  |
+| **Robustness: Moderate**  | PAL4                      | PAL4                  | PAL3                 | PAL3             | PAL1             |
+| **Robustness: High**      | PAL4                      | PAL3              | PAL3                 | PAL1            | PAL1             |
+| **Robustness: High+**     | PAL4                      | PAL3              | PAL1                | PAL1            | PAL1             |
 
-*Interpretation:*  
-– Very poor testing and design (i.e. both “Extra Low”) lead to a “High+” assurance requirement.  
-– Excellent testing and design (i.e. both “High+”) result in an “Extra Low” requirement.  
+*Interpretation:*
+– Very poor testing and design (i.e. both “Extra Low”) lead to a “PAL5” assurance requirement.
+– Excellent testing and design (i.e. both “High+”) result in an “PAL1” requirement.
 – Mixed values yield intermediate Prototype Assurance Levels (PAL).
 
 ---
@@ -87,20 +87,20 @@ levels using a reliability-inspired approach. Use the following qualitative guid
 
 |                         | **Child 2: Extra Low** | **Child 2: Low**   | **Child 2: Moderate** | **Child 2: High**   | **Child 2: High+**  |
 |-------------------------|------------------------|--------------------|-----------------------|---------------------|---------------------|
-| **Child 1: Extra Low**  | Extra Low              | Extra Low          | Low                   | High                | High+               |
-| **Child 1: Low**        | Extra Low              | Low                | Moderate              | High                | High+               |
-| **Child 1: Moderate**   | Low                    | Moderate           | High                  | High+               | High+               |
-| **Child 1: High**       | High                   | High               | High+                 | High+               | High+               |
-| **Child 1: High+**      | High+                  | High+              | High+                 | High+               | High+               |
+| **Child 1: Extra Low**  | PAL1              | PAL1          | PAL2                   | PAL4                | PAL5               |
+| **Child 1: Low**        | PAL1              | PAL2                | PAL3              | PAL4                | PAL5               |
+| **Child 1: Moderate**   | PAL2                    | PAL3           | PAL4                  | PAL5               | PAL5               |
+| **Child 1: High**       | PAL4                   | PAL4               | PAL5                 | PAL5               | PAL5               |
+| **Child 1: High+**      | PAL5                  | PAL5              | PAL5                 | PAL5               | PAL5               |
 
-*Interpretation:*  
-– Combining two “High+” components remains “High+.”  
+*Interpretation:*
+– Combining two “High+” components remains “PAL5.”
 – If one component is significantly lower, the overall requirement shifts toward a higher assurance need.
 
 #### For an **OR Gate**:
-When alternative options are available, a simple average (by converting the qualitative levels 
-to an ordered scale) is used. A strong alternative (e.g. “High+”) can partially offset a weaker one 
-(e.g. “Low”).
+When alternative options are available, a simple average (by converting the qualitative levels
+to an ordered scale) is used. A strong alternative (e.g. “PAL5”) can partially offset a weaker one
+(e.g. “PAL2”).
 
 ---
 
@@ -111,21 +111,21 @@ for its children. The following guidelines serve as a reference for common decom
 
 **Decomposition Guidelines**
 
-- **Parent Assurance: High+**  
-  – Option A: Both children target “High.”  
-  – Option B: One child may target “High+” while the other targets “Extra Low” so that their combined effect meets the “High+” requirement.
-  
-- **Parent Assurance: High**  
-  – Children should typically target between “Moderate” and “High.”
+- **Parent Assurance: PAL5**
+  – Option A: Both children target “PAL4.”
+  – Option B: One child may target “PAL5” while the other targets “PAL1” so that their combined effect meets the “PAL5” requirement.
 
-- **Parent Assurance: Moderate**  
-  – Children should have targets in the range of “Low” to “Moderate.”
+- **Parent Assurance: PAL4**
+  – Children should typically target between “PAL3” and “PAL4.”
 
-- **Parent Assurance: Low**  
-  – Children should target “Extra Low” or “Low.”
+- **Parent Assurance: PAL3**
+  – Children should have targets in the range of “PAL2” to “PAL3.”
 
-- **Parent Assurance: Extra Low**  
-  – Both children should be “Extra Low.”
+- **Parent Assurance: PAL2**
+  – Children should target “PAL1” or “PAL2.”
+
+- **Parent Assurance: PAL1**
+  – Both children should be “PAL1.”
 
 These rules ensure that when children’s Prototype Assurance Levels (PAL) are aggregated (using the AND or OR rules), 
 they “reconstruct” the parent’s overall requirement.
@@ -191,11 +191,11 @@ The following tables map raw numeric inputs to discrete levels that are then tra
 
 ### Summary of Qualitative Assurance Labels
 
-- **Extra Low:** Minimal assurance required (system is very safe).
-- **Low:** Some assurance is required.
-- **Moderate:** A moderate level of additional assurance is needed.
-- **High:** Significant additional assurance is required.
-- **High+:** Maximum assurance is required (system is highly unsafe without improvements).
+- **PAL1:** Minimal assurance required (system is very safe).
+- **PAL2:** Some assurance is required.
+- **PAL3:** A moderate level of additional assurance is needed.
+- **PAL4:** Significant additional assurance is required.
+- **PAL5:** Maximum assurance is required (system is highly unsafe without improvements).
 
 ---
 
@@ -5301,7 +5301,7 @@ class FaultTreeApp:
             return str(disc)
 
     def assurance_level_text(self, level):
-        mapping = {1:"extra low",2:"low",3:"medium",4:"high",5:"high+"}
+        mapping = {1:"PAL1", 2:"PAL2", 3:"PAL3", 4:"PAL4", 5:"PAL5"}
         return mapping.get(level, str(level))
 
     def calculate_cut_sets(self, node):
@@ -6163,15 +6163,15 @@ class FaultTreeApp:
         # Map overall assurance value to a descriptive level
         overall_assurance = top_event.quant_value if top_event.quant_value is not None else 1.0
         if overall_assurance >= 4.5:
-            assurance_descr = "High+"
+            assurance_descr = "PAL5"
         elif overall_assurance >= 3.5:
-            assurance_descr = "High"
+            assurance_descr = "PAL4"
         elif overall_assurance >= 2.5:
-            assurance_descr = "Moderate"
+            assurance_descr = "PAL3"
         elif overall_assurance >= 1.5:
-            assurance_descr = "Low"
+            assurance_descr = "PAL2"
         else:
-            assurance_descr = "Very Low"
+            assurance_descr = "PAL1"
         
         # Use the top event's severity and controllability (defaults if missing)
         try:
@@ -6262,11 +6262,11 @@ class FaultTreeApp:
             "<b>Executive Summary: Manual Calculation of Prototype Assurance Level (PAL)</b><br/><br/>"
                 "This document provides a step-by-step procedure to manually calculate the Prototype Assurance Level (PAL) for a subsystem in an "
                 "autonomous system. The Prototype Assurance Level (PAL) is a single metric ranging from 1 to 5 (mapped to qualitative labels: "
-                "Extra Low, Low, Moderate, High, High+). Follow these instructions using the provided tables.<br/><br/>"
+                "PAL1 through PAL5). Follow these instructions using the provided tables.<br/><br/>"
                 
                 "<b>Calculation Instructions:</b><br/>"
                 "1. <u>Base Assurance Derivation</u>:<br/>"
-                " a. Assign a Confidence Level (CL) and a Robustness Score (RS) to the component, each on a scale from 1 (Extra Low) to 5 (High+).<br/>"
+                " a. Assign a Confidence Level (CL) and a Robustness Score (RS) to the component, each on a scale from 1 (PAL1) to 5 (PAL5).<br/>"
                 " b. Using Table 1 (Base Assurance Inversion Matrix), locate the cell at the intersection of the CL (row) and RS (column).<br/>"
                 "  For example, a CL of 1 and an RS of 1 yields a base assurance value of 5, indicating a very high requirement for additional safety measures.<br/><br/>"
                 "2. <u>Combining Multiple Components</u>:<br/>"
@@ -6284,7 +6284,7 @@ class FaultTreeApp:
                 "4. <u>Final Discretization</u>:<br/>"
                 " a. Round the adjusted assurance value to the nearest 0.5.<br/>"
                 " b. Refer to Table 2 (Output Discretization Mapping) to map the rounded value to one of the five discrete Prototype Assurance Levels (PAL), "
-                "which correspond to the qualitative labels (Extra Low, Low, Moderate, High, High+).<br/><br/>"
+                "(PAL1 through PAL5).<br/><br/>"
                 "By following these steps—deriving a base assurance from individual Confidence and Robustness ratings, combining multiple values "
                 "through averaging or using complement-product methods (depending on the configuration), adjusting for hazard severity, and finally "
                 "discretizing the result—you can manually calculate the Prototype Assurance Level (PAL) for any subsystem in a clear and systematic manner."
@@ -6302,35 +6302,35 @@ class FaultTreeApp:
                  Paragraph("<b>4 (High)</b>", header_style),
                  Paragraph("<b>5 (High+)</b>", header_style)],
                 [Paragraph("<b>1 (Extra Low)</b>", header_style),
-                 Paragraph("High+", pdf_styles["Normal"]),
-                 Paragraph("High+", pdf_styles["Normal"]),
-                 Paragraph("High", pdf_styles["Normal"]),
-                 Paragraph("High", pdf_styles["Normal"]),
-                 Paragraph("High", pdf_styles["Normal"])],
+                 Paragraph("PAL5", pdf_styles["Normal"]),
+                 Paragraph("PAL5", pdf_styles["Normal"]),
+                 Paragraph("PAL4", pdf_styles["Normal"]),
+                 Paragraph("PAL4", pdf_styles["Normal"]),
+                 Paragraph("PAL4", pdf_styles["Normal"])],
                 [Paragraph("<b>2 (Low)</b>", header_style),
-                 Paragraph("High+", pdf_styles["Normal"]),
-                 Paragraph("High+", pdf_styles["Normal"]),
-                 Paragraph("High", pdf_styles["Normal"]),
-                 Paragraph("Moderate", pdf_styles["Normal"]),
-                 Paragraph("Moderate", pdf_styles["Normal"])],
+                 Paragraph("PAL5", pdf_styles["Normal"]),
+                 Paragraph("PAL5", pdf_styles["Normal"]),
+                 Paragraph("PAL4", pdf_styles["Normal"]),
+                 Paragraph("PAL3", pdf_styles["Normal"]),
+                 Paragraph("PAL3", pdf_styles["Normal"])],
                 [Paragraph("<b>3 (Moderate)</b>", header_style),
-                 Paragraph("High", pdf_styles["Normal"]),
-                 Paragraph("High", pdf_styles["Normal"]),
-                 Paragraph("Moderate", pdf_styles["Normal"]),
-                 Paragraph("Moderate", pdf_styles["Normal"]),
-                 Paragraph("Extra Low", pdf_styles["Normal"])],
+                 Paragraph("PAL4", pdf_styles["Normal"]),
+                 Paragraph("PAL4", pdf_styles["Normal"]),
+                 Paragraph("PAL3", pdf_styles["Normal"]),
+                 Paragraph("PAL3", pdf_styles["Normal"]),
+                 Paragraph("PAL1", pdf_styles["Normal"])],
                 [Paragraph("<b>4 (High)</b>", header_style),
-                 Paragraph("High", pdf_styles["Normal"]),
-                 Paragraph("Moderate", pdf_styles["Normal"]),
-                 Paragraph("Moderate", pdf_styles["Normal"]),
-                 Paragraph("Extra Low", pdf_styles["Normal"]),
-                 Paragraph("Extra Low", pdf_styles["Normal"])],
+                 Paragraph("PAL4", pdf_styles["Normal"]),
+                 Paragraph("PAL3", pdf_styles["Normal"]),
+                 Paragraph("PAL3", pdf_styles["Normal"]),
+                 Paragraph("PAL1", pdf_styles["Normal"]),
+                 Paragraph("PAL1", pdf_styles["Normal"])],
                 [Paragraph("<b>5 (High+)</b>", header_style),
-                 Paragraph("High", pdf_styles["Normal"]),
-                 Paragraph("Moderate", pdf_styles["Normal"]),
-                 Paragraph("Extra Low", pdf_styles["Normal"]),
-                 Paragraph("Extra Low", pdf_styles["Normal"]),
-                 Paragraph("Extra Low", pdf_styles["Normal"])]
+                 Paragraph("PAL4", pdf_styles["Normal"]),
+                 Paragraph("PAL3", pdf_styles["Normal"]),
+                 Paragraph("PAL1", pdf_styles["Normal"]),
+                 Paragraph("PAL1", pdf_styles["Normal"]),
+                 Paragraph("PAL1", pdf_styles["Normal"])]
             ]
             base_matrix_table = Table(base_matrix_data, colWidths=[80, 70, 70, 70, 70, 70])
             base_matrix_table.setStyle(TableStyle([
@@ -6350,11 +6350,11 @@ class FaultTreeApp:
             discretization_data = [
                 [Paragraph("<b>Continuous Value (Rounded)</b>", header_style),
                  Paragraph("<b>Prototype Assurance Level (PAL)</b>", header_style)],
-                [Paragraph("< 1.5", header_style), Paragraph("Level 1 (Extra Low)", pdf_styles["Normal"])],
-                [Paragraph("1.5 – < 2.5", header_style), Paragraph("Level 2 (Low)", pdf_styles["Normal"])],
-                [Paragraph("2.5 – < 3.5", header_style), Paragraph("Level 3 (Moderate)", pdf_styles["Normal"])],
-                [Paragraph("3.5 – < 4.5", header_style), Paragraph("Level 4 (High)", pdf_styles["Normal"])],
-                [Paragraph("≥ 4.5", header_style), Paragraph("Level 5 (High+)", pdf_styles["Normal"])]
+                [Paragraph("< 1.5", header_style), Paragraph("Level 1 (PAL1)", pdf_styles["Normal"])],
+                [Paragraph("1.5 – < 2.5", header_style), Paragraph("Level 2 (PAL2)", pdf_styles["Normal"])],
+                [Paragraph("2.5 – < 3.5", header_style), Paragraph("Level 3 (PAL3)", pdf_styles["Normal"])],
+                [Paragraph("3.5 – < 4.5", header_style), Paragraph("Level 4 (PAL4)", pdf_styles["Normal"])],
+                [Paragraph("≥ 4.5", header_style), Paragraph("Level 5 (PAL5)", pdf_styles["Normal"])]
             ]
             discretization_table = Table(discretization_data, colWidths=[150, 200])
             discretization_table.setStyle(TableStyle([
@@ -6370,7 +6370,7 @@ class FaultTreeApp:
             Story.append(Spacer(1, 12))
             
             # Define mapping from numeric level to qualitative label.
-            level_labels = {1: "Extra Low", 2: "Low", 3: "Moderate", 4: "High", 5: "High+"}
+            level_labels = {1: "PAL1", 2: "PAL2", 3: "PAL3", 4: "PAL4", 5: "PAL5"}
     
             # ------------------------------------------------------------------
             # Helper: Get the highest Prototype Assurance Level (PAL) from immediate parents.
