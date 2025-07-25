@@ -10596,27 +10596,27 @@ class FaultTreeApp:
         return _close
 
     def open_use_case_diagram(self):
-        win = UseCaseDiagramWindow(self.root)
+        win = UseCaseDiagramWindow(self.root, self)
         win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.use_case_windows))
         self.use_case_windows.append(win)
 
     def open_activity_diagram(self):
-        win = ActivityDiagramWindow(self.root)
+        win = ActivityDiagramWindow(self.root, self)
         win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.activity_windows))
         self.activity_windows.append(win)
 
     def open_block_diagram(self):
-        win = BlockDiagramWindow(self.root)
+        win = BlockDiagramWindow(self.root, self)
         win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.block_windows))
         self.block_windows.append(win)
 
     def open_internal_block_diagram(self):
-        win = InternalBlockDiagramWindow(self.root)
+        win = InternalBlockDiagramWindow(self.root, self)
         win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.ibd_windows))
         self.ibd_windows.append(win)
 
     def manage_architecture(self):
-        ArchitectureManagerDialog(self.root)
+        ArchitectureManagerDialog(self.root, self)
         
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:

@@ -77,7 +77,10 @@ new **circuit** property while parts reference individual components using the
 **qualification** and **failureModes** attributes.  Entering values for these
 fields shows them in a *Reliability* compartment for blocks or as additional
 lines beneath parts so FIT rates and qualification information remain visible in
-the architecture model.
+the architecture model. When editing a block or part you can now pick from
+drop-down lists containing all circuits or components from saved reliability
+analyses. Selecting an item automatically fills in its FIT rate, qualification
+certificate and any failure modes found in FMEA tables.
 
 ### HAZOP Analysis
 
