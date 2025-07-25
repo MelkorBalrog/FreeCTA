@@ -19,6 +19,14 @@ def _get_next_id() -> int:
     return val
 
 
+def _parse_float(value: str | None, default: float) -> float:
+    """Safely convert a string to float, returning *default* on failure."""
+    try:
+        return float(value) if value not in (None, "") else default
+    except (TypeError, ValueError):
+        return default
+
+
 @dataclass
 class SysMLObject:
     obj_id: int
@@ -620,8 +628,10 @@ class SysMLDiagramWindow(tk.Toplevel):
                     else:
                         self.canvas.create_line(x, y - half, x, y + half, arrow=tk.BOTH)
 
-                lx = x + float(obj.properties.get("labelX", "8")) * self.zoom
-                ly = y + float(obj.properties.get("labelY", "-8")) * self.zoom
+                lx_off = _parse_float(obj.properties.get("labelX"), 8.0)
+                ly_off = _parse_float(obj.properties.get("labelY"), -8.0)
+                lx = x + lx_off * self.zoom
+                ly = y + ly_off * self.zoom
                 self.canvas.create_text(lx, ly, text=obj.properties.get("name", ""), anchor="center")
             else:
                 self.canvas.create_rectangle(x - w, y - h, x + w, y + h,
@@ -1028,6 +1038,13 @@ class SysMLObjectDialog(simpledialog.Dialog):
                         self.entries['failureModes'].set(modes)
                     else:
                         self.obj.properties['failureModes'] = modes
+                    # Update parts list to reflect BOM components
+                    if comp.sub_boms and 'partProperties' in self.listboxes:
+                        names = sorted({c.name for bom in comp.sub_boms for c in bom})
+                        lb = self.listboxes['partProperties']
+                        lb.delete(0, tk.END)
+                        for n in names:
+                            lb.insert(tk.END, n)
 
                 cb.bind("<<ComboboxSelected>>", sync_circuit)
             elif prop == "component" and app:
@@ -1297,6 +1314,16 @@ class SysMLObjectDialog(simpledialog.Dialog):
                                             win.redraw()
                                             win._sync_to_repository()
                             repo.diagrams[diag_id] = diag
+                            # Update block's part list
+                            part_names = [c.name for c in selected]
+                            self.obj.properties['partProperties'] = ", ".join(part_names)
+                            if 'partProperties' in self.listboxes:
+                                lb = self.listboxes['partProperties']
+                                lb.delete(0, tk.END)
+                                for n in part_names:
+                                    lb.insert(tk.END, n)
+                            if self.obj.element_id in repo.elements:
+                                repo.elements[self.obj.element_id].properties['partProperties'] = ", ".join(part_names)
                             if hasattr(self.master, "_sync_to_repository"):
                                 self.master._sync_to_repository()
 
