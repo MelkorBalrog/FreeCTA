@@ -38,6 +38,14 @@ def _get_next_id() -> int:
     return val
 
 
+def _parse_float(val: str | None, default: float) -> float:
+    """Convert *val* to ``float`` or return ``default`` if conversion fails."""
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
 def _find_parent_blocks(repo: SysMLRepository, block_id: str) -> set[str]:
     """Return all blocks that directly use ``block_id`` as a part or are
     associated with it."""
