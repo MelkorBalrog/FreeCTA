@@ -8,6 +8,25 @@ from sysml_repository import SysMLRepository, SysMLDiagram, SysMLElement
 from sysml_spec import SYSML_PROPERTIES
 from models import global_requirements
 
+# ---------------------------------------------------------------------------
+# Appearance customization
+# ---------------------------------------------------------------------------
+# Basic fill colors for different SysML object types. This provides a simple
+# color palette so diagrams appear less bland and more professional.
+OBJECT_COLORS: dict[str, str] = {
+    "Actor": "#E0F7FA",
+    "Use Case": "#FFF3E0",
+    "System Boundary": "#ECEFF1",
+    "Action Usage": "#E8F5E9",
+    "Action": "#E8F5E9",
+    "Part": "#FFFDE7",
+    "Port": "#F3E5F5",
+    "Block": "#E0E0E0",
+    "Decision": "#E1F5FE",
+    "Merge": "#E1F5FE",
+    # Fork and Join bars remain black so are not listed here
+}
+
 
 _next_obj_id = 1
 
@@ -559,22 +578,54 @@ class SysMLDiagramWindow(tk.Toplevel):
         y = obj.y * self.zoom
         w = obj.width * self.zoom / 2
         h = obj.height * self.zoom / 2
+        color = OBJECT_COLORS.get(obj.obj_type, "white")
+        outline = "black"
         if obj.obj_type == "Actor":
             sx = obj.width / 80.0 * self.zoom
             sy = obj.height / 40.0 * self.zoom
-            self.canvas.create_oval(x - 10 * sx, y - 30 * sy,
-                                    x + 10 * sx, y - 10 * sy)
-            self.canvas.create_line(x, y - 10 * sy, x, y + 20 * sy)
-            self.canvas.create_line(x - 15 * sx, y, x + 15 * sx, y)
-            self.canvas.create_line(x, y + 20 * sy,
-                                    x - 10 * sx, y + 40 * sy)
-            self.canvas.create_line(x, y + 20 * sy,
-                                    x + 10 * sx, y + 40 * sy)
+            self.canvas.create_oval(
+                x - 10 * sx,
+                y - 30 * sy,
+                x + 10 * sx,
+                y - 10 * sy,
+                outline=outline,
+                fill=color,
+            )
+            self.canvas.create_line(x, y - 10 * sy, x, y + 20 * sy, fill=outline)
+            self.canvas.create_line(x - 15 * sx, y, x + 15 * sx, y, fill=outline)
+            self.canvas.create_line(
+                x,
+                y + 20 * sy,
+                x - 10 * sx,
+                y + 40 * sy,
+                fill=outline,
+            )
+            self.canvas.create_line(
+                x,
+                y + 20 * sy,
+                x + 10 * sx,
+                y + 40 * sy,
+                fill=outline,
+            )
         elif obj.obj_type == "Use Case":
-            self.canvas.create_oval(x - w, y - h, x + w, y + h)
+            self.canvas.create_oval(
+                x - w,
+                y - h,
+                x + w,
+                y + h,
+                fill=color,
+                outline=outline,
+            )
         elif obj.obj_type == "System Boundary":
-            self.canvas.create_rectangle(x - w, y - h, x + w, y + h,
-                                        dash=(4, 2))
+            self.canvas.create_rectangle(
+                x - w,
+                y - h,
+                x + w,
+                y + h,
+                dash=(4, 2),
+                outline=outline,
+                fill=color,
+            )
             label = obj.properties.get("name", "")
             if label:
                 lx = x - w + 4 * self.zoom
@@ -582,13 +633,20 @@ class SysMLDiagramWindow(tk.Toplevel):
                 self.canvas.create_text(lx, ly, text=label, anchor="sw")
         elif obj.obj_type in ("Action Usage", "Action", "Part", "Port"):
             dash = ()
-            fill = ""
+            fill = color
             if obj.obj_type == "Part":
                 dash = (4, 2)
             if obj.obj_type == "Port":
                 side = obj.properties.get("side", "E")
                 sz = 6 * self.zoom
-                self.canvas.create_rectangle(x - sz, y - sz, x + sz, y + sz, fill="white")
+                self.canvas.create_rectangle(
+                    x - sz,
+                    y - sz,
+                    x + sz,
+                    y + sz,
+                    fill=color,
+                    outline=outline,
+                )
                 arrow_len = sz * 1.2
                 half = arrow_len / 2
                 direction = obj.properties.get("direction", "out")
@@ -624,12 +682,26 @@ class SysMLDiagramWindow(tk.Toplevel):
                 ly = y + float(obj.properties.get("labelY", "-8")) * self.zoom
                 self.canvas.create_text(lx, ly, text=obj.properties.get("name", ""), anchor="center")
             else:
-                self.canvas.create_rectangle(x - w, y - h, x + w, y + h,
-                                            dash=dash, fill=fill)
+                self.canvas.create_rectangle(
+                    x - w,
+                    y - h,
+                    x + w,
+                    y + h,
+                    dash=dash,
+                    fill=fill,
+                    outline=outline,
+                )
         elif obj.obj_type == "Block":
             left, top = x - w, y - h
             right, bottom = x + w, y + h
-            self.canvas.create_rectangle(left, top, right, bottom)
+            self.canvas.create_rectangle(
+                left,
+                top,
+                right,
+                bottom,
+                fill=color,
+                outline=outline,
+            )
             header = f"<<block>> {obj.properties.get('name', '')}".strip()
             self.canvas.create_line(left, top + 20 * self.zoom, right, top + 20 * self.zoom)
             self.canvas.create_text(left + 4 * self.zoom, top + 10 * self.zoom, text=header, anchor="w")
@@ -674,18 +746,32 @@ class SysMLDiagramWindow(tk.Toplevel):
                 self.canvas.create_oval(x - inner, y - inner, x + inner, y + inner,
                                         fill="black")
         elif obj.obj_type in ("Decision", "Merge"):
-            self.canvas.create_polygon(x, y - h,
-                                      x + w, y,
-                                      x, y + h,
-                                      x - w, y,
-                                      fill="white", outline="black")
+            self.canvas.create_polygon(
+                x,
+                y - h,
+                x + w,
+                y,
+                x,
+                y + h,
+                x - w,
+                y,
+                fill=color,
+                outline=outline,
+            )
         elif obj.obj_type in ("Fork", "Join"):
             half = obj.width / 2 * self.zoom
             self.canvas.create_rectangle(x - half, y - 5 * self.zoom,
                                         x + half, y + 5 * self.zoom,
                                         fill="black")
         else:
-            self.canvas.create_rectangle(x - w, y - h, x + w, y + h)
+            self.canvas.create_rectangle(
+                x - w,
+                y - h,
+                x + w,
+                y + h,
+                fill=color,
+                outline=outline,
+            )
 
         if obj.obj_type not in ("Block", "System Boundary", "Port"):
             name = obj.properties.get("name", obj.obj_type)
