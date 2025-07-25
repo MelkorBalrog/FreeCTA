@@ -440,7 +440,7 @@ class ADRiskAssessmentHelper:
         else:
             combined = 1
 
-        level_map = {1: "extra low", 2: "low", 3: "moderate", 4: "high", 5: "high+"}
+        level_map = {1: "PAL1", 2: "PAL2", 3: "PAL3", 4: "PAL4", 5: "PAL5"}
 
         if node.node_type.upper() == "TOP EVENT":
             try:

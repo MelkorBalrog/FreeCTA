@@ -143,6 +143,7 @@ class SysMLDiagramWindow(tk.Toplevel):
                     if src_id and dst_id:
                         rel = self.repo.create_relationship(t, src_id, dst_id)
                         self.repo.add_relationship_to_diagram(self.diagram_id, rel.rel_id)
+                    self._sync_to_repository()
                     ConnectionDialog(self, conn)
                 self.start = None
                 self.redraw()
@@ -179,6 +180,7 @@ class SysMLDiagramWindow(tk.Toplevel):
                 new_obj.properties.setdefault("labelY", "-8")
             element.properties.update(new_obj.properties)
             self.objects.append(new_obj)
+            self._sync_to_repository()
             self.redraw()
         else:
             if obj:
@@ -237,6 +239,7 @@ class SysMLDiagramWindow(tk.Toplevel):
                         p.y += dy
                         self.snap_port_to_parent(p, self.selected_obj)
         self.redraw()
+        self._sync_to_repository()
 
     def on_left_release(self, _event):
         self.start = None
@@ -668,6 +671,7 @@ class SysMLDiagramWindow(tk.Toplevel):
             self.clipboard = copy.deepcopy(self.selected_obj)
             self.remove_object(self.selected_obj)
             self.selected_obj = None
+            self._sync_to_repository()
             self.redraw()
 
     def paste_selected(self, _event=None):
@@ -682,12 +686,14 @@ class SysMLDiagramWindow(tk.Toplevel):
             if diag and new_obj.element_id and new_obj.element_id not in diag.elements:
                 diag.elements.append(new_obj.element_id)
             self.selected_obj = new_obj
+            self._sync_to_repository()
             self.redraw()
 
     def delete_selected(self, _event=None):
         if self.selected_obj:
             self.remove_object(self.selected_obj)
             self.selected_obj = None
+            self._sync_to_repository()
             self.redraw()
 
     def remove_object(self, obj: SysMLObject) -> None:
@@ -697,12 +703,17 @@ class SysMLDiagramWindow(tk.Toplevel):
         diag = self.repo.diagrams.get(self.diagram_id)
         if diag and obj.element_id in diag.elements:
             diag.elements.remove(obj.element_id)
+        self._sync_to_repository()
 
-    def on_close(self):
+    def _sync_to_repository(self) -> None:
+        """Persist current objects and connections back to the repository."""
         diag = self.repo.diagrams.get(self.diagram_id)
         if diag:
             diag.objects = [obj.__dict__ for obj in self.objects]
             diag.connections = [conn.__dict__ for conn in self.connections]
+
+    def on_close(self):
+        self._sync_to_repository()
         self.destroy()
 
 class SysMLObjectDialog(simpledialog.Dialog):
@@ -1111,6 +1122,8 @@ class ConnectionDialog(simpledialog.Dialog):
             except ValueError:
                 continue
         self.connection.points = pts
+        if hasattr(self.master, "_sync_to_repository"):
+            self.master._sync_to_repository()
 
 class UseCaseDiagramWindow(SysMLDiagramWindow):
     def __init__(self, master, app, diagram_id: str | None = None):
