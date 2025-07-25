@@ -40,6 +40,9 @@ if 'PortUsage' not in SYSML_PROPERTIES:
 for p in ('direction', 'flow'):
     if p not in SYSML_PROPERTIES['PortUsage']:
         SYSML_PROPERTIES['PortUsage'].append(p)
+for p in ('labelX', 'labelY'):
+    if p not in SYSML_PROPERTIES['PortUsage']:
+        SYSML_PROPERTIES['PortUsage'].append(p)
 
 # ----------------------------------------------------------------------
 # Additional properties for reliability annotations
