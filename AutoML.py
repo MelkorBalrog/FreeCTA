@@ -2758,6 +2758,47 @@ class FaultTreeApp:
                     best = te.safety_goal_asil or "QM"
         return best
 
+    def get_top_event_safety_goals(self, node):
+        """Return names of safety goals for top events containing ``node``."""
+        result = []
+        target = self.get_failure_mode_node(node)
+        for te in self.top_events:
+            if any(n.unique_id == target.unique_id for n in self.get_all_nodes(te)):
+                sg = te.safety_goal_description or te.user_name or ""
+                if sg:
+                    result.append(sg)
+        return result
+
+    def calculate_fmeda_metrics(self, events):
+        """Return ASIL and FMEDA metrics for the given events."""
+        total = 0.0
+        unc_spf = 0.0
+        unc_lpf = 0.0
+        asil = "QM"
+        for be in events:
+            src = self.get_failure_mode_node(be)
+            fit_mode = getattr(be, "fmeda_fit", 0.0)
+            total += fit_mode
+            if src.fmeda_fault_type == "permanent":
+                unc_spf += fit_mode * (1 - src.fmeda_diag_cov)
+            else:
+                unc_lpf += fit_mode * (1 - src.fmeda_diag_cov)
+            sg = getattr(src, "fmeda_safety_goal", "")
+            sgs = self.get_top_event_safety_goals(src)
+            if sgs:
+                sg = ", ".join(sgs)
+            a = self.get_safety_goal_asil(sg)
+            if ASIL_ORDER.get(a, 0) > ASIL_ORDER.get(asil, 0):
+                asil = a
+        dc = (total - (unc_spf + unc_lpf)) / total if total else 0.0
+        self.reliability_total_fit = total
+        self.reliability_dc = dc
+        self.spfm = unc_spf
+        self.lpfm = unc_lpf
+        spfm_metric = 1 - unc_spf / total if total else 0.0
+        lpfm_metric = 1 - unc_lpf / total if total else 0.0
+        return asil, dc, spfm_metric, lpfm_metric
+
     def sync_hara_to_safety_goals(self):
         """Propagate HARA values to safety goals when the HARA is approved."""
         sg_data = {}
@@ -8487,8 +8528,13 @@ class FaultTreeApp:
             ttk.Entry(master, textvariable=self.mal_var, width=30).grid(row=4, column=1, padx=5, pady=5)
 
             ttk.Label(master, text="Violates Safety Goal:").grid(row=5, column=0, sticky="e", padx=5, pady=5)
-            self.sg_var = tk.StringVar(value=getattr(self.node, 'fmeda_safety_goal', ''))
-            ttk.Entry(master, textvariable=self.sg_var, width=30).grid(row=5, column=1, padx=5, pady=5)
+            preset_goals = self.app.get_top_event_safety_goals(self.node)
+            sg_value = ", ".join(preset_goals) if preset_goals else getattr(self.node, 'fmeda_safety_goal', '')
+            self.sg_var = tk.StringVar(value=sg_value)
+            self.sg_entry = ttk.Entry(master, textvariable=self.sg_var, width=30)
+            if preset_goals:
+                self.sg_entry.config(state='readonly')
+            self.sg_entry.grid(row=5, column=1, padx=5, pady=5)
 
             ttk.Label(master, text="Severity (1-10):").grid(row=6, column=0, sticky="e", padx=5, pady=5)
             self.sev_spin = tk.Spinbox(master, from_=1, to=10, width=5)
@@ -8597,7 +8643,11 @@ class FaultTreeApp:
             except ValueError:
                 self.node.fmea_detection = 1
             self.node.fmeda_malfunction = self.mal_var.get()
-            self.node.fmeda_safety_goal = self.sg_var.get()
+            preset_goals = self.app.get_top_event_safety_goals(self.node)
+            if preset_goals:
+                self.node.fmeda_safety_goal = ", ".join(preset_goals)
+            else:
+                self.node.fmeda_safety_goal = self.sg_var.get()
             try:
                 self.node.fmeda_diag_cov = float(self.dc_var.get())
             except ValueError:
@@ -8802,6 +8852,19 @@ class FaultTreeApp:
                     load_bom()
                 else:
                     refresh_tree()
+                asil, dc, spfm_m, lpfm_m = self.calculate_fmeda_metrics(entries)
+                thresh = ASIL_TARGETS.get(asil, ASIL_TARGETS["QM"])
+                ok_dc = dc >= thresh["dc"]
+                ok_spf = spfm_m >= thresh["spfm"]
+                ok_lpf = lpfm_m >= thresh["lpfm"]
+                msg = (
+                    f"Total FIT: {self.reliability_total_fit:.2f}\n"
+                    f"DC: {dc:.2f} {'PASS' if ok_dc else 'FAIL'}\n"
+                    f"SPFM: {spfm_m:.2f} {'PASS' if ok_spf else 'FAIL'}\n"
+                    f"LPFM: {lpfm_m:.2f} {'PASS' if ok_lpf else 'FAIL'}\n"
+                    f"ASIL {asil}"
+                )
+                messagebox.showinfo("FMEDA", msg)
 
             calc_btn = ttk.Button(btn_frame, text="Calculate FMEDA", command=calculate_fmeda)
             calc_btn.pack(side=tk.LEFT, padx=2)
@@ -9021,9 +9084,13 @@ class FaultTreeApp:
                     req_ids,
                 ]
                 if fmeda:
+                    sg_value = src.fmeda_safety_goal
+                    goals = self.get_top_event_safety_goals(src)
+                    if goals:
+                        sg_value = ", ".join(goals)
                     vals.extend([
                         src.fmeda_malfunction,
-                        src.fmeda_safety_goal,
+                        sg_value,
                         src.fmeda_fault_type,
                         f"{src.fmeda_fault_fraction:.2f}",
                         f"{src.fmeda_fit:.2f}",
@@ -9039,34 +9106,13 @@ class FaultTreeApp:
                 tree.item(iid, open=True)
 
             if fmeda:
-                total = 0.0
-                spf = 0.0
-                lpf = 0.0
-                asil = "QM"
-                for be in events:
-                    src = self.get_failure_mode_node(be)
-                    fit_mode = be.fmeda_fit
-                    total += fit_mode
-                    if src.fmeda_fault_type == "permanent":
-                        spf += fit_mode * (1 - src.fmeda_diag_cov)
-                    else:
-                        lpf += fit_mode * (1 - src.fmeda_diag_cov)
-                    sg = getattr(src, "fmeda_safety_goal", "")
-                    a = self.get_safety_goal_asil(sg)
-                    if ASIL_ORDER.get(a,0) > ASIL_ORDER.get(asil,0):
-                        asil = a
-                dc = (total - (spf + lpf)) / total if total else 0.0
-                self.reliability_total_fit = total
-                self.spfm = spf
-                self.lpfm = lpf
-                spfm_metric = 1 - spf / total if total else 0.0
-                lpfm_metric = 1 - lpf / (total - spf) if total > spf else 0.0
+                asil, dc, spfm_metric, lpfm_metric = self.calculate_fmeda_metrics(events)
                 thresh = ASIL_TARGETS.get(asil, ASIL_TARGETS["QM"])
                 ok_dc = dc >= thresh["dc"]
                 ok_spf = spfm_metric >= thresh["spfm"]
                 ok_lpf = lpfm_metric >= thresh["lpfm"]
                 text = (
-                    f"Total FIT: {total:.2f}  DC: {dc:.2f}{CHECK_MARK if ok_dc else CROSS_MARK}"
+                    f"Total FIT: {self.reliability_total_fit:.2f}  DC: {dc:.2f}{CHECK_MARK if ok_dc else CROSS_MARK}"
                     f"  SPFM: {spfm_metric:.2f}{CHECK_MARK if ok_spf else CROSS_MARK}"
                     f"  LPFM: {lpfm_metric:.2f}{CHECK_MARK if ok_lpf else CROSS_MARK}"
                     f"  (ASIL {asil})"
@@ -9260,7 +9306,7 @@ class FaultTreeApp:
                     rpn,
                     req_ids,
                     getattr(be, "fmeda_malfunction", ""),
-                    getattr(be, "fmeda_safety_goal", ""),
+                    ", ".join(self.get_top_event_safety_goals(be)) or getattr(be, "fmeda_safety_goal", ""),
                     getattr(be, "fmeda_fault_type", ""),
                     be.fmeda_fault_fraction,
                     be.fmeda_fit,
@@ -9317,7 +9363,7 @@ class FaultTreeApp:
                     rpn,
                     req_ids,
                     getattr(be, "fmeda_malfunction", ""),
-                    getattr(be, "fmeda_safety_goal", ""),
+                    ", ".join(self.get_top_event_safety_goals(be)) or getattr(be, "fmeda_safety_goal", ""),
                     getattr(be, "fmeda_fault_type", ""),
                     be.fmeda_fault_fraction,
                     be.fmeda_fit,
