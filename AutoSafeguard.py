@@ -1616,7 +1616,7 @@ class FaultTreeApp:
         self.top_events = []
         self.selected_node = None
         self.clone_offset_counter = {}
-        self.root.title("Autonomous Driving Risk Assessment")
+        self.root.title("AutoSafeguard-Analyzer")
         self.zoom = 1.0
         self.diagram_font = tkFont.Font(family="Arial", size=int(8 * self.zoom))
         self.style = ttk.Style()
@@ -1629,7 +1629,7 @@ class FaultTreeApp:
         self.cut_mode = False
         self.page_history = []
         self.project_properties = {
-            "pdf_report_name": "Autonomous Driving Risk Assessment PDF Report",
+            "pdf_report_name": "AutoSafeguard-Analyzer PDF Report",
             "pdf_detailed_formulas": True,
             "show_grid": True,
             "black_white": False,
@@ -1648,6 +1648,10 @@ class FaultTreeApp:
         self.active_hara = None
         self.hazop_entries = []  # backwards compatibility for active doc
         self.hara_entries = []
+        self.fi2tc_docs = []  # list of FI2TCDoc
+        self.tc2fi_docs = []  # list of TC2FIDoc
+        self.active_fi2tc = None
+        self.active_tc2fi = None
         self.arch_diagrams = []
         self.top_events = []
         self.reviews = []
@@ -2809,7 +2813,7 @@ class FaultTreeApp:
 
         ttk.Label(prop_win, text="PDF Report Name:", font=dialog_font).grid(row=0, column=0, padx=10, pady=10, sticky="w")
         pdf_entry = tk.Entry(prop_win, width=40, font=dialog_font)
-        pdf_entry.insert(0, self.project_properties.get("pdf_report_name", "Autonomous Driving Risk Assessment PDF Report"))
+        pdf_entry.insert(0, self.project_properties.get("pdf_report_name", "AutoSafeguard-Analyzer PDF Report"))
         pdf_entry.grid(row=0, column=1, padx=10, pady=10)
 
         # New checkbox to choose between detailed formulas or score results only.
@@ -6197,7 +6201,7 @@ class FaultTreeApp:
         return summary_sentence
 
     def _generate_pdf_report(self, include_assurance=True):
-        report_title = self.project_properties.get("pdf_report_name", "Autonomous Driving Risk Assessment PDF Report")
+        report_title = self.project_properties.get("pdf_report_name", "AutoSafeguard-Analyzer PDF Report")
         path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
         if not path:
             return
@@ -6843,6 +6847,18 @@ class FaultTreeApp:
                 doc = self.hara_docs[idx]
                 self._hara_window.doc_var.set(doc.name)
                 self._hara_window.select_doc()
+        elif kind == "fi2tc":
+            self.open_fi2tc_window()
+            if hasattr(self, "_fi2tc_window"):
+                doc = self.fi2tc_docs[idx]
+                self._fi2tc_window.doc_var.set(doc.name)
+                self._fi2tc_window.select_doc()
+        elif kind == "tc2fi":
+            self.open_tc2fi_window()
+            if hasattr(self, "_tc2fi_window"):
+                doc = self.tc2fi_docs[idx]
+                self._tc2fi_window.doc_var.set(doc.name)
+                self._tc2fi_window.select_doc()
         elif kind == "arch":
             self.open_arch_window(idx)
 
@@ -6912,6 +6928,12 @@ class FaultTreeApp:
         self.root_node = new_root
         self.fmea_entries = []
         self.fmeas = []
+        self.fi2tc_docs = []
+        self.tc2fi_docs = []
+        self.active_fi2tc = None
+        self.active_tc2fi = None
+        self.fi2tc_entries = []
+        self.tc2fi_entries = []
         self.update_views()
         self.set_last_saved_state()
         self.canvas.update()
@@ -7304,6 +7326,12 @@ class FaultTreeApp:
             hara_root = tree.insert("", "end", text="HARAs", open=True)
             for idx, doc in enumerate(self.hara_docs):
                 tree.insert(hara_root, "end", text=doc.name, tags=("hara", str(idx)))
+            fi2tc_root = tree.insert("", "end", text="FI2TC Analyses", open=True)
+            for idx, doc in enumerate(self.fi2tc_docs):
+                tree.insert(fi2tc_root, "end", text=doc.name, tags=("fi2tc", str(idx)))
+            tc2fi_root = tree.insert("", "end", text="TC2FI Analyses", open=True)
+            for idx, doc in enumerate(self.tc2fi_docs):
+                tree.insert(tc2fi_root, "end", text=doc.name, tags=("tc2fi", str(idx)))
             arch_root = tree.insert("", "end", text="Architecture Diagrams", open=True)
             for idx, diag in enumerate(self.arch_diagrams):
                 name = diag.get('name', f'Diagram {idx+1}')
@@ -11054,6 +11082,14 @@ class FaultTreeApp:
                 }
                 for doc in self.hara_docs
             ],
+            "fi2tc_docs": [
+                {"name": doc.name, "entries": doc.entries}
+                for doc in self.fi2tc_docs
+            ],
+            "tc2fi_docs": [
+                {"name": doc.name, "entries": doc.entries}
+                for doc in self.tc2fi_docs
+            ],
             "hazop_entries": [asdict(e) for e in self.hazop_entries],
             "fi2tc_entries": self.fi2tc_entries,
             "tc2fi_entries": self.tc2fi_entries,
@@ -11246,8 +11282,25 @@ class FaultTreeApp:
         self.active_hara = self.hara_docs[0] if self.hara_docs else None
         self.hara_entries = self.active_hara.entries if self.active_hara else []
 
-        self.fi2tc_entries = data.get("fi2tc_entries", [])
-        self.tc2fi_entries = data.get("tc2fi_entries", [])
+        self.fi2tc_docs = []
+        for d in data.get("fi2tc_docs", []):
+            self.fi2tc_docs.append(
+                FI2TCDoc(d.get("name", f"FI2TC {len(self.fi2tc_docs)+1}"), d.get("entries", []))
+            )
+        if not self.fi2tc_docs and "fi2tc_entries" in data:
+            self.fi2tc_docs.append(FI2TCDoc("Default", data.get("fi2tc_entries", [])))
+        self.active_fi2tc = self.fi2tc_docs[0] if self.fi2tc_docs else None
+        self.fi2tc_entries = self.active_fi2tc.entries if self.active_fi2tc else []
+
+        self.tc2fi_docs = []
+        for d in data.get("tc2fi_docs", []):
+            self.tc2fi_docs.append(
+                TC2FIDoc(d.get("name", f"TC2FI {len(self.tc2fi_docs)+1}"), d.get("entries", []))
+            )
+        if not self.tc2fi_docs and "tc2fi_entries" in data:
+            self.tc2fi_docs.append(TC2FIDoc("Default", data.get("tc2fi_entries", [])))
+        self.active_tc2fi = self.tc2fi_docs[0] if self.tc2fi_docs else None
+        self.tc2fi_entries = self.active_tc2fi.entries if self.active_tc2fi else []
         self.scenario_libraries = data.get("scenario_libraries", [])
         self.odd_libraries = data.get("odd_libraries", [])
         if not self.odd_libraries and "odd_elements" in data:
@@ -11393,11 +11446,11 @@ class FaultTreeApp:
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Autonomous Driving Risk Assessment</title>
+<title>AutoSafeguard-Analyzer</title>
 <style>body {{ font-family: Arial; }} details {{ margin-left: 20px; }}</style>
 </head>
 <body>
-<h1>Autonomous Driving Risk Assessment</h1>
+<h1>AutoSafeguard-Analyzer</h1>
 {node_to_html(self.root_node)}
 </body>
 </html>"""

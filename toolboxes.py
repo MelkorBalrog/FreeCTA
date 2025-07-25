@@ -10,6 +10,8 @@ from models import (
     HaraEntry,
     HazopDoc,
     HaraDoc,
+    FI2TCDoc,
+    TC2FIDoc,
     QUALIFICATIONS,
     COMPONENT_ATTR_TEMPLATES,
     RELIABILITY_MODELS,
@@ -437,7 +439,15 @@ class FI2TCWindow(tk.Toplevel):
         super().__init__(app.root)
         self.app = app
         self.title("FI2TC Analysis")
-        self.geometry("800x400")
+        top = ttk.Frame(self)
+        top.pack(fill=tk.X)
+        ttk.Label(top, text="FI2TC:").pack(side=tk.LEFT)
+        self.doc_var = tk.StringVar()
+        self.doc_cb = ttk.Combobox(top, textvariable=self.doc_var, state="readonly")
+        self.doc_cb.pack(side=tk.LEFT, padx=2)
+        ttk.Button(top, text="New", command=self.new_doc).pack(side=tk.LEFT)
+        self.doc_cb.bind("<<ComboboxSelected>>", self.select_doc)
+
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill=tk.BOTH, expand=True)
         style = ttk.Style(self)
@@ -463,6 +473,7 @@ class FI2TCWindow(tk.Toplevel):
         ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Export CSV", command=self.export_csv).pack(side=tk.LEFT, padx=2, pady=2)
+        self.refresh_docs()
         self.refresh()
 
     def refresh(self):
@@ -583,6 +594,35 @@ class FI2TCWindow(tk.Toplevel):
             for r in self.app.fi2tc_entries:
                 w.writerow([r.get(k, "") for k in self.COLS])
         messagebox.showinfo("Export", "FI2TC exported")
+
+    def refresh_docs(self):
+        names = [d.name for d in self.app.fi2tc_docs]
+        self.doc_cb.configure(values=names)
+        if self.app.active_fi2tc:
+            self.doc_var.set(self.app.active_fi2tc.name)
+        elif names:
+            self.doc_var.set(names[0])
+
+    def select_doc(self, *_):
+        name = self.doc_var.get()
+        for d in self.app.fi2tc_docs:
+            if d.name == name:
+                self.app.active_fi2tc = d
+                self.app.fi2tc_entries = d.entries
+                break
+        self.refresh()
+
+    def new_doc(self):
+        name = simpledialog.askstring("New FI2TC", "Name:")
+        if not name:
+            return
+        doc = FI2TCDoc(name, [])
+        self.app.fi2tc_docs.append(doc)
+        self.app.active_fi2tc = doc
+        self.app.fi2tc_entries = doc.entries
+        self.refresh_docs()
+        self.refresh()
+        self.app.update_views()
 
 class HazopWindow(tk.Toplevel):
     def __init__(self, app):
@@ -1126,6 +1166,15 @@ class TC2FIWindow(tk.Toplevel):
         super().__init__(app.root)
         self.app = app
         self.title("TC2FI Analysis")
+        top = ttk.Frame(self)
+        top.pack(fill=tk.X)
+        ttk.Label(top, text="TC2FI:").pack(side=tk.LEFT)
+        self.doc_var = tk.StringVar()
+        self.doc_cb = ttk.Combobox(top, textvariable=self.doc_var, state="readonly")
+        self.doc_cb.pack(side=tk.LEFT, padx=2)
+        ttk.Button(top, text="New", command=self.new_doc).pack(side=tk.LEFT)
+        self.doc_cb.bind("<<ComboboxSelected>>", self.select_doc)
+
         self.geometry("800x400")
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill=tk.BOTH, expand=True)
@@ -1152,6 +1201,7 @@ class TC2FIWindow(tk.Toplevel):
         ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Export CSV", command=self.export_csv).pack(side=tk.LEFT, padx=2, pady=2)
+        self.refresh_docs()
         self.refresh()
 
     def refresh(self):
@@ -1275,6 +1325,35 @@ class TC2FIWindow(tk.Toplevel):
             for r in self.app.tc2fi_entries:
                 w.writerow([r.get(k, "") for k in self.COLS])
         messagebox.showinfo("Export", "TC2FI exported")
+
+    def refresh_docs(self):
+        names = [d.name for d in self.app.tc2fi_docs]
+        self.doc_cb.configure(values=names)
+        if self.app.active_tc2fi:
+            self.doc_var.set(self.app.active_tc2fi.name)
+        elif names:
+            self.doc_var.set(names[0])
+
+    def select_doc(self, *_):
+        name = self.doc_var.get()
+        for d in self.app.tc2fi_docs:
+            if d.name == name:
+                self.app.active_tc2fi = d
+                self.app.tc2fi_entries = d.entries
+                break
+        self.refresh()
+
+    def new_doc(self):
+        name = simpledialog.askstring("New TC2FI", "Name:")
+        if not name:
+            return
+        doc = TC2FIDoc(name, [])
+        self.app.tc2fi_docs.append(doc)
+        self.app.active_tc2fi = doc
+        self.app.tc2fi_entries = doc.entries
+        self.refresh_docs()
+        self.refresh()
+        self.app.update_views()
 
 
 class HazardExplorerWindow(tk.Toplevel):
