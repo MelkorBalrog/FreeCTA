@@ -58,6 +58,6 @@ for prop in ('circuit', 'fit', 'qualification', 'failureModes'):
     if prop not in SYSML_PROPERTIES['BlockUsage']:
         SYSML_PROPERTIES['BlockUsage'].append(prop)
 
-for prop in ('component', 'failureModes'):
+for prop in ('component', 'failureModes', 'asil'):
     if prop not in SYSML_PROPERTIES['PartUsage']:
         SYSML_PROPERTIES['PartUsage'].append(prop)
