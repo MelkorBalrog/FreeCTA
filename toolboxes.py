@@ -16,6 +16,7 @@ from models import (
     COMPONENT_ATTR_TEMPLATES,
     RELIABILITY_MODELS,
     PASSIVE_QUAL_FACTORS,
+    component_fit_map,
     calc_asil,
 )
 
@@ -346,7 +347,7 @@ class ReliabilityWindow(tk.Toplevel):
                     comp.fit = 0.0
             total += comp.fit * comp.quantity
 
-        comp_fit = {c.name: c.fit * c.quantity for c in self.components}
+        comp_fit = component_fit_map(self.components)
         spf = 0.0
         lpf = 0.0
         total_modes = 0.0
