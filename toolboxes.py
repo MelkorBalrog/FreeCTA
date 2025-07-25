@@ -354,11 +354,14 @@ class ReliabilityWindow(tk.Toplevel):
             comp_name = (
                 be.parents[0].user_name if be.parents else getattr(be, "fmea_component", "")
             )
-            fit = comp_fit.get(comp_name, 0.0)
+            fit = comp_fit.get(comp_name)
             frac = be.fmeda_fault_fraction
             if frac > 1.0:
                 frac /= 100.0
-            fit_mode = fit * frac
+            if fit is not None:
+                fit_mode = fit * frac
+            else:
+                fit_mode = getattr(be, "fmeda_fit", 0.0) * frac
             total_modes += fit_mode
             if be.fmeda_fault_type == "permanent":
                 spf += fit_mode * (1 - be.fmeda_diag_cov)
