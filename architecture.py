@@ -71,6 +71,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.start = None
         self.selected_obj: SysMLObject | None = None
         self.drag_offset = (0, 0)
+        self.clipboard: SysMLObject | None = None
 
         self.toolbox = ttk.Frame(self)
         self.toolbox.pack(side=tk.LEFT, fill=tk.Y)
@@ -92,6 +93,10 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.canvas.bind("<ButtonPress-3>", self.on_rc_press)
         self.canvas.bind("<B3-Motion>", self.on_rc_drag)
         self.canvas.bind("<Control-MouseWheel>", self.on_ctrl_mousewheel)
+        self.bind("<Control-c>", self.copy_selected)
+        self.bind("<Control-x>", self.cut_selected)
+        self.bind("<Control-v>", self.paste_selected)
+        self.bind("<Delete>", self.delete_selected)
 
         self.redraw()
 
@@ -152,6 +157,8 @@ class SysMLDiagramWindow(tk.Toplevel):
             if obj:
                 self.selected_obj = obj
                 self.drag_offset = (x / self.zoom - obj.x, y / self.zoom - obj.y)
+            else:
+                self.selected_obj = None
 
     def on_left_drag(self, event):
         if not self.selected_obj:
@@ -170,7 +177,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.redraw()
 
     def on_left_release(self, _event):
-        self.selected_obj = None
+        self.start = None
 
     def on_double_click(self, event):
         x = self.canvas.canvasx(event.x)
@@ -449,7 +456,13 @@ class SysMLDiagramWindow(tk.Toplevel):
             self.canvas.create_rectangle(x - w, y - h, x + w, y + h)
 
         if obj.obj_type != "Block":
-            label_lines = [obj.properties.get("name", obj.obj_type)]
+            name = obj.properties.get("name", obj.obj_type)
+            if obj.obj_type == "Part":
+                def_id = obj.properties.get("definition")
+                if def_id and def_id in self.repo.elements:
+                    def_name = self.repo.elements[def_id].name or def_id
+                    name = f"{name} : {def_name}"
+            label_lines = [name]
             key = f"{obj.obj_type.replace(' ', '')}Usage"
             for prop in SYSML_PROPERTIES.get(key, []):
                 val = obj.properties.get(prop)
@@ -489,6 +502,50 @@ class SysMLDiagramWindow(tk.Toplevel):
             if o.obj_id == oid:
                 return o
         return None
+
+    # ------------------------------------------------------------
+    # Clipboard operations
+    # ------------------------------------------------------------
+    def copy_selected(self, _event=None):
+        if self.selected_obj:
+            import copy
+            self.clipboard = copy.deepcopy(self.selected_obj)
+
+    def cut_selected(self, _event=None):
+        if self.selected_obj:
+            import copy
+            self.clipboard = copy.deepcopy(self.selected_obj)
+            self.remove_object(self.selected_obj)
+            self.selected_obj = None
+            self.redraw()
+
+    def paste_selected(self, _event=None):
+        if self.clipboard:
+            import copy
+            new_obj = copy.deepcopy(self.clipboard)
+            new_obj.obj_id = _get_next_id()
+            new_obj.x += 20
+            new_obj.y += 20
+            self.objects.append(new_obj)
+            diag = self.repo.diagrams.get(self.diagram_id)
+            if diag and new_obj.element_id and new_obj.element_id not in diag.elements:
+                diag.elements.append(new_obj.element_id)
+            self.selected_obj = new_obj
+            self.redraw()
+
+    def delete_selected(self, _event=None):
+        if self.selected_obj:
+            self.remove_object(self.selected_obj)
+            self.selected_obj = None
+            self.redraw()
+
+    def remove_object(self, obj: SysMLObject) -> None:
+        if obj in self.objects:
+            self.objects.remove(obj)
+        self.connections = [c for c in self.connections if c.src != obj.obj_id and c.dst != obj.obj_id]
+        diag = self.repo.diagrams.get(self.diagram_id)
+        if diag and obj.element_id in diag.elements:
+            diag.elements.remove(obj.element_id)
 
     def on_close(self):
         diag = self.repo.diagrams.get(self.diagram_id)
@@ -561,7 +618,7 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.diagram_var = tk.StringVar(value=cur_name)
             ttk.Combobox(master, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=row, column=1, padx=4, pady=2)
             row += 1
-        elif self.obj.obj_type == "Block":
+        elif self.obj.obj_type == "Block" or self.obj.obj_type == "Action":
             diags = [d for d in repo.diagrams.values() if d.diag_type == "Internal Block Diagram"]
             names = [d.name or d.diag_id for d in diags]
             ids = {d.name or d.diag_id: d.diag_id for d in diags}
@@ -722,7 +779,6 @@ class BlockDiagramWindow(SysMLDiagramWindow):
 class InternalBlockDiagramWindow(SysMLDiagramWindow):
     def __init__(self, master, diagram_id: str | None = None):
         tools = [
-            "Block",
             "Part",
             "Port",
             "Connector",
@@ -810,6 +866,10 @@ class ArchitectureManagerDialog(tk.Toplevel):
             for p in self.repo.elements.values():
                 if p.elem_type == "Package" and p.owner == pkg_id:
                     add_pkg(p.elem_id, node)
+            for e in self.repo.elements.values():
+                if e.owner == pkg_id and e.elem_type != "Package":
+                    label = e.name or e.elem_id
+                    self.tree.insert(node, "end", iid=e.elem_id, text=label, values=(e.elem_type,))
             for d in self.repo.diagrams.values():
                 if d.package == pkg_id:
                     label = d.name or d.diag_id
@@ -946,7 +1006,7 @@ class ArchitectureManagerDialog(tk.Toplevel):
             self.repo.elements[item].owner = new_parent
 
     def _drop_on_diagram(self, elem_id, diagram):
-        allowed = diagram.diag_type in ("Block Diagram", "Internal Block Diagram")
+        allowed = diagram.diag_type == "Block Diagram"
         if allowed and self.repo.elements[elem_id].elem_type == "Package":
             block = self.repo.create_element("Block", name=self.repo.elements[elem_id].name, owner=elem_id)
             self.repo.add_element_to_diagram(diagram.diag_id, block.elem_id)
