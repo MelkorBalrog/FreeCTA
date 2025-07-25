@@ -28,6 +28,9 @@ class SysMLDiagram:
     diag_id: str
     diag_type: str
     name: str = ""
+    package: Optional[str] = None
+    description: str = ""
+    color: str = "#FFFFFF"
     elements: List[str] = field(default_factory=list)
     relationships: List[str] = field(default_factory=list)
 
@@ -39,6 +42,8 @@ class SysMLRepository:
         self.elements: Dict[str, SysMLElement] = {}
         self.relationships: List[SysMLRelationship] = []
         self.diagrams: Dict[str, SysMLDiagram] = {}
+        # map element_id -> diagram_id for implementation links
+        self.element_diagrams: Dict[str, str] = {}
         self.root_package = self.create_element("Package", name="Root")
 
     @classmethod
@@ -62,9 +67,20 @@ class SysMLRepository:
             parent = self.root_package.elem_id
         return self.create_element("Package", name=name, owner=parent)
 
-    def create_diagram(self, diag_type: str, name: str = "") -> SysMLDiagram:
-        diag_id = str(uuid.uuid4())
-        diagram = SysMLDiagram(diag_id, diag_type, name)
+    def create_diagram(
+        self,
+        diag_type: str,
+        name: str = "",
+        diag_id: Optional[str] = None,
+        package: Optional[str] = None,
+        description: str = "",
+        color: str = "#FFFFFF",
+    ) -> SysMLDiagram:
+        if diag_id is None:
+            diag_id = str(uuid.uuid4())
+        if package is None:
+            package = self.root_package.elem_id
+        diagram = SysMLDiagram(diag_id, diag_type, name, package, description, color)
         self.diagrams[diag_id] = diagram
         return diagram
 
@@ -84,9 +100,27 @@ class SysMLRepository:
             del self.elements[elem_id]
         self.relationships = [r for r in self.relationships if r.source != elem_id and r.target != elem_id]
 
+    def delete_package(self, pkg_id: str) -> None:
+        """Delete a package and reassign its contents to the parent package."""
+        pkg = self.elements.get(pkg_id)
+        if not pkg or pkg.elem_type != "Package" or pkg_id == self.root_package.elem_id:
+            return
+        parent = pkg.owner or self.root_package.elem_id
+        for elem in self.elements.values():
+            if elem.owner == pkg_id:
+                elem.owner = parent
+        for diag in self.diagrams.values():
+            if diag.package == pkg_id:
+                diag.package = parent
+        self.delete_element(pkg_id)
+
     def delete_diagram(self, diag_id: str) -> None:
         if diag_id in self.diagrams:
             del self.diagrams[diag_id]
+        # remove any element links to this diagram
+        for k, v in list(self.element_diagrams.items()):
+            if v == diag_id:
+                del self.element_diagrams[k]
 
     def get_element(self, elem_id: str) -> Optional[SysMLElement]:
         return self.elements.get(elem_id)
@@ -122,6 +156,7 @@ class SysMLRepository:
         for d in data.get("diagrams", []):
             diag = SysMLDiagram(**d)
             self.diagrams[diag.diag_id] = diag
+        self.element_diagrams = data.get("element_diagrams", {})
         self.root_package = None
         for elem in self.elements.values():
             if elem.elem_type == "Package" and elem.owner is None:
@@ -136,11 +171,25 @@ class SysMLRepository:
         self.relationships.append(rel)
         return rel
 
+    # ------------------------------------------------------------
+    # Diagram linkage helpers
+    # ------------------------------------------------------------
+    def link_diagram(self, elem_id: str, diag_id: Optional[str]) -> None:
+        """Associate an element with a diagram implementing it."""
+        if diag_id:
+            self.element_diagrams[elem_id] = diag_id
+        else:
+            self.element_diagrams.pop(elem_id, None)
+
+    def get_linked_diagram(self, elem_id: str) -> Optional[str]:
+        return self.element_diagrams.get(elem_id)
+
     def serialize(self) -> str:
         data = {
             "elements": [elem.__dict__ for elem in self.elements.values()],
             "relationships": [rel.__dict__ for rel in self.relationships],
             "diagrams": [diag.__dict__ for diag in self.diagrams.values()],
+            "element_diagrams": self.element_diagrams,
         }
         return json.dumps(data, indent=2)
 
