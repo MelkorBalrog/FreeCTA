@@ -6,6 +6,7 @@ from typing import Dict, List, Tuple
 from sysml_repository import SysMLRepository, SysMLDiagram
 
 from sysml_spec import SYSML_PROPERTIES
+from models import global_requirements
 
 
 _next_obj_id = 1
@@ -28,6 +29,7 @@ class SysMLObject:
     width: float = 80.0
     height: float = 40.0
     properties: Dict[str, str] = field(default_factory=dict)
+    requirements: List[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -57,9 +59,11 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
         # Load any saved objects and connections for this diagram
-        self.objects: List[SysMLObject] = [
-            SysMLObject(**data) for data in getattr(diagram, "objects", [])
-        ]
+        self.objects: List[SysMLObject] = []
+        for data in getattr(diagram, "objects", []):
+            if "requirements" not in data:
+                data["requirements"] = []
+            self.objects.append(SysMLObject(**data))
         self.connections: List[DiagramConnection] = [
             DiagramConnection(**data) for data in getattr(diagram, "connections", [])
         ]
@@ -532,6 +536,10 @@ class SysMLDiagramWindow(tk.Toplevel):
                         if obj.properties.get(key, "")
                     ),
                 ),
+                (
+                    "Requirements",
+                    "; ".join(r.get("id") for r in obj.requirements),
+                ),
             ]
             cy = top + 20 * self.zoom
             for label, text in compartments:
@@ -597,6 +605,9 @@ class SysMLDiagramWindow(tk.Toplevel):
                         rel_items.append(f"{lbl}: {val}")
                 if rel_items:
                     label_lines.extend(rel_items)
+                reqs = "; ".join(r.get("id") for r in obj.requirements)
+                if reqs:
+                    label_lines.append(f"Reqs: {reqs}")
             self.canvas.create_text(x, y, text="\n".join(label_lines), anchor="center")
 
         if obj == self.selected_obj:
@@ -698,8 +709,39 @@ class SysMLObjectDialog(simpledialog.Dialog):
     """Simple dialog for editing SysML object properties."""
 
     def __init__(self, master, obj: SysMLObject):
+        if not hasattr(obj, "requirements"):
+            obj.requirements = []
         self.obj = obj
         super().__init__(master, title=f"Edit {obj.obj_type}")
+
+    class SelectRequirementsDialog(simpledialog.Dialog):
+        def __init__(self, parent, title="Select Requirements"):
+            self.selected_vars = {}
+            super().__init__(parent, title=title)
+
+        def body(self, master):
+            ttk.Label(master, text="Select requirements:").pack(padx=5, pady=5)
+            container = ttk.Frame(master)
+            container.pack(fill=tk.BOTH, expand=True)
+            canvas = tk.Canvas(container, borderwidth=0)
+            scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+            self.check_frame = ttk.Frame(canvas)
+            self.check_frame.bind(
+                "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+            canvas.create_window((0, 0), window=self.check_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+            for req_id, req in global_requirements.items():
+                var = tk.BooleanVar(value=False)
+                self.selected_vars[req_id] = var
+                text = f"[{req['id']}] {req['text']}"
+                ttk.Checkbutton(self.check_frame, text=text, variable=var).pack(anchor="w", padx=2, pady=2)
+            return self.check_frame
+
+        def apply(self):
+            self.result = [rid for rid, var in self.selected_vars.items() if var.get()]
 
     def body(self, master):
         ttk.Label(master, text="Name:").grid(row=0, column=0, sticky="e", padx=4, pady=4)
@@ -875,6 +917,18 @@ class SysMLObjectDialog(simpledialog.Dialog):
             ttk.Combobox(master, textvariable=self.def_var, values=list(idmap.keys())).grid(row=row, column=1, padx=4, pady=2)
             row += 1
 
+        # Requirement allocation section
+        ttk.Label(master, text="Requirements:").grid(row=row, column=0, sticky="ne", padx=4, pady=2)
+        self.req_list = tk.Listbox(master, height=4)
+        self.req_list.grid(row=row, column=1, padx=4, pady=2, sticky="we")
+        btnf = ttk.Frame(master)
+        btnf.grid(row=row, column=2, padx=2)
+        ttk.Button(btnf, text="Add", command=self.add_requirement).pack(side=tk.TOP)
+        ttk.Button(btnf, text="Remove", command=self.remove_requirement).pack(side=tk.TOP)
+        for r in self.obj.requirements:
+            self.req_list.insert(tk.END, f"[{r.get('id')}] {r.get('text','')}")
+        row += 1
+
     def add_port(self):
         name = simpledialog.askstring("Port", "Name:", parent=self)
         if name:
@@ -895,6 +949,24 @@ class SysMLObjectDialog(simpledialog.Dialog):
         sel = list(lb.curselection())
         for idx in reversed(sel):
             lb.delete(idx)
+
+    def add_requirement(self):
+        if not global_requirements:
+            messagebox.showinfo("No Requirements", "No requirements defined.")
+            return
+        dialog = self.SelectRequirementsDialog(self)
+        if dialog.result:
+            for rid in dialog.result:
+                req = global_requirements.get(rid)
+                if req and not any(r.get("id") == rid for r in self.obj.requirements):
+                    self.obj.requirements.append(req)
+                    self.req_list.insert(tk.END, f"[{req['id']}] {req.get('text','')}")
+
+    def remove_requirement(self):
+        sel = list(self.req_list.curselection())
+        for idx in reversed(sel):
+            del self.obj.requirements[idx]
+            self.req_list.delete(idx)
 
     def _get_failure_modes(self, app, comp_name: str) -> str:
         """Return comma separated failure modes for a component name."""
