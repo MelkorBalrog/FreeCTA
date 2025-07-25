@@ -1160,31 +1160,35 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 self.entries[prop] = var
                 self._circuit_map = {c.name: c for c in circuits}
 
-                def sync_circuit(_):
-                    name = var.get()
-                    comp = self._circuit_map.get(name)
-                    if not comp:
-                        return
-                    if 'fit' in self.entries:
-                        self.entries['fit'].set(f"{comp.fit:.2f}")
-                    else:
-                        self.obj.properties['fit'] = f"{comp.fit:.2f}"
-                    if 'qualification' in self.entries:
-                        self.entries['qualification'].set(comp.qualification)
-                    else:
-                        self.obj.properties['qualification'] = comp.qualification
-                    modes = self._get_failure_modes(app, comp.name)
-                    if 'failureModes' in self.entries:
-                        self.entries['failureModes'].set(modes)
-                    else:
-                        self.obj.properties['failureModes'] = modes
-                    # Update parts list to reflect BOM components
-                    if comp.sub_boms and 'partProperties' in self.listboxes:
-                        names = sorted({c.name for bom in comp.sub_boms for c in bom})
-                        lb = self.listboxes['partProperties']
-                        lb.delete(0, tk.END)
-                        for n in names:
-                            lb.insert(tk.END, n)
+        def sync_circuit(_):
+            name = var.get()
+            comp = self._circuit_map.get(name)
+            if not comp:
+                return
+            if 'fit' in self.entries:
+                self.entries['fit'].set(f"{comp.fit:.2f}")
+            else:
+                self.obj.properties['fit'] = f"{comp.fit:.2f}"
+            if 'qualification' in self.entries:
+                self.entries['qualification'].set(comp.qualification)
+            else:
+                self.obj.properties['qualification'] = comp.qualification
+            modes = self._get_failure_modes(app, comp.name)
+            if 'failureModes' in self.entries:
+                self.entries['failureModes'].set(modes)
+            else:
+                self.obj.properties['failureModes'] = modes
+            # update part list preview from circuit BOM
+            if comp.sub_boms:
+                names = [c.name for bom in comp.sub_boms for c in bom]
+                joined = ", ".join(names)
+                if 'partProperties' in self.listboxes:
+                    lb = self.listboxes['partProperties']
+                    lb.delete(0, tk.END)
+                    for n in names:
+                        lb.insert(tk.END, n)
+                else:
+                    self.obj.properties['partProperties'] = joined
 
                 cb.bind("<<ComboboxSelected>>", sync_circuit)
             elif prop == "component" and app:
@@ -1370,6 +1374,25 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.obj.height = float(self.height_var.get())
         except ValueError:
             pass
+
+        # ensure block shows BOM components as part names when a circuit is set
+        if (
+            self.obj.obj_type == "Block"
+            and "circuit" in self.obj.properties
+            and hasattr(self, "_circuit_map")
+        ):
+            comp = self._circuit_map.get(self.obj.properties["circuit"], None)
+            if comp and comp.sub_boms:
+                cur = [p.strip() for p in self.obj.properties.get("partProperties", "").split(",") if p.strip()]
+                names = [c.name for bom in comp.sub_boms for c in bom]
+                for n in names:
+                    if n not in cur:
+                        cur.append(n)
+                joined = ", ".join(cur)
+                self.obj.properties["partProperties"] = joined
+                if self.obj.element_id and self.obj.element_id in repo.elements:
+                    repo.elements[self.obj.element_id].properties["partProperties"] = joined
+
         # Update linked diagram if applicable
         link_id = None
         if hasattr(self, "behavior_var") and self.behavior_var.get():
