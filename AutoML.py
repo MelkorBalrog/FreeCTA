@@ -9392,63 +9392,6 @@ class FaultTreeApp:
                 ]
                 writer.writerow(row)
 
-    def export_fmeda_to_csv(self, fmeda, path):
-        columns = [
-            "Component",
-            "Parent",
-            "Failure Mode",
-            "Failure Effect",
-            "Cause",
-            "S",
-            "O",
-            "D",
-            "RPN",
-            "Requirements",
-            "Malfunction",
-            "Safety Goal",
-            "FaultType",
-            "Fraction",
-            "FIT",
-            "DiagCov",
-            "Mechanism",
-        ]
-        with open(path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(columns)
-            for be in fmeda['entries']:
-                parent = be.parents[0] if be.parents else None
-                if parent:
-                    comp = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
-                    if parent.description:
-                        comp = f"{comp} - {parent.description}"
-                    parent_name = parent.user_name if parent.user_name else f"Node {parent.unique_id}"
-                else:
-                    comp = getattr(be, "fmea_component", "") or "N/A"
-                    parent_name = ""
-                req_ids = "; ".join([f"{req['req_type']}:{req['text']}" for req in getattr(be, 'safety_requirements', [])])
-                rpn = be.fmea_severity * be.fmea_occurrence * be.fmea_detection
-                failure_mode = be.description or (be.user_name or f"BE {be.unique_id}")
-                row = [
-                    comp,
-                    parent_name,
-                    failure_mode,
-                    be.fmea_effect,
-                    be.fmea_cause,
-                    be.fmea_severity,
-                    be.fmea_occurrence,
-                    be.fmea_detection,
-                    rpn,
-                    req_ids,
-                    getattr(be, "fmeda_malfunction", ""),
-                    ", ".join(self.get_top_event_safety_goals(be)) or getattr(be, "fmeda_safety_goal", ""),
-                    getattr(be, "fmeda_fault_type", ""),
-                    be.fmeda_fault_fraction,
-                    be.fmeda_fit,
-                    be.fmeda_diag_cov,
-                    getattr(be, "fmeda_mechanism", ""),
-                ]
-                writer.writerow(row)
-
 
     def show_traceability_matrix(self):
         """Display a traceability matrix linking FTA basic events to FMEA components."""
