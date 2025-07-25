@@ -148,7 +148,9 @@ class SysMLDiagramWindow(tk.Toplevel):
             if t == "Block":
                 new_obj.height = 140.0
                 new_obj.width = 160.0
-            key = f"{t.replace(' ', '')}Usage"
+            key = t.replace(' ', '')
+            if not key.endswith('Usage'):
+                key += 'Usage'
             for prop in SYSML_PROPERTIES.get(key, []):
                 new_obj.properties.setdefault(prop, "")
             element.properties.update(new_obj.properties)
@@ -375,7 +377,7 @@ class SysMLDiagramWindow(tk.Toplevel):
             self.canvas.create_rectangle(x - 100 * self.zoom, y - 60 * self.zoom,
                                         x + 100 * self.zoom, y + 60 * self.zoom,
                                         dash=(4, 2))
-        elif obj.obj_type in ("Action", "Part", "Port"):
+        elif obj.obj_type in ("Action Usage", "Action", "Part", "Port"):
             dash = ()
             fill = ""
             if obj.obj_type == "Part":
@@ -464,7 +466,9 @@ class SysMLDiagramWindow(tk.Toplevel):
                     def_name = self.repo.elements[def_id].name or def_id
                     name = f"{name} : {def_name}"
             label_lines = [name]
-            key = f"{obj.obj_type.replace(' ', '')}Usage"
+            key = obj.obj_type.replace(' ', '')
+            if not key.endswith('Usage'):
+                key += 'Usage'
             for prop in SYSML_PROPERTIES.get(key, []):
                 val = obj.properties.get(prop)
                 if val:
@@ -575,7 +579,9 @@ class SysMLObjectDialog(simpledialog.Dialog):
         self.entries = {}
         self.listboxes = {}
         row = 3
-        key = f"{self.obj.obj_type.replace(' ', '')}Usage"
+        key = self.obj.obj_type.replace(" ", "")
+        if not key.endswith("Usage"):
+            key += "Usage"
         list_props = {
             "ports",
             "partProperties",
@@ -629,34 +635,18 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.diagram_var = tk.StringVar(value=cur_name)
             ttk.Combobox(master, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=row, column=1, padx=4, pady=2)
             row += 1
-        elif self.obj.obj_type == "Action":
-            ad_diags = [d for d in repo.diagrams.values() if d.diag_type == "Activity Diagram"]
-            self.ad_map = {d.name or d.diag_id: d.diag_id for d in ad_diags}
-            ttk.Label(master, text="Activity Diagram:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+        elif self.obj.obj_type in ("Action Usage", "Action"):
+            diagrams = [
+                d for d in repo.diagrams.values()
+                if d.diag_type in ("Activity Diagram", "Internal Block Diagram")
+            ]
+            self.behavior_map = {d.name or d.diag_id: d.diag_id for d in diagrams}
+            ttk.Label(master, text="Behavior Diagram:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
             cur_id = repo.get_linked_diagram(self.obj.element_id)
-            cur_name = next((n for n, i in self.ad_map.items() if i == cur_id), "")
-            self.ad_var = tk.StringVar(value=cur_name)
-            ttk.Combobox(master, textvariable=self.ad_var, values=list(self.ad_map.keys())).grid(row=row, column=1, padx=4, pady=2)
+            cur_name = next((n for n, i in self.behavior_map.items() if i == cur_id), "")
+            self.behavior_var = tk.StringVar(value=cur_name)
+            ttk.Combobox(master, textvariable=self.behavior_var, values=list(self.behavior_map.keys())).grid(row=row, column=1, padx=4, pady=2)
             row += 1
-
-            ibd_diags = [d for d in repo.diagrams.values() if d.diag_type == "Internal Block Diagram"]
-            self.ibd_map = {d.name or d.diag_id: d.diag_id for d in ibd_diags}
-            ttk.Label(master, text="Internal Block Diagram:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
-            cur_name = next((n for n, i in self.ibd_map.items() if i == cur_id), "") if cur_name == "" else ""
-            self.ibd_var = tk.StringVar(value=cur_name)
-            ttk.Combobox(master, textvariable=self.ibd_var, values=list(self.ibd_map.keys())).grid(row=row, column=1, padx=4, pady=2)
-            row += 1
-
-            def sync_ad(*_):
-                if self.ad_var.get():
-                    self.ibd_var.set("")
-
-            def sync_ibd(*_):
-                if self.ibd_var.get():
-                    self.ad_var.set("")
-
-            self.ad_var.trace_add("write", sync_ad)
-            self.ibd_var.trace_add("write", sync_ibd)
         elif self.obj.obj_type == "Part":
             blocks = [e for e in repo.elements.values() if e.elem_type == "Block"]
             idmap = {b.name or b.elem_id: b.elem_id for b in blocks}
@@ -711,13 +701,11 @@ class SysMLObjectDialog(simpledialog.Dialog):
             pass
         # Update linked diagram if applicable
         link_id = None
-        if hasattr(self, "ad_var") and self.ad_var.get():
-            link_id = self.ad_map.get(self.ad_var.get())
-        elif hasattr(self, "ibd_var") and self.ibd_var.get():
-            link_id = self.ibd_map.get(self.ibd_var.get())
+        if hasattr(self, "behavior_var") and self.behavior_var.get():
+            link_id = self.behavior_map.get(self.behavior_var.get())
         elif hasattr(self, "diagram_var"):
             link_id = self.diag_map.get(self.diagram_var.get())
-        if hasattr(self, "ad_var") or hasattr(self, "ibd_var") or hasattr(self, "diagram_var"):
+        if hasattr(self, "behavior_var") or hasattr(self, "diagram_var"):
             repo.link_diagram(self.obj.element_id, link_id)
         if hasattr(self, "def_var"):
             name = self.def_var.get()
@@ -788,7 +776,7 @@ class UseCaseDiagramWindow(SysMLDiagramWindow):
 class ActivityDiagramWindow(SysMLDiagramWindow):
     def __init__(self, master, diagram_id: str | None = None):
         tools = [
-            "Action",
+            "Action Usage",
             "Initial",
             "Final",
             "Decision",
@@ -1041,9 +1029,9 @@ class ArchitectureManagerDialog(tk.Toplevel):
         if elem_id.startswith("diag_"):
             src_diag = repo.diagrams.get(elem_id[5:])
             if src_diag and diagram.diag_type == "Activity Diagram" and src_diag.diag_type in ("Activity Diagram", "Internal Block Diagram"):
-                act = repo.create_element("Action", name=src_diag.name, owner=diagram.package)
+                act = repo.create_element("Action Usage", name=src_diag.name, owner=diagram.package)
                 repo.add_element_to_diagram(diagram.diag_id, act.elem_id)
-                obj = SysMLObject(_get_next_id(), "Action", 50.0, 50.0, element_id=act.elem_id, properties={"name": src_diag.name})
+                obj = SysMLObject(_get_next_id(), "Action Usage", 50.0, 50.0, element_id=act.elem_id, properties={"name": src_diag.name})
                 diagram.objects.append(obj.__dict__)
                 repo.link_diagram(act.elem_id, src_diag.diag_id)
                 return
