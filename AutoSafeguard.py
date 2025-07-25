@@ -1750,7 +1750,7 @@ class FaultTreeApp:
         architecture_menu.add_command(label="Block Diagram", command=self.open_block_diagram)
         architecture_menu.add_command(label="Internal Block Diagram", command=self.open_internal_block_diagram)
         architecture_menu.add_separator()
-        architecture_menu.add_command(label="Manage Architecture", command=self.manage_architecture)
+        architecture_menu.add_command(label="Architecture Explorer", command=self.manage_architecture)
         menubar.add_cascade(label="Architecture", menu=architecture_menu)
 
         hara_menu = tk.Menu(menubar, tearoff=0)

@@ -72,6 +72,8 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.selected_obj: SysMLObject | None = None
         self.drag_offset = (0, 0)
         self.clipboard: SysMLObject | None = None
+        self.resizing_obj: SysMLObject | None = None
+        self.resize_edge: str | None = None
 
         self.toolbox = ttk.Frame(self)
         self.toolbox.pack(side=tk.LEFT, fill=tk.Y)
@@ -148,6 +150,21 @@ class SysMLDiagramWindow(tk.Toplevel):
             if t == "Block":
                 new_obj.height = 140.0
                 new_obj.width = 160.0
+            elif t == "System Boundary":
+                new_obj.width = 200.0
+                new_obj.height = 120.0
+            elif t in ("Decision", "Merge"):
+                new_obj.width = 40.0
+                new_obj.height = 40.0
+            elif t == "Initial":
+                new_obj.width = 20.0
+                new_obj.height = 20.0
+            elif t == "Final":
+                new_obj.width = 30.0
+                new_obj.height = 30.0
+            elif t in ("Fork", "Join"):
+                new_obj.width = 60.0
+                new_obj.height = 10.0
             key = f"{t.replace(' ', '')}Usage"
             for prop in SYSML_PROPERTIES.get(key, []):
                 new_obj.properties.setdefault(prop, "")
@@ -158,14 +175,31 @@ class SysMLDiagramWindow(tk.Toplevel):
             if obj:
                 self.selected_obj = obj
                 self.drag_offset = (x / self.zoom - obj.x, y / self.zoom - obj.y)
+                self.resizing_obj = None
+                self.resize_edge = self.hit_resize_handle(obj, x, y)
+                if self.resize_edge:
+                    self.resizing_obj = obj
             else:
                 self.selected_obj = None
+                self.resizing_obj = None
+                self.resize_edge = None
 
     def on_left_drag(self, event):
         if not self.selected_obj:
             return
         x = self.canvas.canvasx(event.x)
         y = self.canvas.canvasy(event.y)
+        if self.resizing_obj:
+            obj = self.resizing_obj
+            cx = obj.x * self.zoom
+            cy = obj.y * self.zoom
+            if "e" in self.resize_edge or "w" in self.resize_edge:
+                obj.width = max(10.0, 2 * abs(x - cx) / self.zoom)
+            if "n" in self.resize_edge or "s" in self.resize_edge:
+                if obj.obj_type not in ("Fork", "Join"):
+                    obj.height = max(10.0, 2 * abs(y - cy) / self.zoom)
+            self.redraw()
+            return
         if self.selected_obj.obj_type == "Port" and "parent" in self.selected_obj.properties:
             parent = self.get_object(int(self.selected_obj.properties["parent"]))
             if parent:
@@ -179,6 +213,8 @@ class SysMLDiagramWindow(tk.Toplevel):
 
     def on_left_release(self, _event):
         self.start = None
+        self.resizing_obj = None
+        self.resize_edge = None
 
     def on_double_click(self, event):
         x = self.canvas.canvasx(event.x)
@@ -225,6 +261,38 @@ class SysMLDiagramWindow(tk.Toplevel):
             h = obj.height * self.zoom / 2
             if ox - w <= x <= ox + w and oy - h <= y <= oy + h:
                 return obj
+        return None
+
+    def hit_resize_handle(self, obj: SysMLObject, x: float, y: float) -> str | None:
+        margin = 5
+        ox = obj.x * self.zoom
+        oy = obj.y * self.zoom
+        w = obj.width * self.zoom / 2
+        h = obj.height * self.zoom / 2
+        left = ox - w
+        right = ox + w
+        top = oy - h
+        bottom = oy + h
+        near_left = abs(x - left) <= margin
+        near_right = abs(x - right) <= margin
+        near_top = abs(y - top) <= margin
+        near_bottom = abs(y - bottom) <= margin
+        if near_left and near_top:
+            return "nw"
+        if near_right and near_top:
+            return "ne"
+        if near_left and near_bottom:
+            return "sw"
+        if near_right and near_bottom:
+            return "se"
+        if near_left:
+            return "w"
+        if near_right:
+            return "e"
+        if near_top:
+            return "n"
+        if near_bottom:
+            return "s"
         return None
 
     def _dist_to_segment(self, p, a, b) -> float:
@@ -361,19 +429,20 @@ class SysMLDiagramWindow(tk.Toplevel):
         w = obj.width * self.zoom / 2
         h = obj.height * self.zoom / 2
         if obj.obj_type == "Actor":
-            self.canvas.create_oval(x - 10 * self.zoom, y - 30 * self.zoom,
-                                    x + 10 * self.zoom, y - 10 * self.zoom)
-            self.canvas.create_line(x, y - 10 * self.zoom, x, y + 20 * self.zoom)
-            self.canvas.create_line(x - 15 * self.zoom, y, x + 15 * self.zoom, y)
-            self.canvas.create_line(x, y + 20 * self.zoom,
-                                    x - 10 * self.zoom, y + 40 * self.zoom)
-            self.canvas.create_line(x, y + 20 * self.zoom,
-                                    x + 10 * self.zoom, y + 40 * self.zoom)
+            sx = obj.width / 80.0 * self.zoom
+            sy = obj.height / 40.0 * self.zoom
+            self.canvas.create_oval(x - 10 * sx, y - 30 * sy,
+                                    x + 10 * sx, y - 10 * sy)
+            self.canvas.create_line(x, y - 10 * sy, x, y + 20 * sy)
+            self.canvas.create_line(x - 15 * sx, y, x + 15 * sx, y)
+            self.canvas.create_line(x, y + 20 * sy,
+                                    x - 10 * sx, y + 40 * sy)
+            self.canvas.create_line(x, y + 20 * sy,
+                                    x + 10 * sx, y + 40 * sy)
         elif obj.obj_type == "Use Case":
             self.canvas.create_oval(x - w, y - h, x + w, y + h)
         elif obj.obj_type == "System Boundary":
-            self.canvas.create_rectangle(x - 100 * self.zoom, y - 60 * self.zoom,
-                                        x + 100 * self.zoom, y + 60 * self.zoom,
+            self.canvas.create_rectangle(x - w, y - h, x + w, y + h,
                                         dash=(4, 2))
         elif obj.obj_type in ("Action", "Part", "Port"):
             dash = ()
@@ -434,24 +503,24 @@ class SysMLDiagramWindow(tk.Toplevel):
                 cy += 20 * self.zoom
         elif obj.obj_type in ("Initial", "Final"):
             if obj.obj_type == "Initial":
-                self.canvas.create_oval(x - 10 * self.zoom, y - 10 * self.zoom,
-                                        x + 10 * self.zoom, y + 10 * self.zoom,
-                                        fill="black")
+                r = min(obj.width, obj.height) / 2 * self.zoom
+                self.canvas.create_oval(x - r, y - r, x + r, y + r, fill="black")
             else:
-                self.canvas.create_oval(x - 15 * self.zoom, y - 15 * self.zoom,
-                                        x + 15 * self.zoom, y + 15 * self.zoom)
-                self.canvas.create_oval(x - 10 * self.zoom, y - 10 * self.zoom,
-                                        x + 10 * self.zoom, y + 10 * self.zoom,
+                r = min(obj.width, obj.height) / 2 * self.zoom
+                inner = max(r - 5 * self.zoom, 0)
+                self.canvas.create_oval(x - r, y - r, x + r, y + r)
+                self.canvas.create_oval(x - inner, y - inner, x + inner, y + inner,
                                         fill="black")
         elif obj.obj_type in ("Decision", "Merge"):
-            self.canvas.create_polygon(x, y - 20 * self.zoom,
-                                      x + 20 * self.zoom, y,
-                                      x, y + 20 * self.zoom,
-                                      x - 20 * self.zoom, y,
+            self.canvas.create_polygon(x, y - h,
+                                      x + w, y,
+                                      x, y + h,
+                                      x - w, y,
                                       fill="white", outline="black")
         elif obj.obj_type in ("Fork", "Join"):
-            self.canvas.create_rectangle(x - 30 * self.zoom, y - 5 * self.zoom,
-                                        x + 30 * self.zoom, y + 5 * self.zoom,
+            half = obj.width / 2 * self.zoom
+            self.canvas.create_rectangle(x - half, y - 5 * self.zoom,
+                                        x + half, y + 5 * self.zoom,
                                         fill="black")
         else:
             self.canvas.create_rectangle(x - w, y - h, x + w, y + h)
@@ -470,6 +539,17 @@ class SysMLDiagramWindow(tk.Toplevel):
                 if val:
                     label_lines.append(f"{prop}: {val}")
             self.canvas.create_text(x, y, text="\n".join(label_lines), anchor="center")
+
+        if obj == self.selected_obj:
+            bx = x - w
+            by = y - h
+            ex = x + w
+            ey = y + h
+            self.canvas.create_rectangle(bx, by, ex, ey, outline="red", dash=(2, 2))
+            s = 4
+            for hx, hy in [(bx, by), (bx, ey), (ex, by), (ex, ey)]:
+                self.canvas.create_rectangle(hx - s, hy - s, hx + s, hy + s,
+                                             outline="red", fill="white")
 
     def draw_connection(self, a: SysMLObject, b: SysMLObject, conn: DiagramConnection):
         axc, ayc = a.x * self.zoom, a.y * self.zoom
@@ -569,12 +649,16 @@ class SysMLObjectDialog(simpledialog.Dialog):
         ttk.Label(master, text="Width:").grid(row=1, column=0, sticky="e", padx=4, pady=2)
         self.width_var = tk.StringVar(value=str(self.obj.width))
         ttk.Entry(master, textvariable=self.width_var).grid(row=1, column=1, padx=4, pady=2)
-        ttk.Label(master, text="Height:").grid(row=2, column=0, sticky="e", padx=4, pady=2)
-        self.height_var = tk.StringVar(value=str(self.obj.height))
-        ttk.Entry(master, textvariable=self.height_var).grid(row=2, column=1, padx=4, pady=2)
+        row = 2
+        if self.obj.obj_type not in ("Fork", "Join"):
+            ttk.Label(master, text="Height:").grid(row=2, column=0, sticky="e", padx=4, pady=2)
+            self.height_var = tk.StringVar(value=str(self.obj.height))
+            ttk.Entry(master, textvariable=self.height_var).grid(row=2, column=1, padx=4, pady=2)
+            row = 3
+        else:
+            self.height_var = tk.StringVar(value=str(self.obj.height))
         self.entries = {}
         self.listboxes = {}
-        row = 3
         key = f"{self.obj.obj_type.replace(' ', '')}Usage"
         list_props = {
             "ports",
@@ -867,7 +951,7 @@ class ArchitectureManagerDialog(tk.Toplevel):
 
     def __init__(self, master):
         super().__init__(master)
-        self.title("Architecture")
+        self.title("Architecture Explorer")
         self.repo = SysMLRepository.get_instance()
         self.geometry("350x400")
         self.tree = ttk.Treeview(self)
@@ -906,7 +990,11 @@ class ArchitectureManagerDialog(tk.Toplevel):
             for d in self.repo.diagrams.values():
                 if d.package == pkg_id:
                     label = d.name or d.diag_id
-                    self.tree.insert(node, "end", iid=f"diag_{d.diag_id}", text=label, values=(d.diag_type,))
+                    diag_node = self.tree.insert(node, "end", iid=f"diag_{d.diag_id}", text=label, values=(d.diag_type,))
+                    for obj in d.objects:
+                        name = obj.get("properties", {}).get("name", obj.get("obj_type"))
+                        oid = obj.get("obj_id")
+                        self.tree.insert(diag_node, "end", iid=f"obj_{d.diag_id}_{oid}", text=name, values=(obj.get("obj_type"),))
 
         add_pkg(self.repo.root_package.elem_id)
 
@@ -919,8 +1007,19 @@ class ArchitectureManagerDialog(tk.Toplevel):
 
     def open(self):
         item = self.selected()
-        if item and item.startswith("diag_"):
+        if not item:
+            return
+        if item.startswith("diag_"):
             self.open_diagram(item[5:])
+        elif item.startswith("obj_"):
+            diag_id, oid = item[4:].split("_", 1)
+            win = self.open_diagram(diag_id)
+            if win:
+                for o in win.objects:
+                    if o.obj_id == int(oid):
+                        win.selected_obj = o
+                        win.redraw()
+                        break
 
     def on_double(self, event):
         item = self.tree.identify_row(event.y)
@@ -928,20 +1027,24 @@ class ArchitectureManagerDialog(tk.Toplevel):
             self.tree.selection_set(item)
             if item.startswith("diag_"):
                 self.open_diagram(item[5:])
+            elif item.startswith("obj_"):
+                self.open()
 
     def open_diagram(self, diag_id: str):
         diag = self.repo.diagrams.get(diag_id)
         if not diag:
-            return
+            return None
         master = self.master if self.master else self
+        win = None
         if diag.diag_type == "Use Case Diagram":
-            UseCaseDiagramWindow(master, diagram_id=diag_id)
+            win = UseCaseDiagramWindow(master, diagram_id=diag_id)
         elif diag.diag_type == "Activity Diagram":
-            ActivityDiagramWindow(master, diagram_id=diag_id)
+            win = ActivityDiagramWindow(master, diagram_id=diag_id)
         elif diag.diag_type == "Block Diagram":
-            BlockDiagramWindow(master, diagram_id=diag_id)
+            win = BlockDiagramWindow(master, diagram_id=diag_id)
         elif diag.diag_type == "Internal Block Diagram":
-            InternalBlockDiagramWindow(master, diagram_id=diag_id)
+            win = InternalBlockDiagramWindow(master, diagram_id=diag_id)
+        return win
 
     def new_package(self):
         item = self.selected() or self.repo.root_package.elem_id
