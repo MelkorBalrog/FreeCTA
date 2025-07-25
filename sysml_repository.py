@@ -29,6 +29,8 @@ class SysMLDiagram:
     diag_type: str
     name: str = ""
     package: Optional[str] = None
+    description: str = ""
+    color: str = "#FFFFFF"
     elements: List[str] = field(default_factory=list)
     relationships: List[str] = field(default_factory=list)
 
@@ -71,12 +73,14 @@ class SysMLRepository:
         name: str = "",
         diag_id: Optional[str] = None,
         package: Optional[str] = None,
+        description: str = "",
+        color: str = "#FFFFFF",
     ) -> SysMLDiagram:
         if diag_id is None:
             diag_id = str(uuid.uuid4())
         if package is None:
             package = self.root_package.elem_id
-        diagram = SysMLDiagram(diag_id, diag_type, name, package)
+        diagram = SysMLDiagram(diag_id, diag_type, name, package, description, color)
         self.diagrams[diag_id] = diagram
         return diagram
 

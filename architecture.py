@@ -42,7 +42,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         if diagram_id and diagram_id in self.repo.diagrams:
             diagram = self.repo.diagrams[diagram_id]
         else:
-            diagram = self.repo.create_diagram(title, diag_id=diagram_id)
+            diagram = self.repo.create_diagram(title, name=title, diag_id=diagram_id)
         self.diagram_id = diagram.diag_id
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -189,11 +189,11 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.canvas.delete("all")
         for obj in self.objects:
             self.draw_object(obj)
-        for a, b, _t in self.connections:
+        for a, b, t in self.connections:
             src = self.get_object(a)
             dst = self.get_object(b)
             if src and dst:
-                self.draw_connection(src, dst)
+                self.draw_connection(src, dst, t)
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
 
     def draw_object(self, obj: SysMLObject):
@@ -274,18 +274,27 @@ class SysMLDiagramWindow(tk.Toplevel):
         else:
             self.canvas.create_rectangle(x - w, y - h, x + w, y + h)
 
-        label_lines = [obj.properties.get("name", obj.obj_type)]
-        key = f"{obj.obj_type.replace(' ', '')}Usage"
-        for prop in SYSML_PROPERTIES.get(key, []):
-            val = obj.properties.get(prop)
-            if val:
-                label_lines.append(f"{prop}: {val}")
-        self.canvas.create_text(x, y, text="\n".join(label_lines), anchor="center")
+        if obj.obj_type != "Block":
+            label_lines = [obj.properties.get("name", obj.obj_type)]
+            key = f"{obj.obj_type.replace(' ', '')}Usage"
+            for prop in SYSML_PROPERTIES.get(key, []):
+                val = obj.properties.get(prop)
+                if val:
+                    label_lines.append(f"{prop}: {val}")
+            self.canvas.create_text(x, y, text="\n".join(label_lines), anchor="center")
 
-    def draw_connection(self, a: SysMLObject, b: SysMLObject):
+    def draw_connection(self, a: SysMLObject, b: SysMLObject, c_type: str):
         ax, ay = a.x * self.zoom, a.y * self.zoom
         bx, by = b.x * self.zoom, b.y * self.zoom
-        self.canvas.create_line(ax, ay, bx, by, arrow=tk.LAST)
+        dash = ()
+        label = None
+        if c_type in ("Include", "Extend"):
+            dash = (4, 2)
+            label = f"<<{c_type.lower()}>>"
+        self.canvas.create_line(ax, ay, bx, by, arrow=tk.LAST, dash=dash)
+        if label:
+            mx, my = (ax + bx) / 2, (ay + by) / 2
+            self.canvas.create_text(mx, my - 10 * self.zoom, text=label)
 
     def get_object(self, oid: int) -> SysMLObject | None:
         for o in self.objects:
@@ -294,7 +303,6 @@ class SysMLDiagramWindow(tk.Toplevel):
         return None
 
     def on_close(self):
-        self.repo.delete_diagram(self.diagram_id)
         self.destroy()
 
 class SysMLObjectDialog(simpledialog.Dialog):
@@ -319,9 +327,22 @@ class SysMLObjectDialog(simpledialog.Dialog):
         key = f"{self.obj.obj_type.replace(' ', '')}Usage"
         for prop in SYSML_PROPERTIES.get(key, []):
             ttk.Label(master, text=f"{prop}:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
-            var = tk.StringVar(value=self.obj.properties.get(prop, ""))
-            ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=4, pady=2)
-            self.entries[prop] = var
+            if prop == "ports":
+                self.port_list = tk.Listbox(master, height=4)
+                ports = self.obj.properties.get("ports", "").split(",")
+                for p in ports:
+                    p = p.strip()
+                    if p:
+                        self.port_list.insert(tk.END, p)
+                self.port_list.grid(row=row, column=1, padx=4, pady=2, sticky="we")
+                btnf = ttk.Frame(master)
+                btnf.grid(row=row, column=2, padx=2)
+                ttk.Button(btnf, text="Add", command=self.add_port).pack(side=tk.TOP)
+                ttk.Button(btnf, text="Remove", command=self.remove_port).pack(side=tk.TOP)
+            else:
+                var = tk.StringVar(value=self.obj.properties.get(prop, ""))
+                ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=4, pady=2)
+                self.entries[prop] = var
             row += 1
 
         repo = SysMLRepository.get_instance()
@@ -347,6 +368,16 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.diagram_var = tk.StringVar(value=cur_name)
             ttk.Combobox(master, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=row, column=1, padx=4, pady=2)
             row += 1
+
+    def add_port(self):
+        name = simpledialog.askstring("Port", "Name:", parent=self)
+        if name:
+            self.port_list.insert(tk.END, name)
+
+    def remove_port(self):
+        sel = list(self.port_list.curselection())
+        for idx in reversed(sel):
+            self.port_list.delete(idx)
         
     def apply(self):
         self.obj.properties["name"] = self.name_var.get()
@@ -357,6 +388,12 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.obj.properties[prop] = var.get()
             if self.obj.element_id and self.obj.element_id in repo.elements:
                 repo.elements[self.obj.element_id].properties[prop] = var.get()
+        if hasattr(self, "port_list"):
+            ports = [self.port_list.get(i) for i in range(self.port_list.size())]
+            joined = ", ".join(ports)
+            self.obj.properties["ports"] = joined
+            if self.obj.element_id and self.obj.element_id in repo.elements:
+                repo.elements[self.obj.element_id].properties["ports"] = joined
         try:
             self.obj.width = float(self.width_var.get())
             self.obj.height = float(self.height_var.get())
@@ -435,7 +472,30 @@ class NewDiagramDialog(simpledialog.Dialog):
     def apply(self):
         self.name = self.name_var.get()
         self.diag_type = self.type_var.get()
-        
+
+class DiagramPropertiesDialog(simpledialog.Dialog):
+    """Dialog to edit a diagram's metadata."""
+
+    def __init__(self, master, diagram: SysMLDiagram):
+        self.diagram = diagram
+        super().__init__(master, title="Diagram Properties")
+
+    def body(self, master):
+        ttk.Label(master, text="Name:").grid(row=0, column=0, sticky="e", padx=4, pady=2)
+        self.name_var = tk.StringVar(value=self.diagram.name)
+        ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, padx=4, pady=2)
+        ttk.Label(master, text="Description:").grid(row=1, column=0, sticky="e", padx=4, pady=2)
+        self.desc_var = tk.StringVar(value=getattr(self.diagram, "description", ""))
+        ttk.Entry(master, textvariable=self.desc_var).grid(row=1, column=1, padx=4, pady=2)
+        ttk.Label(master, text="Color:").grid(row=2, column=0, sticky="e", padx=4, pady=2)
+        self.color_var = tk.StringVar(value=getattr(self.diagram, "color", "#FFFFFF"))
+        ttk.Entry(master, textvariable=self.color_var).grid(row=2, column=1, padx=4, pady=2)
+
+    def apply(self):
+        self.diagram.name = self.name_var.get()
+        self.diagram.description = self.desc_var.get()
+        self.diagram.color = self.color_var.get()
+
 class ArchitectureManagerDialog(tk.Toplevel):
     """Manage packages and diagrams in a hierarchical tree."""
 
@@ -449,6 +509,7 @@ class ArchitectureManagerDialog(tk.Toplevel):
         btns = ttk.Frame(self)
         btns.pack(fill=tk.X, padx=4, pady=4)
         ttk.Button(btns, text="Open", command=self.open).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btns, text="Properties", command=self.properties).pack(side=tk.LEFT, padx=2)
         ttk.Button(btns, text="New Package", command=self.new_package).pack(side=tk.LEFT, padx=2)
         ttk.Button(btns, text="New Diagram", command=self.new_diagram).pack(side=tk.LEFT, padx=2)
         ttk.Button(btns, text="Delete", command=self.delete).pack(side=tk.LEFT, padx=2)
@@ -524,3 +585,11 @@ class ArchitectureManagerDialog(tk.Toplevel):
         else:
             self.repo.delete_package(item)
         self.populate()
+
+    def properties(self):
+        item = self.selected()
+        if item and item.startswith("diag_"):
+            diag = self.repo.diagrams.get(item[5:])
+            if diag:
+                DiagramPropertiesDialog(self, diag)
+                self.populate()
