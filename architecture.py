@@ -563,9 +563,8 @@ class SysMLDiagramWindow(tk.Toplevel):
         else:
             self.canvas.create_rectangle(x - w, y - h, x + w, y + h)
 
-        if obj.obj_type != "Block":
-            obj_name = obj.properties.get("name", "")
-            label = f"{obj_name}:{obj.obj_type}" if obj_name else obj.obj_type
+        if obj.obj_type not in ("Block", "System Boundary", "Port"):
+            name = obj.properties.get("name", obj.obj_type)
             if obj.obj_type == "Part":
                 def_id = obj.properties.get("definition")
                 if def_id and def_id in self.repo.elements:
