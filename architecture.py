@@ -350,9 +350,25 @@ class SysMLDiagramWindow(tk.Toplevel):
         if self.selected_obj.obj_type == "Port" and "parent" in self.selected_obj.properties:
             parent = self.get_object(int(self.selected_obj.properties["parent"]))
             if parent:
-                self.selected_obj.x = x / self.zoom
-                self.selected_obj.y = y / self.zoom
-                self.snap_port_to_parent(self.selected_obj, parent)
+                px = x / self.zoom
+                py = y / self.zoom
+                left = parent.x - parent.width / 2
+                right = parent.x + parent.width / 2
+                top = parent.y - parent.height / 2
+                bottom = parent.y + parent.height / 2
+                side = self.selected_obj.properties.get("side", "E")
+                if side == "W":
+                    self.selected_obj.x = left
+                    self.selected_obj.y = min(max(py, top), bottom)
+                elif side == "E":
+                    self.selected_obj.x = right
+                    self.selected_obj.y = min(max(py, top), bottom)
+                elif side == "N":
+                    self.selected_obj.y = top
+                    self.selected_obj.x = min(max(px, left), right)
+                else:  # S
+                    self.selected_obj.y = bottom
+                    self.selected_obj.x = min(max(px, left), right)
         else:
             old_x = self.selected_obj.x
             old_y = self.selected_obj.y
@@ -2057,14 +2073,25 @@ class ArchitectureManagerDialog(tk.Toplevel):
                         values=(d.diag_type,),
                         image=icon,
                     )
-                    for obj in d.objects:
+                    objs = sorted(
+                        d.objects,
+                        key=lambda o: 1 if getattr(o, "obj_type", o.get("obj_type")) == "Port" else 0,
+                    )
+                    for obj in objs:
                         props = getattr(obj, "properties", obj.get("properties", {}))
                         name = props.get("name", getattr(obj, "obj_type", obj.get("obj_type")))
                         oid = getattr(obj, "obj_id", obj.get("obj_id"))
                         otype = getattr(obj, "obj_type", obj.get("obj_type"))
                         icon = self.elem_icons.get(otype, self.default_elem_icon)
+                        parent_node = diag_node
+                        if (
+                            otype == "Port"
+                            and props.get("parent")
+                            and self.tree.exists(f"obj_{d.diag_id}_{props.get('parent')}")
+                        ):
+                            parent_node = f"obj_{d.diag_id}_{props.get('parent')}"
                         self.tree.insert(
-                            diag_node,
+                            parent_node,
                             "end",
                             iid=f"obj_{d.diag_id}_{oid}",
                             text=name,
