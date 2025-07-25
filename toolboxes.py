@@ -20,7 +20,7 @@ from models import (
     calc_asil,
 )
 from fmeda_utils import compute_fmeda_metrics
-from AutoML import CHECK_MARK, CROSS_MARK
+from constants import CHECK_MARK, CROSS_MARK
 
 
 def _total_fit_from_boms(boms):

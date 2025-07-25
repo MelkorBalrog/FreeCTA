@@ -312,8 +312,7 @@ preformatted_style = ParagraphStyle(name="Preformatted", fontName="Courier", fon
 styles.add(preformatted_style)
 
 # Characters used to display pass/fail status in metrics labels.
-CHECK_MARK = "\u2713"
-CROSS_MARK = "\u2717"
+from constants import CHECK_MARK, CROSS_MARK
 
 from toolboxes import (
     ReliabilityWindow,
