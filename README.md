@@ -101,20 +101,23 @@ Each HARA table contains the following columns:
 
 1. **Malfunction** – combo box listing malfunctions flagged as safety relevant
    in the chosen HAZOP documents.
-2. **Severity** – ISO&nbsp;26262 severity level (1–3).
-3. **Severity Rationale** – free text explanation for the chosen severity.
-4. **Controllability** – ISO&nbsp;26262 controllability level (1–3).
-5. **Controllability Rationale** – free text explanation for the chosen
+2. **Hazard** – textual description of the resulting hazard.
+3. **Severity** – ISO&nbsp;26262 severity level (1–3).
+4. **Severity Rationale** – free text explanation for the chosen severity.
+5. **Controllability** – ISO&nbsp;26262 controllability level (1–3).
+6. **Controllability Rationale** – free text explanation for the chosen
    controllability.
-6. **Exposure** – ISO&nbsp;26262 exposure level (1–4).
-7. **Exposure Rationale** – free text explanation for the chosen exposure.
-8. **ASIL** – automatically calculated from severity, controllability and
+7. **Exposure** – ISO&nbsp;26262 exposure level (1–4).
+8. **Exposure Rationale** – free text explanation for the chosen exposure.
+9. **ASIL** – automatically calculated from severity, controllability and
    exposure using the ISO&nbsp;26262 risk graph.
-9. **Safety Goal** – combo box listing all defined safety goals in the project.
+10. **Safety Goal** – combo box listing all defined safety goals in the project.
 
 The calculated ASIL from each row is propagated to the referenced safety goal so
 that inherited ASIL levels appear consistently in all analyses and
 documentation, including FTA top level events.
+
+The **Hazard Explorer** window lists all hazards from every HARA in a read-only table for quick review or CSV export.
 
 ## License
 

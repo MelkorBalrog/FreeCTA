@@ -1406,7 +1406,7 @@ class ReviewDocumentDialog(tk.Toplevel):
             row += 1
             frame = tk.Frame(self.inner)
             frame.grid(row=row, column=0, sticky='nsew', padx=5, pady=5)
-            columns = ("malfunction","severity","sev_rationale","controllability","cont_rationale","exposure","exp_rationale","asil","safety_goal")
+            columns = ("malfunction","hazard","severity","sev_rationale","controllability","cont_rationale","exposure","exp_rationale","asil","safety_goal")
             tree = ttk.Treeview(frame, columns=columns, show='headings', height=8)
             vsb = ttk.Scrollbar(frame, orient='vertical', command=tree.yview)
             hsb = ttk.Scrollbar(frame, orient='horizontal', command=tree.xview)
@@ -1420,7 +1420,7 @@ class ReviewDocumentDialog(tk.Toplevel):
             frame.grid_columnconfigure(0, weight=1)
             frame.grid_rowconfigure(0, weight=1)
             for e in new_entries:
-                vals = [e.get("malfunction",""), e.get("severity",""), e.get("sev_rationale",""), e.get("controllability",""), e.get("cont_rationale",""), e.get("exposure",""), e.get("exp_rationale",""), e.get("asil",""), e.get("safety_goal","")]
+                vals = [e.get("malfunction",""), e.get("hazard",""), e.get("severity",""), e.get("sev_rationale",""), e.get("controllability",""), e.get("cont_rationale",""), e.get("exposure",""), e.get("exp_rationale",""), e.get("asil",""), e.get("safety_goal","")]
                 tree.insert("", "end", values=vals)
 
         row += 1
@@ -1612,6 +1612,7 @@ class VersionCompareDialog(tk.Toplevel):
         columns_hara = [
             "HARA",
             "Malfunction",
+            "Hazard",
             "Severity",
             "Sev Rationale",
             "Controllability",
@@ -1627,7 +1628,7 @@ class VersionCompareDialog(tk.Toplevel):
         for col in columns_hara:
             self.hara_tree.heading(col, text=col)
             width = 100
-            if col in ["Malfunction", "Sev Rationale", "Cont Rationale", "Exp Rationale", "Safety Goal"]:
+            if col in ["Malfunction", "Hazard", "Sev Rationale", "Cont Rationale", "Exp Rationale", "Safety Goal"]:
                 width = 150
             self.hara_tree.column(col, width=width, anchor="center")
         vsb_hara = ttk.Scrollbar(hara_frame, orient="vertical", command=self.hara_tree.yview)
@@ -2397,6 +2398,7 @@ class VersionCompareDialog(tk.Toplevel):
                 row = [
                     name,
                     e.get("malfunction", ""),
+                    e.get("hazard", ""),
                     e.get("severity", ""),
                     e.get("sev_rationale", ""),
                     e.get("controllability", ""),
@@ -2414,6 +2416,7 @@ class VersionCompareDialog(tk.Toplevel):
                     row = [
                         name,
                         e.get("malfunction", ""),
+                        e.get("hazard", ""),
                         e.get("severity", ""),
                         e.get("sev_rationale", ""),
                         e.get("controllability", ""),
