@@ -10,6 +10,8 @@ from models import (
     HaraEntry,
     HazopDoc,
     HaraDoc,
+    FI2TCDoc,
+    TC2FIDoc,
     QUALIFICATIONS,
     COMPONENT_ATTR_TEMPLATES,
     RELIABILITY_MODELS,
@@ -437,7 +439,17 @@ class FI2TCWindow(tk.Toplevel):
         super().__init__(app.root)
         self.app = app
         self.title("FI2TC Analysis")
-        self.geometry("800x400")
+        top = ttk.Frame(self)
+        top.pack(fill=tk.X)
+        ttk.Label(top, text="FI2TC:").pack(side=tk.LEFT)
+        self.doc_var = tk.StringVar()
+        self.doc_cb = ttk.Combobox(top, textvariable=self.doc_var, state="readonly")
+        self.doc_cb.pack(side=tk.LEFT, padx=2)
+        ttk.Button(top, text="New", command=self.new_doc).pack(side=tk.LEFT)
+        ttk.Button(top, text="Rename", command=self.rename_doc).pack(side=tk.LEFT)
+        ttk.Button(top, text="Delete", command=self.delete_doc).pack(side=tk.LEFT)
+        self.doc_cb.bind("<<ComboboxSelected>>", self.select_doc)
+
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill=tk.BOTH, expand=True)
         style = ttk.Style(self)
@@ -457,12 +469,14 @@ class FI2TCWindow(tk.Toplevel):
         hsb.grid(row=1, column=0, sticky="ew")
         tree_frame.grid_columnconfigure(0, weight=1)
         tree_frame.grid_rowconfigure(0, weight=1)
+        self.tree.bind("<Double-1>", lambda e: self.edit_row())
         btn = ttk.Frame(self)
-        btn.pack()
+        btn.pack(fill=tk.X)
         ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Export CSV", command=self.export_csv).pack(side=tk.LEFT, padx=2, pady=2)
+        self.refresh_docs()
         self.refresh()
 
     def refresh(self):
@@ -553,11 +567,13 @@ class FI2TCWindow(tk.Toplevel):
                     self.data[col] = widget.get("1.0", "end-1c")
                 else:
                     self.data[col] = widget.get()
+            self.result = True
 
     def add_row(self):
         dlg = self.RowDialog(self, self.app)
-        self.app.fi2tc_entries.append(dlg.data)
-        self.refresh()
+        if getattr(dlg, "result", None):
+            self.app.fi2tc_entries.append(dlg.data)
+            self.refresh()
     def edit_row(self):
         sel = self.tree.focus()
         if not sel:
@@ -565,7 +581,8 @@ class FI2TCWindow(tk.Toplevel):
         idx = self.tree.index(sel)
         data = self.app.fi2tc_entries[idx]
         dlg = self.RowDialog(self, self.app, data)
-        self.refresh()
+        if getattr(dlg, "result", None):
+            self.refresh()
     def del_row(self):
         sel = self.tree.selection()
         for iid in sel:
@@ -583,6 +600,65 @@ class FI2TCWindow(tk.Toplevel):
             for r in self.app.fi2tc_entries:
                 w.writerow([r.get(k, "") for k in self.COLS])
         messagebox.showinfo("Export", "FI2TC exported")
+
+    def refresh_docs(self):
+        names = [d.name for d in self.app.fi2tc_docs]
+        self.doc_cb.configure(values=names)
+        if self.app.active_fi2tc:
+            self.doc_var.set(self.app.active_fi2tc.name)
+        elif names:
+            self.doc_var.set(names[0])
+
+    def select_doc(self, *_):
+        name = self.doc_var.get()
+        for d in self.app.fi2tc_docs:
+            if d.name == name:
+                self.app.active_fi2tc = d
+                self.app.fi2tc_entries = d.entries
+                break
+        self.refresh()
+
+    def new_doc(self):
+        name = simpledialog.askstring("New FI2TC", "Name:")
+        if not name:
+            return
+        doc = FI2TCDoc(name, [])
+        self.app.fi2tc_docs.append(doc)
+        self.app.active_fi2tc = doc
+        self.app.fi2tc_entries = doc.entries
+        self.refresh_docs()
+        self.refresh()
+        self.app.update_views()
+
+    def rename_doc(self):
+        if not self.app.active_fi2tc:
+            return
+        name = simpledialog.askstring(
+            "Rename FI2TC", "Name:", initialvalue=self.app.active_fi2tc.name
+        )
+        if not name:
+            return
+        self.app.active_fi2tc.name = name
+        self.refresh_docs()
+        self.app.update_views()
+
+    def delete_doc(self):
+        doc = self.app.active_fi2tc
+        if not doc:
+            return
+        if not messagebox.askyesno("Delete", f"Delete FI2TC '{doc.name}'?"):
+            return
+        self.app.fi2tc_docs.remove(doc)
+        if self.app.fi2tc_docs:
+            self.app.active_fi2tc = self.app.fi2tc_docs[0]
+        else:
+            self.app.active_fi2tc = None
+        self.app.fi2tc_entries = (
+            self.app.active_fi2tc.entries if self.app.active_fi2tc else []
+        )
+        self.refresh_docs()
+        self.refresh()
+        self.app.update_views()
 
 class HazopWindow(tk.Toplevel):
     def __init__(self, app):
@@ -876,7 +952,7 @@ class HaraWindow(tk.Toplevel):
             self.tree.column(c, width=width)
         self.tree.pack(fill=tk.BOTH, expand=True)
         btn = ttk.Frame(self)
-        btn.pack()
+        btn.pack(fill=tk.X)
         ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
@@ -1126,6 +1202,17 @@ class TC2FIWindow(tk.Toplevel):
         super().__init__(app.root)
         self.app = app
         self.title("TC2FI Analysis")
+        top = ttk.Frame(self)
+        top.pack(fill=tk.X)
+        ttk.Label(top, text="TC2FI:").pack(side=tk.LEFT)
+        self.doc_var = tk.StringVar()
+        self.doc_cb = ttk.Combobox(top, textvariable=self.doc_var, state="readonly")
+        self.doc_cb.pack(side=tk.LEFT, padx=2)
+        ttk.Button(top, text="New", command=self.new_doc).pack(side=tk.LEFT)
+        ttk.Button(top, text="Rename", command=self.rename_doc).pack(side=tk.LEFT)
+        ttk.Button(top, text="Delete", command=self.delete_doc).pack(side=tk.LEFT)
+        self.doc_cb.bind("<<ComboboxSelected>>", self.select_doc)
+
         self.geometry("800x400")
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill=tk.BOTH, expand=True)
@@ -1145,13 +1232,14 @@ class TC2FIWindow(tk.Toplevel):
         hsb.grid(row=1, column=0, sticky="ew")
         tree_frame.grid_columnconfigure(0, weight=1)
         tree_frame.grid_rowconfigure(0, weight=1)
-
+        self.tree.bind("<Double-1>", lambda e: self.edit_row())
         btn = ttk.Frame(self)
         btn.pack()
         ttk.Button(btn, text="Add", command=self.add_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Edit", command=self.edit_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
         ttk.Button(btn, text="Export CSV", command=self.export_csv).pack(side=tk.LEFT, padx=2, pady=2)
+        self.refresh_docs()
         self.refresh()
 
     def refresh(self):
@@ -1243,10 +1331,12 @@ class TC2FIWindow(tk.Toplevel):
                 else:
                     self.data[col] = widget.get()
 
+            self.result = True
     def add_row(self):
         dlg = self.RowDialog(self, self.app)
-        self.app.tc2fi_entries.append(dlg.data)
-        self.refresh()
+        if getattr(dlg, "result", None):
+            self.app.tc2fi_entries.append(dlg.data)
+            self.refresh()
 
     def edit_row(self):
         sel = self.tree.focus()
@@ -1255,7 +1345,8 @@ class TC2FIWindow(tk.Toplevel):
         idx = self.tree.index(sel)
         data = self.app.tc2fi_entries[idx]
         dlg = self.RowDialog(self, self.app, data)
-        self.refresh()
+        if getattr(dlg, "result", None):
+            self.refresh()
 
     def del_row(self):
         sel = self.tree.selection()
@@ -1275,6 +1366,65 @@ class TC2FIWindow(tk.Toplevel):
             for r in self.app.tc2fi_entries:
                 w.writerow([r.get(k, "") for k in self.COLS])
         messagebox.showinfo("Export", "TC2FI exported")
+
+    def refresh_docs(self):
+        names = [d.name for d in self.app.tc2fi_docs]
+        self.doc_cb.configure(values=names)
+        if self.app.active_tc2fi:
+            self.doc_var.set(self.app.active_tc2fi.name)
+        elif names:
+            self.doc_var.set(names[0])
+
+    def select_doc(self, *_):
+        name = self.doc_var.get()
+        for d in self.app.tc2fi_docs:
+            if d.name == name:
+                self.app.active_tc2fi = d
+                self.app.tc2fi_entries = d.entries
+                break
+        self.refresh()
+
+    def new_doc(self):
+        name = simpledialog.askstring("New TC2FI", "Name:")
+        if not name:
+            return
+        doc = TC2FIDoc(name, [])
+        self.app.tc2fi_docs.append(doc)
+        self.app.active_tc2fi = doc
+        self.app.tc2fi_entries = doc.entries
+        self.refresh_docs()
+        self.refresh()
+        self.app.update_views()
+
+    def rename_doc(self):
+        if not self.app.active_tc2fi:
+            return
+        name = simpledialog.askstring(
+            "Rename TC2FI", "Name:", initialvalue=self.app.active_tc2fi.name
+        )
+        if not name:
+            return
+        self.app.active_tc2fi.name = name
+        self.refresh_docs()
+        self.app.update_views()
+
+    def delete_doc(self):
+        doc = self.app.active_tc2fi
+        if not doc:
+            return
+        if not messagebox.askyesno("Delete", f"Delete TC2FI '{doc.name}'?"):
+            return
+        self.app.tc2fi_docs.remove(doc)
+        if self.app.tc2fi_docs:
+            self.app.active_tc2fi = self.app.tc2fi_docs[0]
+        else:
+            self.app.active_tc2fi = None
+        self.app.tc2fi_entries = (
+            self.app.active_tc2fi.entries if self.app.active_tc2fi else []
+        )
+        self.refresh_docs()
+        self.refresh()
+        self.app.update_views()
 
 
 class HazardExplorerWindow(tk.Toplevel):
