@@ -286,6 +286,7 @@ class SysMLDiagramWindow(tk.Toplevel):
                 self.objects.append(new_obj)
             self.sort_objects()
             self._sync_to_repository()
+            self.selected_obj = new_obj
             self.redraw()
         else:
             if obj:
@@ -397,8 +398,6 @@ class SysMLDiagramWindow(tk.Toplevel):
                 ConnectionDialog(self, conn)
         self.start = None
         self.temp_line_end = None
-        if self.current_tool != "Select":
-            self.selected_obj = None
         self.resizing_obj = None
         self.resize_edge = None
         if self.selected_obj and self.current_tool == "Select":
