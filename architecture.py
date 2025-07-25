@@ -213,6 +213,18 @@ class SysMLDiagramWindow(tk.Toplevel):
                 self.redraw()
 
     def on_left_drag(self, event):
+        if self.start and self.current_tool in (
+            "Association",
+            "Include",
+            "Extend",
+            "Flow",
+            "Connector",
+        ):
+            x = self.canvas.canvasx(event.x)
+            y = self.canvas.canvasy(event.y)
+            self.temp_line_end = (x, y)
+            self.redraw()
+            return
         if not self.selected_obj:
             return
         x = self.canvas.canvasx(event.x)
@@ -250,12 +262,46 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.redraw()
         self._sync_to_repository()
 
-    def on_left_release(self, _event):
+    def on_left_release(self, event):
+        if self.start and self.current_tool in (
+            "Association",
+            "Include",
+            "Extend",
+            "Flow",
+            "Connector",
+        ):
+            x = self.canvas.canvasx(event.x)
+            y = self.canvas.canvasy(event.y)
+            obj = self.find_object(x, y)
+            if obj and obj != self.start:
+                conn = DiagramConnection(self.start.obj_id, obj.obj_id, self.current_tool)
+                self.connections.append(conn)
+                if self.start.element_id and obj.element_id:
+                    rel = self.repo.create_relationship(
+                        self.current_tool, self.start.element_id, obj.element_id
+                    )
+                    self.repo.add_relationship_to_diagram(self.diagram_id, rel.rel_id)
+                self._sync_to_repository()
+                ConnectionDialog(self, conn)
         self.start = None
         self.temp_line_end = None
         self.selected_obj = None
         self.resizing_obj = None
         self.resize_edge = None
+        self.redraw()
+
+    def on_mouse_move(self, event):
+        if self.start and self.current_tool in (
+            "Association",
+            "Include",
+            "Extend",
+            "Flow",
+            "Connector",
+        ):
+            x = self.canvas.canvasx(event.x)
+            y = self.canvas.canvasy(event.y)
+            self.temp_line_end = (x, y)
+            self.redraw()
 
     def on_mouse_move(self, event):
         if self.start and self.current_tool in (
