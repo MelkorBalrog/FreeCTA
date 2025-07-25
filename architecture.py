@@ -33,13 +33,16 @@ class SysMLObject:
 class SysMLDiagramWindow(tk.Toplevel):
     """Base window for simple SysML diagrams with zoom and pan support."""
 
-    def __init__(self, master, title, tools):
+    def __init__(self, master, title, tools, diagram_id: str | None = None):
         super().__init__(master)
         self.title(title)
         self.geometry("800x600")
 
         self.repo = SysMLRepository.get_instance()
-        diagram = self.repo.create_diagram(title)
+        if diagram_id and diagram_id in self.repo.diagrams:
+            diagram = self.repo.diagrams[diagram_id]
+        else:
+            diagram = self.repo.create_diagram(title, diag_id=diagram_id)
         self.diagram_id = diagram.diag_id
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -104,7 +107,11 @@ class SysMLDiagramWindow(tk.Toplevel):
         elif t and t != "Select":
             element = self.repo.create_element(t)
             self.repo.add_element_to_diagram(self.diagram_id, element.elem_id)
-            new_obj = SysMLObject(_get_next_id(), t, x / self.zoom, y / self.zoom, element_id=element.elem_id)
+            new_obj = SysMLObject(_get_next_id(), t, x / self.zoom, y / self.zoom,
+                                  element_id=element.elem_id)
+            if t == "Block":
+                new_obj.height = 140.0
+                new_obj.width = 160.0
             key = f"{t.replace(' ', '')}Usage"
             for prop in SYSML_PROPERTIES.get(key, []):
                 new_obj.properties.setdefault(prop, "")
@@ -133,6 +140,15 @@ class SysMLDiagramWindow(tk.Toplevel):
         y = self.canvas.canvasy(event.y)
         obj = self.find_object(x, y)
         if obj:
+            diag_id = self.repo.get_linked_diagram(obj.element_id)
+            if diag_id and diag_id in self.repo.diagrams:
+                diag = self.repo.diagrams[diag_id]
+                if diag.diag_type == "Activity Diagram":
+                    ActivityDiagramWindow(self.master, diagram_id=diag_id)
+                    return
+                if diag.diag_type == "Internal Block Diagram":
+                    InternalBlockDiagramWindow(self.master, diagram_id=diag_id)
+                    return
             SysMLObjectDialog(self, obj)
             self.redraw()
 
@@ -200,7 +216,7 @@ class SysMLDiagramWindow(tk.Toplevel):
             self.canvas.create_rectangle(x - 100 * self.zoom, y - 60 * self.zoom,
                                         x + 100 * self.zoom, y + 60 * self.zoom,
                                         dash=(4, 2))
-        elif obj.obj_type in ("Action", "Block", "Part", "Port"):
+        elif obj.obj_type in ("Action", "Part", "Port"):
             dash = ()
             fill = ""
             if obj.obj_type == "Part":
@@ -213,6 +229,27 @@ class SysMLDiagramWindow(tk.Toplevel):
             else:
                 self.canvas.create_rectangle(x - w, y - h, x + w, y + h,
                                             dash=dash, fill=fill)
+        elif obj.obj_type == "Block":
+            left, top = x - w, y - h
+            right, bottom = x + w, y + h
+            self.canvas.create_rectangle(left, top, right, bottom)
+            header = f"<<block>> {obj.properties.get('name', '')}".strip()
+            self.canvas.create_line(left, top + 20 * self.zoom, right, top + 20 * self.zoom)
+            self.canvas.create_text(x, top + 10 * self.zoom, text=header, anchor="center")
+            compartments = [
+                ("Attributes", obj.properties.get("valueProperties", "")),
+                ("Parts", obj.properties.get("partProperties", "")),
+                ("References", obj.properties.get("referenceProperties", "")),
+                ("Operations", obj.properties.get("operations", "")),
+                ("Constraints", obj.properties.get("constraintProperties", "")),
+                ("Ports", obj.properties.get("ports", "")),
+            ]
+            cy = top + 20 * self.zoom
+            for label, text in compartments:
+                self.canvas.create_line(left, cy, right, cy)
+                if text:
+                    self.canvas.create_text(x, cy + 10 * self.zoom, text=f"{label}: {text}", anchor="n")
+                cy += 20 * self.zoom
         elif obj.obj_type in ("Initial", "Final"):
             if obj.obj_type == "Initial":
                 self.canvas.create_oval(x - 10 * self.zoom, y - 10 * self.zoom,
@@ -287,6 +324,30 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.entries[prop] = var
             row += 1
 
+        repo = SysMLRepository.get_instance()
+        if self.obj.obj_type == "Use Case":
+            diags = [d for d in repo.diagrams.values() if d.diag_type == "Activity Diagram"]
+            names = [d.name or d.diag_id for d in diags]
+            ids = {d.name or d.diag_id: d.diag_id for d in diags}
+            ttk.Label(master, text="Activity Diagram:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            self.diag_map = ids
+            cur_id = repo.get_linked_diagram(self.obj.element_id)
+            cur_name = next((n for n, i in ids.items() if i == cur_id), "")
+            self.diagram_var = tk.StringVar(value=cur_name)
+            ttk.Combobox(master, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=row, column=1, padx=4, pady=2)
+            row += 1
+        elif self.obj.obj_type == "Block":
+            diags = [d for d in repo.diagrams.values() if d.diag_type == "Internal Block Diagram"]
+            names = [d.name or d.diag_id for d in diags]
+            ids = {d.name or d.diag_id: d.diag_id for d in diags}
+            ttk.Label(master, text="Internal Block Diagram:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
+            self.diag_map = ids
+            cur_id = repo.get_linked_diagram(self.obj.element_id)
+            cur_name = next((n for n, i in ids.items() if i == cur_id), "")
+            self.diagram_var = tk.StringVar(value=cur_name)
+            ttk.Combobox(master, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=row, column=1, padx=4, pady=2)
+            row += 1
+        
     def apply(self):
         self.obj.properties["name"] = self.name_var.get()
         repo = SysMLRepository.get_instance()
@@ -301,9 +362,14 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.obj.height = float(self.height_var.get())
         except ValueError:
             pass
+        # Update linked diagram if applicable
+        if hasattr(self, "diagram_var"):
+            name = self.diagram_var.get()
+            diag_id = self.diag_map.get(name)
+            repo.link_diagram(self.obj.element_id, diag_id)
 
 class UseCaseDiagramWindow(SysMLDiagramWindow):
-    def __init__(self, master):
+    def __init__(self, master, diagram_id: str | None = None):
         tools = [
             "Actor",
             "Use Case",
@@ -312,11 +378,11 @@ class UseCaseDiagramWindow(SysMLDiagramWindow):
             "Include",
             "Extend",
         ]
-        super().__init__(master, "Use Case Diagram", tools)
+        super().__init__(master, "Use Case Diagram", tools, diagram_id)
 
 
 class ActivityDiagramWindow(SysMLDiagramWindow):
-    def __init__(self, master):
+    def __init__(self, master, diagram_id: str | None = None):
         tools = [
             "Action",
             "Initial",
@@ -327,24 +393,108 @@ class ActivityDiagramWindow(SysMLDiagramWindow):
             "Join",
             "Flow",
         ]
-        super().__init__(master, "Activity Diagram", tools)
+        super().__init__(master, "Activity Diagram", tools, diagram_id)
 
 
 class BlockDiagramWindow(SysMLDiagramWindow):
-    def __init__(self, master):
+    def __init__(self, master, diagram_id: str | None = None):
         tools = [
             "Block",
             "Association",
         ]
-        super().__init__(master, "Block Diagram", tools)
+        super().__init__(master, "Block Diagram", tools, diagram_id)
 
 
 class InternalBlockDiagramWindow(SysMLDiagramWindow):
-    def __init__(self, master):
+    def __init__(self, master, diagram_id: str | None = None):
         tools = [
             "Block",
             "Part",
             "Port",
             "Connector",
         ]
-        super().__init__(master, "Internal Block Diagram", tools)
+        super().__init__(master, "Internal Block Diagram", tools, diagram_id)
+
+
+class NewDiagramDialog(simpledialog.Dialog):
+    """Dialog to create a new diagram and assign a name and type."""
+
+    def __init__(self, master):
+        self.name = ""
+        self.diag_type = "Use Case Diagram"
+        super().__init__(master, title="New Diagram")
+
+    def body(self, master):
+        ttk.Label(master, text="Name:").grid(row=0, column=0, padx=4, pady=4, sticky="e")
+        self.name_var = tk.StringVar()
+        ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, padx=4, pady=4)
+        ttk.Label(master, text="Type:").grid(row=1, column=0, padx=4, pady=4, sticky="e")
+        self.type_var = tk.StringVar(value=self.diag_type)
+        ttk.Combobox(master, textvariable=self.type_var,
+                     values=["Use Case Diagram", "Activity Diagram", "Block Diagram", "Internal Block Diagram"]).grid(row=1, column=1, padx=4, pady=4)
+
+    def apply(self):
+        self.name = self.name_var.get()
+        self.diag_type = self.type_var.get()
+
+
+class DiagramManagerDialog(tk.Toplevel):
+    """Simple manager to browse and open architecture diagrams."""
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.title("Diagrams")
+        self.repo = SysMLRepository.get_instance()
+        self.geometry("300x300")
+        self.listbox = tk.Listbox(self)
+        self.listbox.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        btns = ttk.Frame(self)
+        btns.pack(fill=tk.X, padx=4, pady=4)
+        ttk.Button(btns, text="Open", command=self.open).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btns, text="New", command=self.new).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btns, text="Delete", command=self.delete).pack(side=tk.LEFT, padx=2)
+        ttk.Button(btns, text="Close", command=self.destroy).pack(side=tk.RIGHT, padx=2)
+        self.refresh()
+
+    def refresh(self):
+        self.listbox.delete(0, tk.END)
+        for d in self.repo.diagrams.values():
+            name = d.name or d.diag_id
+            self.listbox.insert(tk.END, f"{d.diag_id} | {name} ({d.diag_type})")
+
+    def selected_id(self) -> str | None:
+        if not self.listbox.curselection():
+            return None
+        value = self.listbox.get(self.listbox.curselection()[0])
+        return value.split(" | ")[0]
+
+    def open(self):
+        diag_id = self.selected_id()
+        if not diag_id:
+            return
+        self.open_diagram(diag_id)
+
+    def open_diagram(self, diag_id: str):
+        diag = self.repo.diagrams.get(diag_id)
+        if not diag:
+            return
+        if diag.diag_type == "Use Case Diagram":
+            UseCaseDiagramWindow(self, diagram_id=diag_id)
+        elif diag.diag_type == "Activity Diagram":
+            ActivityDiagramWindow(self, diagram_id=diag_id)
+        elif diag.diag_type == "Block Diagram":
+            BlockDiagramWindow(self, diagram_id=diag_id)
+        elif diag.diag_type == "Internal Block Diagram":
+            InternalBlockDiagramWindow(self, diagram_id=diag_id)
+
+    def new(self):
+        dlg = NewDiagramDialog(self)
+        if dlg.name:
+            self.repo.create_diagram(dlg.diag_type, name=dlg.name)
+            self.refresh()
+
+    def delete(self):
+        diag_id = self.selected_id()
+        if diag_id:
+            self.repo.delete_diagram(diag_id)
+            self.refresh()
