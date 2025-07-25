@@ -1451,20 +1451,26 @@ class SysMLObjectDialog(simpledialog.Dialog):
                                     for win in getattr(app, "ibd_windows", []):
                                         if win.diagram_id == diag_id:
                                             win.objects.append(obj)
-                                            win.sort_objects()
                                             win.redraw()
                                             win._sync_to_repository()
+                            # update block partProperties with newly added components
+                            new_names = [c.name for c in selected if c.name not in existing]
+                            if new_names:
+                                cur = self.obj.properties.get("partProperties", "")
+                                names = [n.strip() for n in cur.split(",") if n.strip()]
+                                for name in new_names:
+                                    if name not in names:
+                                        names.append(name)
+                                joined = ", ".join(names)
+                                self.obj.properties["partProperties"] = joined
+                                if self.obj.element_id and self.obj.element_id in repo.elements:
+                                    repo.elements[self.obj.element_id].properties["partProperties"] = joined
+                                # update all diagram objects referencing this block element
+                                for d in repo.diagrams.values():
+                                    for o in getattr(d, "objects", []):
+                                        if o.get("element_id") == self.obj.element_id:
+                                            o.setdefault("properties", {})["partProperties"] = joined
                             repo.diagrams[diag_id] = diag
-                            # Update block's part list
-                            part_names = [c.name for c in selected]
-                            self.obj.properties['partProperties'] = ", ".join(part_names)
-                            if 'partProperties' in self.listboxes:
-                                lb = self.listboxes['partProperties']
-                                lb.delete(0, tk.END)
-                                for n in part_names:
-                                    lb.insert(tk.END, n)
-                            if self.obj.element_id in repo.elements:
-                                repo.elements[self.obj.element_id].properties['partProperties'] = ", ".join(part_names)
                             if hasattr(self.master, "_sync_to_repository"):
                                 self.master._sync_to_repository()
 
@@ -1559,6 +1565,112 @@ class InternalBlockDiagramWindow(SysMLDiagramWindow):
             "Connector",
         ]
         super().__init__(master, "Internal Block Diagram", tools, diagram_id, app=app)
+        ttk.Button(self.toolbox, text="Add Block Parts", command=self.add_block_parts).pack(
+            fill=tk.X, padx=2, pady=2
+        )
+
+    def _get_failure_modes(self, comp_name: str) -> str:
+        """Return comma separated failure modes for a component name."""
+        app = getattr(self, "app", None)
+        modes = set()
+        for e in getattr(app, "fmea_entries", []):
+            if getattr(e, "fmea_component", "") == comp_name:
+                label = getattr(e, "description", "") or getattr(e, "user_name", "")
+                if label:
+                    modes.add(label)
+        for fmea in getattr(app, "fmeas", []):
+            for entry in fmea.get("entries", []):
+                if getattr(entry, "fmea_component", "") == comp_name:
+                    label = getattr(entry, "description", "") or getattr(entry, "user_name", "")
+                    if label:
+                        modes.add(label)
+        return ", ".join(sorted(modes))
+
+    def add_block_parts(self) -> None:
+        repo = self.repo
+        # determine which block this IBD represents
+        block_id = next((eid for eid, did in repo.element_diagrams.items() if did == self.diagram_id), None)
+        if not block_id or block_id not in repo.elements:
+            messagebox.showinfo("Add Parts", "No block is linked to this diagram")
+            return
+        block = repo.elements[block_id]
+        circuit_name = block.properties.get("circuit", "")
+        if not circuit_name:
+            messagebox.showinfo("Add Parts", "Block has no circuit assigned")
+            return
+        circuits = [
+            c
+            for ra in getattr(self.app, "reliability_analyses", [])
+            for c in ra.components
+            if c.comp_type == "circuit"
+        ]
+        circuits.extend(
+            c
+            for c in getattr(self.app, "reliability_components", [])
+            if c.comp_type == "circuit"
+        )
+        comp_map = {c.name: c for c in circuits}
+        comp = comp_map.get(circuit_name)
+        if not comp or not comp.sub_boms:
+            messagebox.showinfo("Add Parts", "Circuit has no BOM components")
+            return
+        comps = [c for bom in comp.sub_boms for c in bom]
+        dlg = SysMLObjectDialog.SelectComponentsDialog(self, comps)
+        selected = dlg.result or []
+        if not selected:
+            return
+        diag = repo.diagrams.get(self.diagram_id)
+        if diag is None:
+            return
+        diag.objects = getattr(diag, "objects", [])
+        existing = {
+            o.get("properties", {}).get("component")
+            for o in diag.objects
+            if o.get("obj_type") == "Part"
+        }
+        base_x = 50.0
+        base_y = 50.0
+        offset = 60.0
+        added = []
+        for idx, c in enumerate(selected):
+            if c.name in existing:
+                continue
+            elem = repo.create_element(
+                "Part",
+                name=c.name,
+                properties={
+                    "component": c.name,
+                    "fit": f"{c.fit:.2f}",
+                    "qualification": c.qualification,
+                    "failureModes": self._get_failure_modes(c.name),
+                },
+                owner=repo.root_package.elem_id,
+            )
+            repo.add_element_to_diagram(self.diagram_id, elem.elem_id)
+            obj = SysMLObject(
+                _get_next_id(),
+                "Part",
+                base_x,
+                base_y + offset * idx,
+                element_id=elem.elem_id,
+                properties=elem.properties.copy(),
+            )
+            diag.objects.append(obj.__dict__)
+            self.objects.append(obj)
+            added.append(c.name)
+        self.redraw()
+        self._sync_to_repository()
+        if added:
+            names = [n.strip() for n in block.properties.get("partProperties", "").split(",") if n.strip()]
+            for name in added:
+                if name not in names:
+                    names.append(name)
+            joined = ", ".join(names)
+            block.properties["partProperties"] = joined
+            for d in repo.diagrams.values():
+                for o in getattr(d, "objects", []):
+                    if o.get("element_id") == block_id:
+                        o.setdefault("properties", {})["partProperties"] = joined
 
 class NewDiagramDialog(simpledialog.Dialog):
     """Dialog to create a new diagram and assign a name and type."""
