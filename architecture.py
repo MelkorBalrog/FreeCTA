@@ -3,7 +3,7 @@ from tkinter import ttk, simpledialog, messagebox
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
-from sysml_repository import SysMLRepository, SysMLDiagram
+from sysml_repository import SysMLRepository, SysMLDiagram, SysMLElement
 
 from sysml_spec import SYSML_PROPERTIES
 from models import global_requirements
