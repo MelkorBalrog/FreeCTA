@@ -1,6 +1,6 @@
 import json
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional
 import os
 
@@ -188,12 +188,39 @@ class SysMLRepository:
 
     def serialize(self) -> str:
         data = {
-            "elements": [elem.__dict__ for elem in self.elements.values()],
-            "relationships": [rel.__dict__ for rel in self.relationships],
-            "diagrams": [diag.__dict__ for diag in self.diagrams.values()],
+            "elements": [asdict(elem) for elem in self.elements.values()],
+            "relationships": [asdict(rel) for rel in self.relationships],
+            "diagrams": [asdict(diag) for diag in self.diagrams.values()],
             "element_diagrams": self.element_diagrams,
         }
         return json.dumps(data, indent=2)
+
+    def to_dict(self) -> dict:
+        """Return a dictionary representation of the repository."""
+        return json.loads(self.serialize())
+
+    def from_dict(self, data: dict) -> None:
+        """Load repository contents from a dictionary."""
+        self.elements.clear()
+        self.relationships.clear()
+        self.diagrams.clear()
+        for e in data.get("elements", []):
+            elem = SysMLElement(**e)
+            self.elements[elem.elem_id] = elem
+        for r in data.get("relationships", []):
+            rel = SysMLRelationship(**r)
+            self.relationships.append(rel)
+        for d in data.get("diagrams", []):
+            diag = SysMLDiagram(**d)
+            self.diagrams[diag.diag_id] = diag
+        self.element_diagrams = data.get("element_diagrams", {})
+        self.root_package = None
+        for elem in self.elements.values():
+            if elem.elem_type == "Package" and elem.owner is None:
+                self.root_package = elem
+                break
+        if self.root_package is None:
+            self.root_package = self.create_element("Package", name="Root")
 
     def get_activity_actions(self) -> list[str]:
         """Return all action names and activity diagram names."""
