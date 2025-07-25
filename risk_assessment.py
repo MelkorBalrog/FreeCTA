@@ -35,7 +35,7 @@ def boolify(value, default):
         return value.lower() == "true"
     return bool(value) if value is not None else default
         
-class ADRiskAssessmentHelper:
+class AutoMLHelper:
     """
     Helper class for risk assessment computations.
     It encapsulates methods to:
