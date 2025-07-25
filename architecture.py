@@ -2072,18 +2072,26 @@ class ArchitectureManagerDialog(tk.Toplevel):
             visited.add(elem_id)
             elem = self.repo.elements[elem_id]
             icon = self.elem_icons.get(elem.elem_type, self.default_elem_icon)
-            node = self.tree.insert(
-                parent,
-                "end",
-                iid=elem_id,
-                text=elem.name or elem_id,
-                values=(elem.elem_type,),
-                image=icon,
-            )
+            if self.tree.exists(elem_id):
+                node = elem_id
+            else:
+                node = self.tree.insert(
+                    parent,
+                    "end",
+                    iid=elem_id,
+                    text=elem.name or elem_id,
+                    values=(elem.elem_type,),
+                    image=icon,
+                )
             for rel_id, tgt_id, rtype in rel_children.get(elem_id, []):
                 if tgt_id in self.repo.elements:
-                    rel_node = self.tree.insert(node, "end", iid=f"rel_{rel_id}",
-                                               text=rtype, values=("Relationship",))
+                    rel_iid = f"rel_{rel_id}"
+                    if self.tree.exists(rel_iid):
+                        rel_node = rel_iid
+                    else:
+                        rel_node = self.tree.insert(node, "end", iid=rel_iid,
+                                                   text=rtype,
+                                                   values=("Relationship",))
                     add_elem(tgt_id, rel_node)
             visited.remove(elem_id)
 
@@ -2095,9 +2103,17 @@ class ArchitectureManagerDialog(tk.Toplevel):
 
         def add_pkg(pkg_id, parent=""):
             pkg = self.repo.elements[pkg_id]
-            node = self.tree.insert(parent, "end", iid=pkg_id,
-                                   text=pkg.name or pkg_id, open=True,
-                                   image=self.pkg_icon)
+            if self.tree.exists(pkg_id):
+                node = pkg_id
+            else:
+                node = self.tree.insert(
+                    parent,
+                    "end",
+                    iid=pkg_id,
+                    text=pkg.name or pkg_id,
+                    open=True,
+                    image=self.pkg_icon,
+                )
             for p in self.repo.elements.values():
                 if p.elem_type == "Package" and p.owner == pkg_id:
                     add_pkg(p.elem_id, node)
@@ -2113,14 +2129,18 @@ class ArchitectureManagerDialog(tk.Toplevel):
                 if d.package == pkg_id:
                     label = d.name or d.diag_id
                     icon = self.diagram_icons.get(d.diag_type, self.default_diag_icon)
-                    diag_node = self.tree.insert(
-                        node,
-                        "end",
-                        iid=f"diag_{d.diag_id}",
-                        text=label,
-                        values=(d.diag_type,),
-                        image=icon,
-                    )
+                    diag_iid = f"diag_{d.diag_id}"
+                    if self.tree.exists(diag_iid):
+                        diag_node = diag_iid
+                    else:
+                        diag_node = self.tree.insert(
+                            node,
+                            "end",
+                            iid=diag_iid,
+                            text=label,
+                            values=(d.diag_type,),
+                            image=icon,
+                        )
                     objs = sorted(
                         d.objects,
                         key=lambda o: 1 if getattr(o, "obj_type", o.get("obj_type")) == "Port" else 0,
@@ -2138,10 +2158,13 @@ class ArchitectureManagerDialog(tk.Toplevel):
                             and self.tree.exists(f"obj_{d.diag_id}_{props.get('parent')}")
                         ):
                             parent_node = f"obj_{d.diag_id}_{props.get('parent')}"
+                        obj_iid = f"obj_{d.diag_id}_{oid}"
+                        if self.tree.exists(obj_iid):
+                            continue
                         self.tree.insert(
                             parent_node,
                             "end",
-                            iid=f"obj_{d.diag_id}_{oid}",
+                            iid=obj_iid,
                             text=name,
                             values=(obj.get("obj_type"),),
                             image=icon,
