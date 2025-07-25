@@ -1106,9 +1106,28 @@ class ArchitectureManagerDialog(tk.Toplevel):
         self.bind("<FocusIn>", lambda _e: self.populate())
         self.drag_item = None
         self.cut_item = None
+        from collections import defaultdict
 
-    def populate(self):
-        self.tree.delete(*self.tree.get_children())
+        rel_children = defaultdict(list)
+        for rel in self.repo.relationships:
+            rel_children[rel.source].append((rel.rel_id, rel.target, rel.rel_type))
+
+        visited: set[str] = set()
+
+        def add_elem(elem_id: str, parent: str):
+            if elem_id in visited:
+                return
+            visited.add(elem_id)
+            elem = self.repo.elements[elem_id]
+            node = self.tree.insert(parent, "end", iid=elem_id,
+                                   text=elem.name or elem_id,
+                                   values=(elem.elem_type,), image=self.elem_icon)
+            for rel_id, tgt_id, rtype in rel_children.get(elem_id, []):
+                if tgt_id in self.repo.elements:
+                    rel_node = self.tree.insert(node, "end", iid=f"rel_{rel_id}",
+                                               text=rtype, values=("Relationship",))
+                    add_elem(tgt_id, rel_node)
+            visited.remove(elem_id)
 
         def add_pkg(pkg_id, parent=""):
             pkg = self.repo.elements[pkg_id]
@@ -1140,12 +1159,14 @@ class ArchitectureManagerDialog(tk.Toplevel):
                     self.tree.insert(node, "end", iid=f"diag_{d.diag_id}",
                                      text=label, values=(d.diag_type,), image=self.diag_icon)
                     for obj in d.objects:
-                        name = obj.get("properties", {}).get("name", obj.get("obj_type"))
-                        oid = obj.get("obj_id")
+                        props = getattr(obj, "properties", obj.get("properties", {}))
+                        name = props.get("name", getattr(obj, "obj_type", obj.get("obj_type")))
+                        oid = getattr(obj, "obj_id", obj.get("obj_id"))
+                        otype = getattr(obj, "obj_type", obj.get("obj_type"))
                         self.tree.insert(node, "end",
                                          iid=f"obj_{d.diag_id}_{oid}",
                                          text=name,
-                                         values=(obj.get("obj_type"),),
+                                         values=(otype,),
                                          image=self.elem_icon)
 
         add_pkg(self.repo.root_package.elem_id)
@@ -1272,6 +1293,14 @@ class ArchitectureManagerDialog(tk.Toplevel):
         if target == self.drag_item:
             self.drag_item = None
             return
+        if self.drag_item.startswith("obj_"):
+            messagebox.showerror("Drop Error", "Objects cannot be moved in the explorer.")
+            self.drag_item = None
+            return
+        if target.startswith("obj_"):
+            messagebox.showerror("Drop Error", "Cannot drop items on an object.")
+            self.drag_item = None
+            return
         region = self.tree.identify_region(event.x, event.y)
         if region in ("separator", "nothing"):
             parent = self.tree.parent(target)
@@ -1289,13 +1318,20 @@ class ArchitectureManagerDialog(tk.Toplevel):
         self.populate()
 
     def _move_item(self, item, new_parent):
+        if item.startswith("obj_") or new_parent.startswith("obj_"):
+            messagebox.showerror("Drop Error", "Cannot drop items on an object.")
+            return
         if item.startswith("diag_"):
             self.repo.diagrams[item[5:]].package = new_parent
         else:
-            self.repo.elements[item].owner = new_parent
-
+            elem = self.repo.elements.get(item)
+            if elem:
+                elem.owner = new_parent
     def _drop_on_diagram(self, elem_id, diagram):
         repo = self.repo
+        if elem_id.startswith("obj_"):
+            messagebox.showerror("Drop Error", "Objects cannot be dropped on a diagram.")
+            return
         # Dropping a diagram onto an Activity Diagram creates a referenced action
         if elem_id.startswith("diag_"):
             src_diag = repo.diagrams.get(elem_id[5:])
