@@ -838,6 +838,37 @@ class SysMLObjectDialog(simpledialog.Dialog):
         def apply(self):
             self.result = [rid for rid, var in self.selected_vars.items() if var.get()]
 
+    class SelectComponentsDialog(simpledialog.Dialog):
+        """Dialog to choose which components should become parts."""
+
+        def __init__(self, parent, components):
+            self.components = components
+            self.selected = {}
+            super().__init__(parent, title="Select Components")
+
+        def body(self, master):
+            ttk.Label(master, text="Select components:").pack(padx=5, pady=5)
+            frame = ttk.Frame(master)
+            frame.pack(fill=tk.BOTH, expand=True)
+            canvas = tk.Canvas(frame, borderwidth=0)
+            scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+            self.check_frame = ttk.Frame(canvas)
+            self.check_frame.bind(
+                "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+            canvas.create_window((0, 0), window=self.check_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+            for comp in self.components:
+                var = tk.BooleanVar(value=True)
+                self.selected[comp] = var
+                ttk.Checkbutton(self.check_frame, text=comp.name, variable=var).pack(anchor="w", padx=2, pady=2)
+            return self.check_frame
+
+        def apply(self):
+            self.result = [c for c, var in self.selected.items() if var.get()]
+
     def body(self, master):
         # Disable window resizing so the layout remains consistent
         self.resizable(False, False)
@@ -1175,7 +1206,72 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 self.obj.properties["useCaseDefinition"] = def_id
                 if self.obj.element_id and self.obj.element_id in repo.elements:
                     repo.elements[self.obj.element_id].properties["useCaseDefinition"] = def_id
-                    
+
+        # ------------------------------------------------------------
+        # Add parts from selected circuit BOM
+        # ------------------------------------------------------------
+        if (
+            self.obj.obj_type == "Block"
+            and "circuit" in self.obj.properties
+            and hasattr(self, "diag_map")
+        ):
+            diag_id = repo.get_linked_diagram(self.obj.element_id)
+            if diag_id:
+                circuit_name = self.obj.properties.get("circuit", "")
+                comp = getattr(self, "_circuit_map", {}).get(circuit_name)
+                if comp and comp.sub_boms:
+                    comps = [c for bom in comp.sub_boms for c in bom]
+                    dlg = self.SelectComponentsDialog(self, comps)
+                    selected = dlg.result or []
+                    if selected:
+                        diag = repo.diagrams.get(diag_id)
+                        if diag is not None:
+                            diag.objects = getattr(diag, "objects", [])
+                            existing = {
+                                o.get("properties", {}).get("component")
+                                for o in diag.objects
+                                if o.get("obj_type") == "Part"
+                            }
+                            base_x = 50.0
+                            base_y = 50.0
+                            offset = 60.0
+                            for idx, c in enumerate(selected):
+                                if c.name in existing:
+                                    continue
+                                elem = repo.create_element(
+                                    "Part",
+                                    name=c.name,
+                                    properties={
+                                        "component": c.name,
+                                        "fit": f"{c.fit:.2f}",
+                                        "qualification": c.qualification,
+                                        "failureModes": self._get_failure_modes(getattr(self.master, "app", None), c.name),
+                                    },
+                                    owner=repo.root_package.elem_id,
+                                )
+                                repo.add_element_to_diagram(diag_id, elem.elem_id)
+                                obj = SysMLObject(
+                                    _get_next_id(),
+                                    "Part",
+                                    base_x,
+                                    base_y + offset * idx,
+                                    element_id=elem.elem_id,
+                                    properties=elem.properties.copy(),
+                                )
+                                diag.objects.append(obj.__dict__)
+                                # update any open windows for this diagram
+                                app = getattr(self.master, "app", None)
+                                if app:
+                                    for win in getattr(app, "ibd_windows", []):
+                                        if win.diagram_id == diag_id:
+                                            win.objects.append(obj)
+                                            win.redraw()
+                                            win._sync_to_repository()
+                            repo.diagrams[diag_id] = diag
+                            if hasattr(self.master, "_sync_to_repository"):
+                                self.master._sync_to_repository()
+
+        
 class ConnectionDialog(simpledialog.Dialog):
     """Edit connection style and custom routing points."""
 
