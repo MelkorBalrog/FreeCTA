@@ -724,14 +724,26 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 self.entries[prop] = var
             elif self.obj.obj_type == "Use Case" and prop == "useCaseDefinition":
                 repo = SysMLRepository.get_instance()
-                defs = [e for e in repo.elements.values() if e.elem_type == "Use Case"]
-                idmap = {d.name or d.elem_id: d.elem_id for d in defs}
+                diags = [
+                    d for d in repo.diagrams.values()
+                    if d.diag_type == "Use Case Diagram" and d.diag_id != self.master.diagram_id
+                ]
+                idmap = {d.name or d.diag_id: d.diag_id for d in diags}
                 self.ucdef_map = idmap
                 cur_id = self.obj.properties.get(prop, "")
                 cur_name = next((n for n, i in idmap.items() if i == cur_id), "")
                 var = tk.StringVar(value=cur_name)
                 ttk.Combobox(master, textvariable=var, values=list(idmap.keys())).grid(row=row, column=1, padx=4, pady=2)
                 self.entries[prop] = var
+            elif self.obj.obj_type == "Use Case" and prop == "includedUseCase":
+                repo = SysMLRepository.get_instance()
+                targets = [
+                    repo.elements[t].name or t
+                    for rel in repo.relationships
+                    if rel.rel_type == "Include" and rel.source == self.obj.element_id
+                    if (t := rel.target) in repo.elements
+                ]
+                ttk.Label(master, text=", ".join(targets)).grid(row=row, column=1, sticky="w", padx=4, pady=2)
             elif prop == "circuit" and app:
                 circuits = [
                     c for ra in getattr(app, 'reliability_analyses', [])
