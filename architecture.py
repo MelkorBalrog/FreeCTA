@@ -933,10 +933,17 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 ttk.Label(frame, text=", ".join(targets)).grid(row=row, column=1, sticky="w", padx=4, pady=2)
             elif prop == "circuit" and app:
                 circuits = [
-                    c for ra in getattr(app, 'reliability_analyses', [])
-                    for c in ra.components if c.comp_type == 'circuit'
+                    c
+                    for ra in getattr(app, 'reliability_analyses', [])
+                    for c in ra.components
+                    if c.comp_type == "circuit"
                 ]
-                names = [c.name for c in circuits]
+                circuits.extend(
+                    c
+                    for c in getattr(app, "reliability_components", [])
+                    if c.comp_type == "circuit"
+                )
+                names = list({c.name for c in circuits})
                 var = tk.StringVar(value=self.obj.properties.get(prop, ""))
                 cb = ttk.Combobox(frame, textvariable=var, values=names, state="readonly")
                 cb.grid(row=row, column=1, padx=4, pady=2)
@@ -965,10 +972,17 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 cb.bind("<<ComboboxSelected>>", sync_circuit)
             elif prop == "component" and app:
                 comps = [
-                    c for ra in getattr(app, 'reliability_analyses', [])
-                    for c in ra.components if c.comp_type != 'circuit'
+                    c
+                    for ra in getattr(app, 'reliability_analyses', [])
+                    for c in ra.components
+                    if c.comp_type != "circuit"
                 ]
-                names = [c.name for c in comps]
+                comps.extend(
+                    c
+                    for c in getattr(app, "reliability_components", [])
+                    if c.comp_type != "circuit"
+                )
+                names = list({c.name for c in comps})
                 var = tk.StringVar(value=self.obj.properties.get(prop, ""))
                 cb = ttk.Combobox(frame, textvariable=var, values=names, state="readonly")
                 cb.grid(row=row, column=1, padx=4, pady=2)
