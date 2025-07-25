@@ -124,6 +124,18 @@ class HaraDoc:
     approved: bool = False
     status: str = "draft"
 
+@dataclass
+class FI2TCDoc:
+    """Container for an FI2TC analysis."""
+    name: str
+    entries: list
+
+@dataclass
+class TC2FIDoc:
+    """Container for a TC2FI analysis."""
+    name: str
+    entries: list
+
 COMPONENT_ATTR_TEMPLATES = {
     "capacitor": {
         "dielectric": ["ceramic", "electrolytic", "tantalum"],
