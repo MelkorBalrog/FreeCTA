@@ -108,6 +108,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.resizing_obj: SysMLObject | None = None
         self.resize_edge: str | None = None
         self.temp_line_end: tuple[float, float] | None = None
+        self.rc_dragged = False
 
         self.toolbox = ttk.Frame(self)
         self.toolbox.pack(side=tk.LEFT, fill=tk.Y)
@@ -128,6 +129,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.canvas.bind("<Double-Button-1>", self.on_double_click)
         self.canvas.bind("<ButtonPress-3>", self.on_rc_press)
         self.canvas.bind("<B3-Motion>", self.on_rc_drag)
+        self.canvas.bind("<ButtonRelease-3>", self.on_rc_release)
         self.canvas.bind("<Motion>", self.on_mouse_move)
         self.canvas.bind("<Control-MouseWheel>", self.on_ctrl_mousewheel)
         self.bind("<Control-c>", self.copy_selected)
@@ -401,10 +403,54 @@ class SysMLDiagramWindow(tk.Toplevel):
                 self.redraw()
 
     def on_rc_press(self, event):
+        self.rc_dragged = False
         self.canvas.scan_mark(event.x, event.y)
 
     def on_rc_drag(self, event):
+        self.rc_dragged = True
         self.canvas.scan_dragto(event.x, event.y, gain=1)
+
+    def on_rc_release(self, event):
+        if not self.rc_dragged:
+            self.show_context_menu(event)
+
+    def show_context_menu(self, event):
+        x = self.canvas.canvasx(event.x)
+        y = self.canvas.canvasy(event.y)
+        obj = self.find_object(x, y)
+        if not obj:
+            return
+        self.selected_obj = obj
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(label="Properties", command=lambda: self._edit_object(obj))
+        diag_id = self.repo.get_linked_diagram(obj.element_id)
+        if diag_id and diag_id in self.repo.diagrams:
+            menu.add_command(label="Open Linked Diagram", command=lambda: self._open_linked_diagram(obj))
+        menu.add_separator()
+        menu.add_command(label="Copy", command=self.copy_selected)
+        menu.add_command(label="Cut", command=self.cut_selected)
+        menu.add_command(label="Paste", command=self.paste_selected)
+        menu.add_command(label="Delete", command=self.delete_selected)
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _edit_object(self, obj):
+        SysMLObjectDialog(self, obj)
+        self._sync_to_repository()
+        self.redraw()
+
+    def _open_linked_diagram(self, obj):
+        diag_id = self.repo.get_linked_diagram(obj.element_id)
+        if not diag_id or diag_id not in self.repo.diagrams:
+            return
+        diag = self.repo.diagrams[diag_id]
+        if diag.diag_type == "Use Case Diagram":
+            UseCaseDiagramWindow(self.master, self.app, diagram_id=diag_id)
+        elif diag.diag_type == "Activity Diagram":
+            ActivityDiagramWindow(self.master, self.app, diagram_id=diag_id)
+        elif diag.diag_type == "Block Diagram":
+            BlockDiagramWindow(self.master, self.app, diagram_id=diag_id)
+        elif diag.diag_type == "Internal Block Diagram":
+            InternalBlockDiagramWindow(self.master, self.app, diagram_id=diag_id)
 
     def on_ctrl_mousewheel(self, event):
         if event.delta > 0:
