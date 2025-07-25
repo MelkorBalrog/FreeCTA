@@ -1311,6 +1311,25 @@ class DiagramPropertiesDialog(simpledialog.Dialog):
         self.diagram.description = self.desc_var.get()
         self.diagram.color = self.color_var.get()
 
+class PackagePropertiesDialog(simpledialog.Dialog):
+    """Dialog to edit a package's name."""
+
+    def __init__(self, master, package: SysMLElement):
+        self.package = package
+        super().__init__(master, title="Package Properties")
+
+    def body(self, master):
+        ttk.Label(master, text="Name:").grid(
+            row=0, column=0, sticky="e", padx=4, pady=2
+        )
+        self.name_var = tk.StringVar(value=self.package.name)
+        ttk.Entry(master, textvariable=self.name_var).grid(
+            row=0, column=1, padx=4, pady=2
+        )
+
+    def apply(self):
+        self.package.name = self.name_var.get()
+
 class ArchitectureManagerDialog(tk.Toplevel):
     """Manage packages and diagrams in a hierarchical tree."""
 
@@ -1491,15 +1510,25 @@ class ArchitectureManagerDialog(tk.Toplevel):
             if diag:
                 diag.objects = [o for o in diag.objects if str(o.get("obj_id")) != oid]
         else:
-            self.repo.delete_package(item)
+            if item == self.repo.root_package.elem_id:
+                messagebox.showerror("Delete", "Cannot delete the root package.")
+            else:
+                self.repo.delete_package(item)
         self.populate()
 
     def properties(self):
         item = self.selected()
-        if item and item.startswith("diag_"):
+        if not item:
+            return
+        if item.startswith("diag_"):
             diag = self.repo.diagrams.get(item[5:])
             if diag:
                 DiagramPropertiesDialog(self, diag)
+                self.populate()
+        else:
+            elem = self.repo.elements.get(item)
+            if elem and elem.elem_type == "Package":
+                PackagePropertiesDialog(self, elem)
                 self.populate()
 
     # ------------------------------------------------------------------
