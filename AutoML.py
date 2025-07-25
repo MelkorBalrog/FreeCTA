@@ -2829,6 +2829,89 @@ class FaultTreeApp:
         lpfm_metric = 1 - unc_lpf / total if total else 0.0
         return asil, dc, spfm_metric, lpfm_metric
 
+    def compute_fmeda_metrics(self, events):
+        """Return aggregate and per-goal FMEDA metrics."""
+        comp_fit = component_fit_map(self.reliability_components)
+        goal_metrics = {}
+        total = 0.0
+        spf_total = 0.0
+        lpf_total = 0.0
+        asil = "QM"
+        for be in events:
+            src = self.get_failure_mode_node(be)
+            goals = self.get_top_event_safety_goals(src) or [getattr(src, "fmeda_safety_goal", "")]
+            comp_name = src.parents[0].user_name if src.parents else getattr(src, "fmea_component", "")
+            fit = comp_fit.get(comp_name)
+            frac = getattr(src, "fmeda_fault_fraction", 0.0)
+            if frac > 1.0:
+                frac /= 100.0
+            value = fit * frac if fit is not None else getattr(src, "fmeda_fit", 0.0)
+            fault_spf = value * (1 - src.fmeda_diag_cov) if src.fmeda_fault_type == "permanent" else 0.0
+            fault_lpf = value * (1 - src.fmeda_diag_cov) if src.fmeda_fault_type != "permanent" else 0.0
+            for sg in goals:
+                gm = goal_metrics.setdefault(
+                    sg,
+                    {
+                        "total": 0.0,
+                        "spfm_raw": 0.0,
+                        "lpfm_raw": 0.0,
+                        "asil": self.get_safety_goal_asil(sg),
+                    },
+                )
+                gm["total"] += value
+                gm["spfm_raw"] += fault_spf
+                gm["lpfm_raw"] += fault_lpf
+            total += value
+            spf_total += fault_spf
+            lpf_total += fault_lpf
+            for sg in goals:
+                a = self.get_safety_goal_asil(sg)
+                if ASIL_ORDER.get(a, 0) > ASIL_ORDER.get(asil, 0):
+                    asil = a
+
+        for sg, vals in goal_metrics.items():
+            t = vals["total"]
+            spf = vals["spfm_raw"]
+            lpf = vals["lpfm_raw"]
+            dc = (t - (spf + lpf)) / t if t else 0.0
+            spfm_metric = 1 - spf / t if t else 0.0
+            lpfm_metric = 1 - lpf / t if t else 0.0
+            thresh = ASIL_TARGETS.get(vals["asil"], ASIL_TARGETS["QM"])
+            vals.update(
+                {
+                    "dc": dc,
+                    "spfm_metric": spfm_metric,
+                    "lpfm_metric": lpfm_metric,
+                    "ok_dc": dc >= thresh["dc"],
+                    "ok_spfm": spfm_metric >= thresh["spfm"],
+                    "ok_lpfm": lpfm_metric >= thresh["lpfm"],
+                }
+            )
+
+        dc_total = (total - (spf_total + lpf_total)) / total if total else 0.0
+        spfm_metric_total = 1 - spf_total / total if total else 0.0
+        lpfm_metric_total = 1 - lpf_total / total if total else 0.0
+        thresh_total = ASIL_TARGETS.get(asil, ASIL_TARGETS["QM"])
+
+        self.reliability_total_fit = total
+        self.reliability_dc = dc_total
+        self.spfm = spf_total
+        self.lpfm = lpf_total
+
+        return {
+            "total": total,
+            "spfm_raw": spf_total,
+            "lpfm_raw": lpf_total,
+            "dc": dc_total,
+            "spfm_metric": spfm_metric_total,
+            "lpfm_metric": lpfm_metric_total,
+            "asil": asil,
+            "ok_dc": dc_total >= thresh_total["dc"],
+            "ok_spfm": spfm_metric_total >= thresh_total["spfm"],
+            "ok_lpfm": lpfm_metric_total >= thresh_total["lpfm"],
+            "goal_metrics": goal_metrics,
+        }
+
     def sync_hara_to_safety_goals(self):
         """Propagate HARA values to safety goals when the HARA is approved."""
         sg_data = {}
@@ -8922,7 +9005,11 @@ class FaultTreeApp:
                     load_bom()
                 else:
                     refresh_tree()
-                asil, dc, spfm_m, lpfm_m = self.calculate_fmeda_metrics(entries)
+                metrics = self.compute_fmeda_metrics(entries)
+                asil = metrics["asil"]
+                dc = metrics["dc"]
+                spfm_m = metrics["spfm_metric"]
+                lpfm_m = metrics["lpfm_metric"]
                 thresh = ASIL_TARGETS.get(asil, ASIL_TARGETS["QM"])
                 ok_dc = dc >= thresh["dc"]
                 ok_spf = spfm_m >= thresh["spfm"]
@@ -9176,7 +9263,11 @@ class FaultTreeApp:
                 tree.item(iid, open=True)
 
             if fmeda:
-                asil, dc, spfm_metric, lpfm_metric = self.calculate_fmeda_metrics(events)
+                metrics = self.compute_fmeda_metrics(events)
+                asil = metrics["asil"]
+                dc = metrics["dc"]
+                spfm_metric = metrics["spfm_metric"]
+                lpfm_metric = metrics["lpfm_metric"]
                 thresh = ASIL_TARGETS.get(asil, ASIL_TARGETS["QM"])
                 ok_dc = dc >= thresh["dc"]
                 ok_spf = spfm_metric >= thresh["spfm"]
