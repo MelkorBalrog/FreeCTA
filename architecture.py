@@ -548,13 +548,20 @@ class SysMLDiagramWindow(tk.Toplevel):
             self.canvas.create_rectangle(x - w, y - h, x + w, y + h)
 
         if obj.obj_type != "Block":
-            name = obj.properties.get("name", obj.obj_type)
+            obj_name = obj.properties.get("name", "")
+            label = f"{obj_name}:{obj.obj_type}" if obj_name else obj.obj_type
             if obj.obj_type == "Part":
                 def_id = obj.properties.get("definition")
                 if def_id and def_id in self.repo.elements:
                     def_name = self.repo.elements[def_id].name or def_id
-                    name = f"{name} : {def_name}"
-            label_lines = [name]
+                    label = f"{obj_name} : {def_name}" if obj_name else def_name
+            diag_id = self.repo.get_linked_diagram(obj.element_id)
+            label_lines = []
+            if diag_id and diag_id in self.repo.diagrams:
+                diag = self.repo.diagrams[diag_id]
+                diag_name = diag.name or diag_id
+                label_lines.append(diag_name)
+            label_lines.append(label)
             key = obj.obj_type.replace(' ', '')
             if not key.endswith('Usage'):
                 key += 'Usage'
