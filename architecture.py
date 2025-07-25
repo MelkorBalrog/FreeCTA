@@ -289,6 +289,29 @@ class SysMLDiagramWindow(tk.Toplevel):
                 if parent_obj:
                     new_obj.properties["parent"] = str(parent_obj.obj_id)
                     self.snap_port_to_parent(new_obj, parent_obj)
+                    # Persist the port by adding it to the parent part's list
+                    pname = new_obj.properties.get("name") or ""
+                    ports = [p.strip() for p in parent_obj.properties.get("ports", "").split(",") if p.strip()]
+                    if not pname:
+                        base = "Port"
+                        idx = 1
+                        existing = set(ports)
+                        existing.update(
+                            p.properties.get("name")
+                            for p in self.objects
+                            if p.obj_type == "Port" and p.properties.get("parent") == str(parent_obj.obj_id)
+                        )
+                        pname = base
+                        while pname in existing:
+                            pname = f"{base}{idx}"
+                            idx += 1
+                        new_obj.properties["name"] = pname
+                        element.name = pname
+                    if pname not in ports:
+                        ports.append(pname)
+                        parent_obj.properties["ports"] = ", ".join(ports)
+                        if parent_obj.element_id and parent_obj.element_id in self.repo.elements:
+                            self.repo.elements[parent_obj.element_id].properties["ports"] = parent_obj.properties["ports"]
             element.properties.update(new_obj.properties)
             if t == "System Boundary":
                 self.objects.insert(0, new_obj)
@@ -2057,14 +2080,25 @@ class ArchitectureManagerDialog(tk.Toplevel):
                         values=(d.diag_type,),
                         image=icon,
                     )
-                    for obj in d.objects:
+                    objs = sorted(
+                        d.objects,
+                        key=lambda o: 1 if getattr(o, "obj_type", o.get("obj_type")) == "Port" else 0,
+                    )
+                    for obj in objs:
                         props = getattr(obj, "properties", obj.get("properties", {}))
                         name = props.get("name", getattr(obj, "obj_type", obj.get("obj_type")))
                         oid = getattr(obj, "obj_id", obj.get("obj_id"))
                         otype = getattr(obj, "obj_type", obj.get("obj_type"))
                         icon = self.elem_icons.get(otype, self.default_elem_icon)
+                        parent_node = diag_node
+                        if (
+                            otype == "Port"
+                            and props.get("parent")
+                            and self.tree.exists(f"obj_{d.diag_id}_{props.get('parent')}")
+                        ):
+                            parent_node = f"obj_{d.diag_id}_{props.get('parent')}"
                         self.tree.insert(
-                            diag_node,
+                            parent_node,
                             "end",
                             iid=f"obj_{d.diag_id}_{oid}",
                             text=name,
