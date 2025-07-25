@@ -20,6 +20,7 @@ from models import (
     calc_asil,
 )
 from fmeda_utils import compute_fmeda_metrics
+from AutoML import CHECK_MARK, CROSS_MARK
 
 
 def _total_fit_from_boms(boms):
@@ -357,10 +358,24 @@ class ReliabilityWindow(tk.Toplevel):
                     comp.fit = 0.0
             total += comp.fit * comp.quantity
 
+        sg_targets = {sg.user_name: {
+            "dc": getattr(sg, "sg_dc_target", 0.0),
+            "spfm": getattr(sg, "sg_spfm_target", 0.0),
+            "lpfm": getattr(sg, "sg_lpfm_target", 0.0),
+        } for sg in self.app.top_events}
+        for be in self.app.fmea_entries:
+            sg = getattr(be, "fmeda_safety_goal", "")
+            if sg and sg not in sg_targets:
+                sg_targets[sg] = {
+                    "dc": getattr(be, "fmeda_dc_target", 0.0),
+                    "spfm": getattr(be, "fmeda_spfm_target", 0.0),
+                    "lpfm": getattr(be, "fmeda_lpfm_target", 0.0),
+                }
         metrics = compute_fmeda_metrics(
             self.app.fmea_entries,
             self.components,
             self.app.get_safety_goal_asil,
+            sg_targets=sg_targets,
         )
         self.app.reliability_components = list(self.components)
         self.app.reliability_total_fit = metrics["total"]
@@ -368,10 +383,16 @@ class ReliabilityWindow(tk.Toplevel):
         self.app.lpfm = metrics["lpfm_raw"]
         self.app.reliability_dc = metrics["dc"]
         self.refresh_tree()
+        goal_res = []
+        for sg, gm in metrics.get("goal_metrics", {}).items():
+            ok = gm["ok_dc"] and gm["ok_spfm"] and gm["ok_lpfm"]
+            symbol = CHECK_MARK if ok else CROSS_MARK
+            goal_res.append(f"{sg}:{symbol}")
+        extra = f"  [{' ; '.join(goal_res)}]" if goal_res else ""
         self.formula_label.config(
             text=(
                 f"Total FIT: {metrics['total']:.2f}  DC: {metrics['dc']:.2f}  "
-                f"SPFM: {metrics['spfm_raw']:.2f}  LPFM: {metrics['lpfm_raw']:.2f}"
+                f"SPFM: {metrics['spfm_raw']:.2f}  LPFM: {metrics['lpfm_raw']:.2f}" + extra
             )
         )
 

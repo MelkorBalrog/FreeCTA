@@ -898,6 +898,21 @@ class EditNodeDialog(simpledialog.Dialog):
                 self.ftti_entry.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
+                ttk.Label(master, text="DC Target:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.dc_target_var = tk.DoubleVar(value=getattr(self.node, "sg_dc_target", 0.0))
+                tk.Entry(master, textvariable=self.dc_target_var, width=8).grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
+                row_next += 1
+
+                ttk.Label(master, text="SPFM Target:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.spfm_target_var = tk.DoubleVar(value=getattr(self.node, "sg_spfm_target", 0.0))
+                tk.Entry(master, textvariable=self.spfm_target_var, width=8).grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
+                row_next += 1
+
+                ttk.Label(master, text="LPFM Target:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.lpfm_target_var = tk.DoubleVar(value=getattr(self.node, "sg_lpfm_target", 0.0))
+                tk.Entry(master, textvariable=self.lpfm_target_var, width=8).grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
+                row_next += 1
+
                 ttk.Label(master, text="Acceptance Criteria:").grid(row=row_next, column=0, padx=5, pady=5, sticky="ne")
                 self.ac_text = tk.Text(master, width=40, height=3, font=dialog_font, wrap="word")
                 self.ac_text.insert("1.0", getattr(self.node, "acceptance_criteria", ""))
@@ -1573,6 +1588,18 @@ class EditNodeDialog(simpledialog.Dialog):
                 target_node.safety_goal_asil = self.sg_asil_var.get().strip()
                 target_node.safe_state = self.safe_state_entry.get().strip()
                 target_node.ftti = self.ftti_entry.get().strip()
+                try:
+                    target_node.sg_dc_target = float(self.dc_target_var.get())
+                except Exception:
+                    target_node.sg_dc_target = 0.0
+                try:
+                    target_node.sg_spfm_target = float(self.spfm_target_var.get())
+                except Exception:
+                    target_node.sg_spfm_target = 0.0
+                try:
+                    target_node.sg_lpfm_target = float(self.lpfm_target_var.get())
+                except Exception:
+                    target_node.sg_lpfm_target = 0.0
                 target_node.acceptance_criteria = self.ac_text.get("1.0", "end-1c")
             else:
                 target_node.is_page = self.is_page_var.get()
@@ -8560,6 +8587,28 @@ class FaultTreeApp:
             comp_sel()
 
             row += 1
+            ttk.Label(master, text="DC Target:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+            fta_goal = next((g for g in self.app.top_events if g.user_name == self.sg_var.get()), None)
+            val = getattr(fta_goal, "sg_dc_target", 0.0) if fta_goal else getattr(self.node, 'fmeda_dc_target', 0.0)
+            state = 'disabled' if fta_goal else 'normal'
+            self.dc_target_var = tk.DoubleVar(value=val)
+            tk.Entry(master, textvariable=self.dc_target_var, width=8, state=state).grid(row=row, column=1, sticky="w", padx=5, pady=5)
+
+            row += 1
+            ttk.Label(master, text="SPFM Target:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+            val = getattr(fta_goal, "sg_spfm_target", 0.0) if fta_goal else getattr(self.node, 'fmeda_spfm_target', 0.0)
+            state = 'disabled' if fta_goal else 'normal'
+            self.spfm_target_var = tk.DoubleVar(value=val)
+            tk.Entry(master, textvariable=self.spfm_target_var, width=8, state=state).grid(row=row, column=1, sticky="w", padx=5, pady=5)
+
+            row += 1
+            ttk.Label(master, text="LPFM Target:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+            val = getattr(fta_goal, "sg_lpfm_target", 0.0) if fta_goal else getattr(self.node, 'fmeda_lpfm_target', 0.0)
+            state = 'disabled' if fta_goal else 'normal'
+            self.lpfm_target_var = tk.DoubleVar(value=val)
+            tk.Entry(master, textvariable=self.lpfm_target_var, width=8, state=state).grid(row=row, column=1, sticky="w", padx=5, pady=5)
+
+            row += 1
             ttk.Label(master, text="Requirements:").grid(row=row, column=0, sticky="ne", padx=5, pady=5)
             self.req_frame = ttk.Frame(master)
             self.req_frame.grid(row=row, column=1, padx=5, pady=5, sticky="w")
@@ -8618,6 +8667,24 @@ class FaultTreeApp:
                 self.node.fmeda_fit = float(self.fit_var.get())
             except ValueError:
                 self.node.fmeda_fit = 0.0
+            fta_goal = next((g for g in self.app.top_events if g.user_name == self.sg_var.get()), None)
+            if not fta_goal:
+                try:
+                    self.node.fmeda_dc_target = float(self.dc_target_var.get())
+                except Exception:
+                    self.node.fmeda_dc_target = 0.0
+                try:
+                    self.node.fmeda_spfm_target = float(self.spfm_target_var.get())
+                except Exception:
+                    self.node.fmeda_spfm_target = 0.0
+                try:
+                    self.node.fmeda_lpfm_target = float(self.lpfm_target_var.get())
+                except Exception:
+                    self.node.fmeda_lpfm_target = 0.0
+            else:
+                self.node.fmeda_dc_target = getattr(fta_goal, "sg_dc_target", 0.0)
+                self.node.fmeda_spfm_target = getattr(fta_goal, "sg_spfm_target", 0.0)
+                self.node.fmeda_lpfm_target = getattr(fta_goal, "sg_lpfm_target", 0.0)
             self.app.propagate_failure_mode_attributes(self.node)
 
         def add_existing_requirement(self):
@@ -9042,10 +9109,24 @@ class FaultTreeApp:
                 tree.item(iid, open=True)
 
             if fmeda:
+                sg_targets = {sg.user_name: {
+                    "dc": getattr(sg, "sg_dc_target", 0.0),
+                    "spfm": getattr(sg, "sg_spfm_target", 0.0),
+                    "lpfm": getattr(sg, "sg_lpfm_target", 0.0),
+                } for sg in self.top_events}
+                for node in events:
+                    sg = self.get_failure_mode_node(node).fmeda_safety_goal
+                    if sg and sg not in sg_targets:
+                        sg_targets[sg] = {
+                            "dc": getattr(node, "fmeda_dc_target", 0.0),
+                            "spfm": getattr(node, "fmeda_spfm_target", 0.0),
+                            "lpfm": getattr(node, "fmeda_lpfm_target", 0.0),
+                        }
                 metrics = compute_fmeda_metrics(
                     events,
                     self.reliability_components,
                     self.get_safety_goal_asil,
+                    sg_targets=sg_targets,
                     get_node=self.get_failure_mode_node,
                 )
                 self.reliability_total_fit = metrics["total"]
@@ -9057,6 +9138,13 @@ class FaultTreeApp:
                     f"  LPFM: {metrics['lpfm_metric']:.2f}{CHECK_MARK if metrics['ok_lpfm'] else CROSS_MARK}"
                     f"  (ASIL {metrics['asil']})"
                 )
+                if metrics.get("goal_metrics"):
+                    parts = []
+                    for sg, gm in metrics["goal_metrics"].items():
+                        ok = gm["ok_dc"] and gm["ok_spfm"] and gm["ok_lpfm"]
+                        symbol = CHECK_MARK if ok else CROSS_MARK
+                        parts.append(f"{sg}:{symbol}")
+                    text += " [" + "; ".join(parts) + "]"
                 metrics_lbl.config(text=text)
 
         if fmeda and bom_var.get():
@@ -12485,6 +12573,10 @@ class FaultTreeNode:
         self.safe_state = ""
         self.ftti = ""
         self.acceptance_criteria = ""
+        # Targets for safety goal metrics
+        self.sg_dc_target = 0.0
+        self.sg_spfm_target = 0.0
+        self.sg_lpfm_target = 0.0
         self.vehicle_safety_requirements = []          # List of vehicle safety requirements
         self.operational_safety_requirements = []        # List of operational safety requirements
         # Each requirement is a dict with keys: "id", "req_type" and "text"
@@ -12505,6 +12597,10 @@ class FaultTreeNode:
         self.fmeda_lpfm = 0.0
         self.fmeda_fault_type = "permanent"
         self.fmeda_fault_fraction = 0.0
+        # FMEDA specific targets if not derived from FTA
+        self.fmeda_dc_target = 0.0
+        self.fmeda_spfm_target = 0.0
+        self.fmeda_lpfm_target = 0.0
         # Reference to a unique failure mode this node represents
         self.failure_mode_ref = None
         # Probability values for classical FTA calculations
@@ -12544,6 +12640,9 @@ class FaultTreeNode:
             "safe_state": self.safe_state,
             "ftti": self.ftti,
             "acceptance_criteria": self.acceptance_criteria,
+            "sg_dc_target": self.sg_dc_target,
+            "sg_spfm_target": self.sg_spfm_target,
+            "sg_lpfm_target": self.sg_lpfm_target,
             "fmea_effect": self.fmea_effect,
             "fmea_cause": self.fmea_cause,
             "fmea_severity": self.fmea_severity,
@@ -12558,6 +12657,9 @@ class FaultTreeNode:
             "fmeda_lpfm": self.fmeda_lpfm,
             "fmeda_fault_type": self.fmeda_fault_type,
             "fmeda_fault_fraction": self.fmeda_fault_fraction,
+            "fmeda_dc_target": self.fmeda_dc_target,
+            "fmeda_spfm_target": self.fmeda_spfm_target,
+            "fmeda_lpfm_target": self.fmeda_lpfm_target,
             "failure_mode_ref": self.failure_mode_ref,
             # Save the safety requirements list (which now includes custom_id)
             "safety_requirements": self.safety_requirements,
@@ -12595,6 +12697,9 @@ class FaultTreeNode:
         node.safe_state = data.get("safe_state", "")
         node.ftti = data.get("ftti", "")
         node.acceptance_criteria = data.get("acceptance_criteria", "")
+        node.sg_dc_target = data.get("sg_dc_target", 0.0)
+        node.sg_spfm_target = data.get("sg_spfm_target", 0.0)
+        node.sg_lpfm_target = data.get("sg_lpfm_target", 0.0)
         node.fmea_effect = data.get("fmea_effect", "")
         node.fmea_cause = data.get("fmea_cause", "")
         node.fmea_severity = data.get("fmea_severity", 1)
@@ -12609,6 +12714,9 @@ class FaultTreeNode:
         node.fmeda_lpfm = data.get("fmeda_lpfm", 0.0)
         node.fmeda_fault_type = data.get("fmeda_fault_type", "permanent")
         node.fmeda_fault_fraction = data.get("fmeda_fault_fraction", 0.0)
+        node.fmeda_dc_target = data.get("fmeda_dc_target", 0.0)
+        node.fmeda_spfm_target = data.get("fmeda_spfm_target", 0.0)
+        node.fmeda_lpfm_target = data.get("fmeda_lpfm_target", 0.0)
         node.failure_mode_ref = data.get("failure_mode_ref")
         # NEW: Load safety_requirements (or default to empty list)
         node.safety_requirements = data.get("safety_requirements", [])

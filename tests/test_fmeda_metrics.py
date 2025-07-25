@@ -32,5 +32,20 @@ class MetricsTests(unittest.TestCase):
         self.assertAlmostEqual(metrics["dc"], (20.0 - 13.0)/20.0)
         self.assertEqual(metrics["asil"], "B")
 
+    def test_goal_targets(self):
+        comp = ReliabilityComponent("C1", "resistor", quantity=1)
+        comp.fit = 10.0
+        nodes = [
+            DummyNode("C1", "permanent", 1.0, 10.0, diag_cov=1.0, sg="SG1"),
+        ]
+        def sg_to_asil(_):
+            return "C"
+        targets = {"SG1": {"dc": 0.9, "spfm": 0.97, "lpfm": 0.9}}
+        metrics = compute_fmeda_metrics(nodes, [comp], sg_to_asil, sg_targets=targets)
+        gm = metrics["goal_metrics"]["SG1"]
+        self.assertTrue(gm["ok_dc"])
+        self.assertTrue(gm["ok_spfm"])
+        self.assertTrue(gm["ok_lpfm"])
+
 if __name__ == "__main__":
     unittest.main()
