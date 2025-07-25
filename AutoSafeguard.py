@@ -1616,7 +1616,7 @@ class FaultTreeApp:
         self.top_events = []
         self.selected_node = None
         self.clone_offset_counter = {}
-        self.root.title("Autonomous Driving Risk Assessment")
+        self.root.title("AutoSafeguard-Analyzer")
         self.zoom = 1.0
         self.diagram_font = tkFont.Font(family="Arial", size=int(8 * self.zoom))
         self.style = ttk.Style()
@@ -1629,7 +1629,7 @@ class FaultTreeApp:
         self.cut_mode = False
         self.page_history = []
         self.project_properties = {
-            "pdf_report_name": "Autonomous Driving Risk Assessment PDF Report",
+            "pdf_report_name": "AutoSafeguard-Analyzer PDF Report",
             "pdf_detailed_formulas": True,
             "show_grid": True,
             "black_white": False,
@@ -2809,7 +2809,7 @@ class FaultTreeApp:
 
         ttk.Label(prop_win, text="PDF Report Name:", font=dialog_font).grid(row=0, column=0, padx=10, pady=10, sticky="w")
         pdf_entry = tk.Entry(prop_win, width=40, font=dialog_font)
-        pdf_entry.insert(0, self.project_properties.get("pdf_report_name", "Autonomous Driving Risk Assessment PDF Report"))
+        pdf_entry.insert(0, self.project_properties.get("pdf_report_name", "AutoSafeguard-Analyzer PDF Report"))
         pdf_entry.grid(row=0, column=1, padx=10, pady=10)
 
         # New checkbox to choose between detailed formulas or score results only.
@@ -6197,7 +6197,7 @@ class FaultTreeApp:
         return summary_sentence
 
     def _generate_pdf_report(self, include_assurance=True):
-        report_title = self.project_properties.get("pdf_report_name", "Autonomous Driving Risk Assessment PDF Report")
+        report_title = self.project_properties.get("pdf_report_name", "AutoSafeguard-Analyzer PDF Report")
         path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
         if not path:
             return
@@ -11393,11 +11393,11 @@ class FaultTreeApp:
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Autonomous Driving Risk Assessment</title>
+<title>AutoSafeguard-Analyzer</title>
 <style>body {{ font-family: Arial; }} details {{ margin-left: 20px; }}</style>
 </head>
 <body>
-<h1>Autonomous Driving Risk Assessment</h1>
+<h1>AutoSafeguard-Analyzer</h1>
 {node_to_html(self.root_node)}
 </body>
 </html>"""
