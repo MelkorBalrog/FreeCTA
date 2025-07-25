@@ -30,6 +30,15 @@ class SysMLObject:
     properties: Dict[str, str] = field(default_factory=dict)
 
 
+@dataclass
+class DiagramConnection:
+    src: int
+    dst: int
+    conn_type: str
+    style: str = "Straight"  # Straight, Squared, Custom
+    points: List[Tuple[float, float]] = field(default_factory=list)
+
+
 class SysMLDiagramWindow(tk.Toplevel):
     """Base window for simple SysML diagrams with zoom and pan support."""
 
@@ -50,7 +59,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.current_tool = None
         self.start = None
         self.objects: List[SysMLObject] = []
-        self.connections: List[Tuple[int, int, str]] = []
+        self.connections: List[DiagramConnection] = []
         self.selected_obj: SysMLObject | None = None
         self.drag_offset = (0, 0)
 
@@ -96,12 +105,14 @@ class SysMLDiagramWindow(tk.Toplevel):
                     self.start = obj
             else:
                 if obj and obj != self.start:
-                    self.connections.append((self.start.obj_id, obj.obj_id, t))
+                    conn = DiagramConnection(self.start.obj_id, obj.obj_id, t)
+                    self.connections.append(conn)
                     src_id = self.start.element_id
                     dst_id = obj.element_id
                     if src_id and dst_id:
                         rel = self.repo.create_relationship(t, src_id, dst_id)
                         self.repo.add_relationship_to_diagram(self.diagram_id, rel.rel_id)
+                    ConnectionDialog(self, conn)
                 self.start = None
                 self.redraw()
         elif t and t != "Select":
@@ -151,6 +162,11 @@ class SysMLDiagramWindow(tk.Toplevel):
                     return
             SysMLObjectDialog(self, obj)
             self.redraw()
+        else:
+            conn = self.find_connection(x, y)
+            if conn:
+                ConnectionDialog(self, conn)
+                self.redraw()
 
     def on_rc_press(self, event):
         self.canvas.scan_mark(event.x, event.y)
@@ -177,6 +193,40 @@ class SysMLDiagramWindow(tk.Toplevel):
                 return obj
         return None
 
+    def _dist_to_segment(self, p, a, b) -> float:
+        px, py = p
+        ax, ay = a
+        bx, by = b
+        if ax == bx and ay == by:
+            return ((px - ax) ** 2 + (py - ay) ** 2) ** 0.5
+        t = ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2)
+        t = max(0, min(1, t))
+        lx = ax + t * (bx - ax)
+        ly = ay + t * (by - ay)
+        return ((px - lx) ** 2 + (py - ly) ** 2) ** 0.5
+
+    def find_connection(self, x: float, y: float) -> DiagramConnection | None:
+        for conn in self.connections:
+            src = self.get_object(conn.src)
+            dst = self.get_object(conn.dst)
+            if not src or not dst:
+                continue
+            points = [(src.x * self.zoom, src.y * self.zoom)]
+            if conn.style == "Squared":
+                midx = (src.x + dst.x) / 2 * self.zoom
+                points.extend([(midx, points[-1][1]), (midx, dst.y * self.zoom)])
+            elif conn.style == "Custom":
+                for px, py in conn.points:
+                    xpt = px * self.zoom
+                    ypt = py * self.zoom
+                    last = points[-1]
+                    points.extend([(xpt, last[1]), (xpt, ypt)])
+            points.append((dst.x * self.zoom, dst.y * self.zoom))
+            for a, b in zip(points[:-1], points[1:]):
+                if self._dist_to_segment((x, y), a, b) <= 5:
+                    return conn
+        return None
+
     def zoom_in(self):
         self.zoom *= 1.2
         self.redraw()
@@ -189,11 +239,11 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.canvas.delete("all")
         for obj in self.objects:
             self.draw_object(obj)
-        for a, b, t in self.connections:
-            src = self.get_object(a)
-            dst = self.get_object(b)
+        for conn in self.connections:
+            src = self.get_object(conn.src)
+            dst = self.get_object(conn.dst)
             if src and dst:
-                self.draw_connection(src, dst, t)
+                self.draw_connection(src, dst, conn)
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
 
     def draw_object(self, obj: SysMLObject):
@@ -283,15 +333,27 @@ class SysMLDiagramWindow(tk.Toplevel):
                     label_lines.append(f"{prop}: {val}")
             self.canvas.create_text(x, y, text="\n".join(label_lines), anchor="center")
 
-    def draw_connection(self, a: SysMLObject, b: SysMLObject, c_type: str):
+    def draw_connection(self, a: SysMLObject, b: SysMLObject, conn: DiagramConnection):
         ax, ay = a.x * self.zoom, a.y * self.zoom
         bx, by = b.x * self.zoom, b.y * self.zoom
         dash = ()
         label = None
-        if c_type in ("Include", "Extend"):
+        if conn.conn_type in ("Include", "Extend"):
             dash = (4, 2)
-            label = f"<<{c_type.lower()}>>"
-        self.canvas.create_line(ax, ay, bx, by, arrow=tk.LAST, dash=dash)
+            label = f"<<{conn.conn_type.lower()}>>"
+        points = [(ax, ay)]
+        if conn.style == "Squared":
+            midx = (ax + bx) / 2
+            points.extend([(midx, ay), (midx, by)])
+        elif conn.style == "Custom":
+            for px, py in conn.points:
+                x = px * self.zoom
+                y = py * self.zoom
+                last = points[-1]
+                points.extend([(x, last[1]), (x, y)])
+        points.append((bx, by))
+        flat = [coord for pt in points for coord in pt]
+        self.canvas.create_line(*flat, arrow=tk.LAST, dash=dash)
         if label:
             mx, my = (ax + bx) / 2, (ay + by) / 2
             self.canvas.create_text(mx, my - 10 * self.zoom, text=label)
@@ -404,6 +466,51 @@ class SysMLObjectDialog(simpledialog.Dialog):
             name = self.diagram_var.get()
             diag_id = self.diag_map.get(name)
             repo.link_diagram(self.obj.element_id, diag_id)
+
+class ConnectionDialog(simpledialog.Dialog):
+    """Edit connection style and custom routing points."""
+
+    def __init__(self, master, connection: DiagramConnection):
+        self.connection = connection
+        super().__init__(master, title="Connection Properties")
+
+    def body(self, master):
+        ttk.Label(master, text="Style:").grid(row=0, column=0, sticky="e", padx=4, pady=4)
+        self.style_var = tk.StringVar(value=self.connection.style)
+        ttk.Combobox(master, textvariable=self.style_var,
+                     values=["Straight", "Squared", "Custom"]).grid(row=0, column=1, padx=4, pady=4)
+        ttk.Label(master, text="Points:").grid(row=1, column=0, sticky="ne", padx=4, pady=4)
+        self.point_list = tk.Listbox(master, height=4)
+        for px, py in self.connection.points:
+            self.point_list.insert(tk.END, f"{px:.1f},{py:.1f}")
+        self.point_list.grid(row=1, column=1, padx=4, pady=4, sticky="we")
+        btnf = ttk.Frame(master)
+        btnf.grid(row=1, column=2, padx=2)
+        ttk.Button(btnf, text="Add", command=self.add_point).pack(side=tk.TOP)
+        ttk.Button(btnf, text="Remove", command=self.remove_point).pack(side=tk.TOP)
+
+    def add_point(self):
+        x = simpledialog.askfloat("Point", "X:", parent=self)
+        y = simpledialog.askfloat("Point", "Y:", parent=self)
+        if x is not None and y is not None:
+            self.point_list.insert(tk.END, f"{x},{y}")
+
+    def remove_point(self):
+        sel = list(self.point_list.curselection())
+        for idx in reversed(sel):
+            self.point_list.delete(idx)
+
+    def apply(self):
+        self.connection.style = self.style_var.get()
+        pts = []
+        for i in range(self.point_list.size()):
+            txt = self.point_list.get(i)
+            try:
+                x_str, y_str = txt.split(",")
+                pts.append((float(x_str), float(y_str)))
+            except ValueError:
+                continue
+        self.connection.points = pts
 
 class UseCaseDiagramWindow(SysMLDiagramWindow):
     def __init__(self, master, diagram_id: str | None = None):
