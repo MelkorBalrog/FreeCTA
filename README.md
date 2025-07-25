@@ -1,6 +1,6 @@
 # AutoSafeguard Analyzer
 
-This repository contains a graphical fault tree analysis tool. The latest update adds a **Review Toolbox** supporting peer and joint review workflows. The explorer pane now includes an **Analyses** tab listing all FMEAs, FMEDAs, HAZOPs, HARAs and architecture diagrams so they can be opened directly. Architecture objects can now be resized either by editing width and height values or by dragging the red handles that appear when an item is selected. Fork and join bars keep a constant thickness so only their length changes.
+This repository contains a graphical fault tree analysis tool. The latest update adds a **Review Toolbox** supporting peer and joint review workflows. The explorer pane now includes an **Analyses** tab listing all FMEAs, FMEDAs, HAZOPs, HARAs and AutoML diagrams so they can be opened directly. Architecture objects can now be resized either by editing width and height values or by dragging the red handles that appear when an item is selected. Fork and join bars keep a constant thickness so only their length changes.
 
 ## Review Toolbox
 
@@ -69,7 +69,7 @@ Additional datasheet parameters such as diode forward voltage or MOSFET
 `RDS(on)` can be entered when configuring components to better document the
 parts used in the analysis.
 
-### BOM Integration with SysML Diagrams
+### BOM Integration with AutoML Diagrams
 
 Blocks in block diagrams may reference circuits defined in a saved BOM via the
 new **circuit** property while parts reference individual components using the
@@ -77,15 +77,15 @@ new **circuit** property while parts reference individual components using the
 **qualification** and **failureModes** attributes.  Entering values for these
 fields shows them in a *Reliability* compartment for blocks or as additional
 lines beneath parts so FIT rates and qualification information remain visible in
-the architecture model. When editing a block or part you can now pick from
+the AutoML model. When editing a block or part you can now pick from
 drop-down lists containing all circuits or components from saved reliability
 analyses. Selecting an item automatically fills in its FIT rate, qualification
 certificate and any failure modes found in FMEA tables.
 
-### Architecture Diagrams and Safety Analyses
+### AutoML Diagrams and Safety Analyses
 
 Use case, activity, block and internal block diagrams can be created from the
-**Architecture** menu. Diagrams are stored inside the model and appear in the
+**AutoML** menu. Diagrams are stored inside the model and appear in the
 *Analyses* explorer tab so they can be reopened alongside FMEAs and other
 documents. Each object keeps its saved size and properties so layouts remain
 stable when returning to the project.
