@@ -7183,6 +7183,11 @@ class FaultTreeApp:
                     names.add(e.function)
         return sorted(names)
 
+    def get_all_action_names(self):
+        """Return names of all actions and activity diagrams."""
+        repo = SysMLRepository.get_instance()
+        return repo.get_activity_actions()
+
     def get_all_component_names(self):
         """Return unique component names from HAZOP and reliability analyses."""
         names = set()
@@ -7236,6 +7241,14 @@ class FaultTreeApp:
         comp = node.parents[0].user_name if node.parents else getattr(node, "fmea_component", "")
         label = node.description or (node.user_name or f"BE {node.unique_id}")
         return f"{comp}: {label}" if comp else label
+
+    def get_failure_modes_for_malfunction(self, malfunction: str) -> list[str]:
+        """Return labels of basic events linked to the given malfunction."""
+        result = []
+        for be in self.get_all_basic_events():
+            if getattr(be, "fmeda_malfunction", "") == malfunction:
+                result.append(self.format_failure_mode_label(be))
+        return result
 
 
     def get_all_nodes(self, node=None):

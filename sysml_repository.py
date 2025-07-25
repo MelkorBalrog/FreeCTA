@@ -195,3 +195,21 @@ class SysMLRepository:
         }
         return json.dumps(data, indent=2)
 
+    def get_activity_actions(self) -> list[str]:
+        """Return all action names and activity diagram names."""
+        names = []
+        for diag in self.diagrams.values():
+            if diag.diag_type == "Activity Diagram":
+                if diag.name:
+                    names.append(diag.name)
+                for obj in diag.objects:
+                    typ = obj.get("obj_type") or obj.get("type")
+                    if typ in ("Action Usage", "Action"):
+                        name = obj.get("properties", {}).get("name", "")
+                        elem_id = obj.get("element_id")
+                        if not name and elem_id in self.elements:
+                            name = self.elements[elem_id].name
+                        if name:
+                            names.append(name)
+        return sorted(set(n for n in names if n))
+
