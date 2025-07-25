@@ -7,7 +7,7 @@ from typing import Dict, List, Tuple
 from sysml_repository import SysMLRepository, SysMLDiagram, SysMLElement
 
 from sysml_spec import SYSML_PROPERTIES
-from models import global_requirements
+from models import global_requirements, ASIL_ORDER
 
 # ---------------------------------------------------------------------------
 # Appearance customization
@@ -123,6 +123,16 @@ class SysMLObject:
     height: float = 40.0
     properties: Dict[str, str] = field(default_factory=dict)
     requirements: List[dict] = field(default_factory=list)
+
+
+def calculate_allocated_asil(requirements: List[dict]) -> str:
+    """Return highest ASIL level from the given requirement list."""
+    asil = "QM"
+    for req in requirements:
+        level = req.get("asil") or global_requirements.get(req.get("id"), {}).get("asil", "QM")
+        if ASIL_ORDER.get(level, 0) > ASIL_ORDER.get(asil, 0):
+            asil = level
+    return asil
 
 
 def remove_orphan_ports(objs: List[SysMLObject]) -> None:
@@ -1020,7 +1030,7 @@ class SysMLDiagramWindow(tk.Toplevel):
             if not key.endswith('Usage'):
                 key += 'Usage'
             for prop in SYSML_PROPERTIES.get(key, []):
-                if obj.obj_type == "Part" and prop in ("fit", "qualification", "failureModes"):
+                if obj.obj_type == "Part" and prop in ("fit", "qualification", "failureModes", "asil"):
                     continue
                 val = obj.properties.get(prop)
                 if val:
@@ -1028,6 +1038,7 @@ class SysMLDiagramWindow(tk.Toplevel):
             if obj.obj_type == "Part":
                 rel_items = []
                 for lbl, key in (
+                    ("ASIL", "asil"),
                     ("FIT", "fit"),
                     ("Qual", "qualification"),
                     ("FM", "failureModes"),
@@ -1284,6 +1295,8 @@ class SysMLObjectDialog(simpledialog.Dialog):
         self.listboxes = {}
         prop_row = 0
         rel_row = 0
+        if self.obj.obj_type == "Part":
+            self.obj.properties.setdefault("asil", calculate_allocated_asil(self.obj.requirements))
         key = f"{self.obj.obj_type.replace(' ', '')}Usage"
         list_props = {
             "ports",
@@ -1294,7 +1307,7 @@ class SysMLObjectDialog(simpledialog.Dialog):
             "operations",
             "failureModes",
         }
-        reliability_props = {"circuit", "component", "fit", "qualification", "failureModes"}
+        reliability_props = {"circuit", "component", "fit", "qualification", "failureModes", "asil"}
         app = getattr(self.master, 'app', None)
         for prop in SYSML_PROPERTIES.get(key, []):
             frame = rel_frame if prop in reliability_props else prop_frame
@@ -1431,6 +1444,8 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 state = "normal"
                 if self.obj.obj_type == "Block" and prop in ("fit", "qualification"):
                     state = "readonly"
+                if self.obj.obj_type == "Part" and prop == "asil":
+                    state = "readonly"
                 ttk.Entry(frame, textvariable=var, state=state).grid(row=row, column=1, padx=4, pady=2)
                 self.entries[prop] = var
             if prop in reliability_props:
@@ -1495,6 +1510,7 @@ class SysMLObjectDialog(simpledialog.Dialog):
         for r in self.obj.requirements:
             self.req_list.insert(tk.END, f"[{r.get('id')}] {r.get('text','')}")
         req_row += 1
+        self._update_asil()
 
     def add_port(self):
         name = simpledialog.askstring("Port", "Name:", parent=self)
@@ -1528,12 +1544,26 @@ class SysMLObjectDialog(simpledialog.Dialog):
                 if req and not any(r.get("id") == rid for r in self.obj.requirements):
                     self.obj.requirements.append(req)
                     self.req_list.insert(tk.END, f"[{req['id']}] {req.get('text','')}")
+        self._update_asil()
 
     def remove_requirement(self):
         sel = list(self.req_list.curselection())
         for idx in reversed(sel):
             del self.obj.requirements[idx]
             self.req_list.delete(idx)
+        self._update_asil()
+
+    def _update_asil(self) -> None:
+        """Recompute ASIL based on allocated requirements."""
+        if self.obj.obj_type != "Part":
+            return
+        asil = calculate_allocated_asil(self.obj.requirements)
+        self.obj.properties["asil"] = asil
+        if "asil" in self.entries:
+            self.entries["asil"].set(asil)
+        repo = SysMLRepository.get_instance()
+        if self.obj.element_id and self.obj.element_id in repo.elements:
+            repo.elements[self.obj.element_id].properties["asil"] = asil
 
     def _get_failure_modes(self, app, comp_name: str) -> str:
         """Return comma separated failure modes for a component name."""
@@ -1571,6 +1601,8 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.obj.height = float(self.height_var.get())
         except ValueError:
             pass
+
+        self._update_asil()
 
         # ensure block shows BOM components as part names when a circuit is set
         if (
