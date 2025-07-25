@@ -769,6 +769,9 @@ class HazopWindow(tk.Toplevel):
             self.row.covered_by = self.cov_by.get()
 
     def add_row(self):
+        if not self.app.active_hazop:
+            messagebox.showwarning("Add", "Create a HAZOP first")
+            return
         dlg = self.RowDialog(self)
         if dlg.row.function:
             self.app.hazop_entries.append(dlg.row)
@@ -1045,6 +1048,9 @@ class HaraWindow(tk.Toplevel):
             self.row.safety_goal = self.sg_var.get()
 
     def add_row(self):
+        if not self.app.active_hara:
+            messagebox.showwarning("Add", "Create a HARA first")
+            return
         dlg = self.RowDialog(self, self.app)
         self.app.hara_entries.append(dlg.row)
         if self.app.active_hara:
