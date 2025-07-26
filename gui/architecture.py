@@ -203,14 +203,15 @@ class DiagramConnection:
     points: List[Tuple[float, float]] = field(default_factory=list)
 
 
-class SysMLDiagramWindow(tk.Toplevel):
-    """Base window for AutoML diagrams with zoom and pan support."""
+class SysMLDiagramWindow(tk.Frame):
+    """Base frame for AutoML diagrams with zoom and pan support."""
 
     def __init__(self, master, title, tools, diagram_id: str | None = None, app=None):
         super().__init__(master)
         self.app = app
-        self.title(title)
-        self.geometry("800x600")
+        self.master.title(title) if isinstance(self.master, tk.Toplevel) else None
+        if isinstance(self.master, tk.Toplevel):
+            self.master.geometry("800x600")
 
         self.repo = SysMLRepository.get_instance()
         if diagram_id and diagram_id in self.repo.diagrams:
@@ -218,7 +219,8 @@ class SysMLDiagramWindow(tk.Toplevel):
         else:
             diagram = self.repo.create_diagram(title, name=title, diag_id=diagram_id)
         self.diagram_id = diagram.diag_id
-        self.protocol("WM_DELETE_WINDOW", self.on_close)
+        if isinstance(self.master, tk.Toplevel):
+            self.master.protocol("WM_DELETE_WINDOW", self.on_close)
 
         # Load any saved objects and connections for this diagram
         self.objects: List[SysMLObject] = []
@@ -277,6 +279,8 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.bind("<Delete>", self.delete_selected)
 
         self.redraw()
+        if not isinstance(self.master, tk.Toplevel):
+            self.pack(fill=tk.BOTH, expand=True)
 
     def select_tool(self, tool):
         self.current_tool = tool

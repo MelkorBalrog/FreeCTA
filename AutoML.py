@@ -1876,17 +1876,6 @@ class FaultTreeApp:
         self.analysis_tab = ttk.Frame(self.explorer_nb)
         self.explorer_nb.add(self.analysis_tab, text="File Explorer")
 
-        self.analysis_tree = ttk.Treeview(self.analysis_tab)
-        self.analysis_tree.pack(fill=tk.BOTH, expand=True)
-        self.analysis_tree.bind("<Double-1>", self.on_analysis_tree_double_click)
-
-        # Placeholder treeview for legacy FTA functions
-        self.treeview = ttk.Treeview(self.analysis_tab)
-
-        self.pmhf_var = tk.StringVar(value="")
-        self.pmhf_label = ttk.Label(self.analysis_tab, textvariable=self.pmhf_var, foreground="blue")
-        self.pmhf_label.pack(side=tk.BOTTOM, fill=tk.X, pady=2)
-
         # --- Analyses Group ---
         self.analysis_group = ttk.LabelFrame(self.analysis_tab, text="Analyses")
         self.analysis_group.pack(fill=tk.BOTH, expand=True)
@@ -1894,8 +1883,19 @@ class FaultTreeApp:
         self.analysis_tree = ttk.Treeview(self.analysis_group)
         self.analysis_tree.pack(fill=tk.BOTH, expand=True)
         self.analysis_tree.bind("<Double-1>", self.on_analysis_tree_double_click)
-        self.canvas_frame = ttk.Frame(self.main_pane)
-        self.main_pane.add(self.canvas_frame, stretch="always")
+
+        self.pmhf_var = tk.StringVar(value="")
+        self.pmhf_label = ttk.Label(self.analysis_tab, textvariable=self.pmhf_var, foreground="blue")
+        self.pmhf_label.pack(side=tk.BOTTOM, fill=tk.X, pady=2)
+
+        # Notebook for diagrams and analyses
+        self.doc_nb = ttk.Notebook(self.main_pane)
+        self.main_pane.add(self.doc_nb, stretch="always")
+
+        self.canvas_tab = ttk.Frame(self.doc_nb)
+        self.doc_nb.add(self.canvas_tab, text="FTA")
+
+        self.canvas_frame = self.canvas_tab
         self.canvas = tk.Canvas(self.canvas_frame, bg="white")
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.hbar = ttk.Scrollbar(self.canvas_frame, orient=tk.HORIZONTAL, command=self.canvas.xview)
@@ -10978,22 +10978,17 @@ class FaultTreeApp:
         if idx < 0 or idx >= len(self.arch_diagrams):
             return
         diag = self.arch_diagrams[idx]
+        tab = ttk.Frame(self.doc_nb)
+        self.doc_nb.add(tab, text=diag.name)
         if diag.diag_type == "Use Case Diagram":
-            win = UseCaseDiagramWindow(self.root, self, diagram_id=diag.diag_id)
-            win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.use_case_windows))
-            self.use_case_windows.append(win)
+            UseCaseDiagramWindow(tab, self, diagram_id=diag.diag_id)
         elif diag.diag_type == "Activity Diagram":
-            win = ActivityDiagramWindow(self.root, self, diagram_id=diag.diag_id)
-            win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.activity_windows))
-            self.activity_windows.append(win)
+            ActivityDiagramWindow(tab, self, diagram_id=diag.diag_id)
         elif diag.diag_type == "Block Diagram":
-            win = BlockDiagramWindow(self.root, self, diagram_id=diag.diag_id)
-            win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.block_windows))
-            self.block_windows.append(win)
+            BlockDiagramWindow(tab, self, diagram_id=diag.diag_id)
         elif diag.diag_type == "Internal Block Diagram":
-            win = InternalBlockDiagramWindow(self.root, self, diagram_id=diag.diag_id)
-            win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.ibd_windows))
-            self.ibd_windows.append(win)
+            InternalBlockDiagramWindow(tab, self, diagram_id=diag.diag_id)
+        self.doc_nb.select(tab)
         
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
