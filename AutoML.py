@@ -1876,17 +1876,6 @@ class FaultTreeApp:
         self.analysis_tab = ttk.Frame(self.explorer_nb)
         self.explorer_nb.add(self.analysis_tab, text="File Explorer")
 
-        self.analysis_tree = ttk.Treeview(self.analysis_tab)
-        self.analysis_tree.pack(fill=tk.BOTH, expand=True)
-        self.analysis_tree.bind("<Double-1>", self.on_analysis_tree_double_click)
-
-        # Placeholder treeview for legacy FTA functions
-        self.treeview = ttk.Treeview(self.analysis_tab)
-
-        self.pmhf_var = tk.StringVar(value="")
-        self.pmhf_label = ttk.Label(self.analysis_tab, textvariable=self.pmhf_var, foreground="blue")
-        self.pmhf_label.pack(side=tk.BOTTOM, fill=tk.X, pady=2)
-
         # --- Analyses Group ---
         self.analysis_group = ttk.LabelFrame(self.analysis_tab, text="Analyses")
         self.analysis_group.pack(fill=tk.BOTH, expand=True)
@@ -1894,8 +1883,19 @@ class FaultTreeApp:
         self.analysis_tree = ttk.Treeview(self.analysis_group)
         self.analysis_tree.pack(fill=tk.BOTH, expand=True)
         self.analysis_tree.bind("<Double-1>", self.on_analysis_tree_double_click)
-        self.canvas_frame = ttk.Frame(self.main_pane)
-        self.main_pane.add(self.canvas_frame, stretch="always")
+
+        self.pmhf_var = tk.StringVar(value="")
+        self.pmhf_label = ttk.Label(self.analysis_tab, textvariable=self.pmhf_var, foreground="blue")
+        self.pmhf_label.pack(side=tk.BOTTOM, fill=tk.X, pady=2)
+
+        # Notebook for diagrams and analyses
+        self.doc_nb = ttk.Notebook(self.main_pane)
+        self.main_pane.add(self.doc_nb, stretch="always")
+
+        self.canvas_tab = ttk.Frame(self.doc_nb)
+        self.doc_nb.add(self.canvas_tab, text="FTA")
+
+        self.canvas_frame = self.canvas_tab
         self.canvas = tk.Canvas(self.canvas_frame, bg="white")
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.hbar = ttk.Scrollbar(self.canvas_frame, orient=tk.HORIZONTAL, command=self.canvas.xview)
@@ -9017,12 +9017,11 @@ class FaultTreeApp:
         """Display an editable AIAG-compliant FMEA or FMEDA table."""
         basic_events = self.get_all_basic_events()
         entries = self.fmea_entries if fmea is None else fmea['entries']
-        win = tk.Toplevel(self.root)
         title = f"FMEA Table - {fmea['name']}" if fmea else "FMEA Table"
-        win.title(title)
+        win = self._new_tab(title)
 
         # give the table a nicer look similar to professional FMEA tools
-        style = ttk.Style(win)
+        style = ttk.Style(self.root)
         try:
             style.theme_use("clam")
         except tk.TclError:
@@ -10886,28 +10885,32 @@ class FaultTreeApp:
         self.show_fmeda_list()
 
     def open_hazop_window(self):
-        if hasattr(self, "_hazop_window") and self._hazop_window.winfo_exists():
-            self._hazop_window.lift()
+        if hasattr(self, "_hazop_tab") and self._hazop_tab.winfo_exists():
+            self.doc_nb.select(self._hazop_tab)
             return
-        self._hazop_window = HazopWindow(self)
+        self._hazop_tab = self._new_tab("HAZOP")
+        self._hazop_window = HazopWindow(self._hazop_tab, self)
 
     def open_hara_window(self):
-        if hasattr(self, "_hara_window") and self._hara_window.winfo_exists():
-            self._hara_window.lift()
+        if hasattr(self, "_hara_tab") and self._hara_tab.winfo_exists():
+            self.doc_nb.select(self._hara_tab)
             return
-        self._hara_window = HaraWindow(self)
+        self._hara_tab = self._new_tab("HARA")
+        self._hara_window = HaraWindow(self._hara_tab, self)
 
     def open_fi2tc_window(self):
-        if hasattr(self, "_fi2tc_window") and self._fi2tc_window.winfo_exists():
-            self._fi2tc_window.lift()
+        if hasattr(self, "_fi2tc_tab") and self._fi2tc_tab.winfo_exists():
+            self.doc_nb.select(self._fi2tc_tab)
             return
-        self._fi2tc_window = FI2TCWindow(self)
+        self._fi2tc_tab = self._new_tab("FI2TC")
+        self._fi2tc_window = FI2TCWindow(self._fi2tc_tab, self)
 
     def open_tc2fi_window(self):
-        if hasattr(self, "_tc2fi_window") and self._tc2fi_window.winfo_exists():
-            self._tc2fi_window.lift()
+        if hasattr(self, "_tc2fi_tab") and self._tc2fi_tab.winfo_exists():
+            self.doc_nb.select(self._tc2fi_tab)
             return
-        self._tc2fi_window = TC2FIWindow(self)
+        self._tc2fi_tab = self._new_tab("TC2FI")
+        self._tc2fi_window = TC2FIWindow(self._tc2fi_tab, self)
 
     def show_hazard_explorer(self):
         if hasattr(self, "_haz_exp_window") and self._haz_exp_window.winfo_exists():
@@ -10922,6 +10925,13 @@ class FaultTreeApp:
             win.destroy()
         return _close
 
+    def _new_tab(self, title: str) -> ttk.Frame:
+        """Create and select a new tab in the document notebook."""
+        tab = ttk.Frame(self.doc_nb)
+        self.doc_nb.add(tab, text=title)
+        self.doc_nb.select(tab)
+        return tab
+
     def open_use_case_diagram(self):
         """Prompt for a diagram name then open a new use case diagram."""
         name = simpledialog.askstring("New Use Case Diagram", "Enter diagram name:")
@@ -10929,9 +10939,8 @@ class FaultTreeApp:
             return
         repo = SysMLRepository.get_instance()
         diag = repo.create_diagram("Use Case Diagram", name=name, package=repo.root_package.elem_id)
-        win = UseCaseDiagramWindow(self.root, self, diagram_id=diag.diag_id)
-        win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.use_case_windows))
-        self.use_case_windows.append(win)
+        tab = self._new_tab(diag.name)
+        UseCaseDiagramWindow(tab, self, diagram_id=diag.diag_id)
         self.update_views()
 
     def open_activity_diagram(self):
@@ -10941,9 +10950,8 @@ class FaultTreeApp:
             return
         repo = SysMLRepository.get_instance()
         diag = repo.create_diagram("Activity Diagram", name=name, package=repo.root_package.elem_id)
-        win = ActivityDiagramWindow(self.root, self, diagram_id=diag.diag_id)
-        win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.activity_windows))
-        self.activity_windows.append(win)
+        tab = self._new_tab(diag.name)
+        ActivityDiagramWindow(tab, self, diagram_id=diag.diag_id)
         self.update_views()
 
     def open_block_diagram(self):
@@ -10953,9 +10961,8 @@ class FaultTreeApp:
             return
         repo = SysMLRepository.get_instance()
         diag = repo.create_diagram("Block Diagram", name=name, package=repo.root_package.elem_id)
-        win = BlockDiagramWindow(self.root, self, diagram_id=diag.diag_id)
-        win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.block_windows))
-        self.block_windows.append(win)
+        tab = self._new_tab(diag.name)
+        BlockDiagramWindow(tab, self, diagram_id=diag.diag_id)
         self.update_views()
 
     def open_internal_block_diagram(self):
@@ -10965,9 +10972,8 @@ class FaultTreeApp:
             return
         repo = SysMLRepository.get_instance()
         diag = repo.create_diagram("Internal Block Diagram", name=name, package=repo.root_package.elem_id)
-        win = InternalBlockDiagramWindow(self.root, self, diagram_id=diag.diag_id)
-        win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.ibd_windows))
-        self.ibd_windows.append(win)
+        tab = self._new_tab(diag.name)
+        InternalBlockDiagramWindow(tab, self, diagram_id=diag.diag_id)
         self.update_views()
 
     def manage_architecture(self):
@@ -10978,22 +10984,15 @@ class FaultTreeApp:
         if idx < 0 or idx >= len(self.arch_diagrams):
             return
         diag = self.arch_diagrams[idx]
+        tab = self._new_tab(diag.name)
         if diag.diag_type == "Use Case Diagram":
-            win = UseCaseDiagramWindow(self.root, self, diagram_id=diag.diag_id)
-            win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.use_case_windows))
-            self.use_case_windows.append(win)
+            UseCaseDiagramWindow(tab, self, diagram_id=diag.diag_id)
         elif diag.diag_type == "Activity Diagram":
-            win = ActivityDiagramWindow(self.root, self, diagram_id=diag.diag_id)
-            win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.activity_windows))
-            self.activity_windows.append(win)
+            ActivityDiagramWindow(tab, self, diagram_id=diag.diag_id)
         elif diag.diag_type == "Block Diagram":
-            win = BlockDiagramWindow(self.root, self, diagram_id=diag.diag_id)
-            win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.block_windows))
-            self.block_windows.append(win)
+            BlockDiagramWindow(tab, self, diagram_id=diag.diag_id)
         elif diag.diag_type == "Internal Block Diagram":
-            win = InternalBlockDiagramWindow(self.root, self, diagram_id=diag.diag_id)
-            win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.ibd_windows))
-            self.ibd_windows.append(win)
+            InternalBlockDiagramWindow(tab, self, diagram_id=diag.diag_id)
         
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:

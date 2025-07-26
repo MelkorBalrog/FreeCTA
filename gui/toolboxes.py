@@ -459,17 +459,18 @@ class ReliabilityWindow(tk.Toplevel):
         ttk.Button(win, text="Load", command=do_load).pack(side=tk.RIGHT, padx=5, pady=5)
 
 
-class FI2TCWindow(tk.Toplevel):
+class FI2TCWindow(tk.Frame):
     COLS = [
         "id","system_function","allocation","interfaces","insufficiency",
         "scene","scenario","driver_behavior","occurrence","vehicle_effect",
         "severity","design_measures","verification","measure_effectiveness",
         "triggering_condition","worst_case","tc_effect","mitigation","acceptance"
     ]
-    def __init__(self, app):
-        super().__init__(app.root)
+    def __init__(self, master, app):
+        super().__init__(master)
         self.app = app
-        self.title("FI2TC Analysis")
+        if isinstance(master, tk.Toplevel):
+            master.title("FI2TC Analysis")
         top = ttk.Frame(self)
         top.pack(fill=tk.X)
         ttk.Label(top, text="FI2TC:").pack(side=tk.LEFT)
@@ -513,7 +514,8 @@ class FI2TCWindow(tk.Toplevel):
         ttk.Button(btn, text="Export CSV", command=self.export_csv).pack(side=tk.LEFT, padx=2, pady=2)
         self.refresh_docs()
         self.refresh()
-
+        if not isinstance(master, tk.Toplevel):
+            self.pack(fill=tk.BOTH, expand=True)
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
         for row in self.app.fi2tc_entries:
@@ -695,12 +697,13 @@ class FI2TCWindow(tk.Toplevel):
         self.refresh()
         self.app.update_views()
 
-class HazopWindow(tk.Toplevel):
-    def __init__(self, app):
-        super().__init__(app.root)
+class HazopWindow(tk.Frame):
+    def __init__(self, master, app):
+        super().__init__(master)
         self.app = app
-        self.title("HAZOP Analysis")
-        self.geometry("600x400")
+        if isinstance(master, tk.Toplevel):
+            master.title("HAZOP Analysis")
+            master.geometry("600x400")
         top = ttk.Frame(self)
         top.pack(fill=tk.X)
         ttk.Label(top, text="HAZOP:").pack(side=tk.LEFT)
@@ -738,6 +741,8 @@ class HazopWindow(tk.Toplevel):
 
         self.refresh_docs()
         self.refresh()
+        if not isinstance(master, tk.Toplevel):
+            self.pack(fill=tk.BOTH, expand=True)
 
     def refresh_docs(self):
         names = [d.name for d in self.app.hazop_docs]
@@ -957,16 +962,17 @@ class HazopWindow(tk.Toplevel):
         messagebox.showinfo("Save", "Analysis saved")
 
 
-class HaraWindow(tk.Toplevel):
+class HaraWindow(tk.Frame):
     COLS = [
         "malfunction","hazard","severity","sev_rationale","controllability",
         "cont_rationale","exposure","exp_rationale","asil","safety_goal"
     ]
 
-    def __init__(self, app):
-        super().__init__(app.root)
+    def __init__(self, master, app):
+        super().__init__(master)
         self.app = app
-        self.title("HARA Analysis")
+        if isinstance(master, tk.Toplevel):
+            master.title("HARA Analysis")
         top = ttk.Frame(self)
         top.pack(fill=tk.X)
         ttk.Label(top, text="HARA:").pack(side=tk.LEFT)
@@ -993,6 +999,8 @@ class HaraWindow(tk.Toplevel):
         ttk.Button(btn, text="Delete", command=self.del_row).pack(side=tk.LEFT, padx=2, pady=2)
         self.refresh_docs()
         self.refresh()
+        if not isinstance(master, tk.Toplevel):
+            self.pack(fill=tk.BOTH, expand=True)
 
     def refresh_docs(self):
         self.app.update_hara_statuses()
@@ -1210,7 +1218,7 @@ class HaraWindow(tk.Toplevel):
         messagebox.showinfo("HARA", "HARA approved")
 
 
-class TC2FIWindow(tk.Toplevel):
+class TC2FIWindow(tk.Frame):
     COLS = [
         "id",
         "known_use_case",
@@ -1233,10 +1241,11 @@ class TC2FIWindow(tk.Toplevel):
         "acceptance",
     ]
 
-    def __init__(self, app):
-        super().__init__(app.root)
+    def __init__(self, master, app):
+        super().__init__(master)
         self.app = app
-        self.title("TC2FI Analysis")
+        if isinstance(master, tk.Toplevel):
+            master.title("TC2FI Analysis")
         top = ttk.Frame(self)
         top.pack(fill=tk.X)
         ttk.Label(top, text="TC2FI:").pack(side=tk.LEFT)
@@ -1248,7 +1257,8 @@ class TC2FIWindow(tk.Toplevel):
         ttk.Button(top, text="Delete", command=self.delete_doc).pack(side=tk.LEFT)
         self.doc_cb.bind("<<ComboboxSelected>>", self.select_doc)
 
-        self.geometry("800x400")
+        if isinstance(master, tk.Toplevel):
+            master.geometry("800x400")
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill=tk.BOTH, expand=True)
         style = ttk.Style(self)
@@ -1280,6 +1290,8 @@ class TC2FIWindow(tk.Toplevel):
         ttk.Button(btn, text="Export CSV", command=self.export_csv).pack(side=tk.LEFT, padx=2, pady=2)
         self.refresh_docs()
         self.refresh()
+        if not isinstance(master, tk.Toplevel):
+            self.pack(fill=tk.BOTH, expand=True)
 
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
