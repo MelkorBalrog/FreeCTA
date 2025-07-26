@@ -1879,6 +1879,14 @@ class FaultTreeApp:
         self.pmhf_var = tk.StringVar(value="")
         self.pmhf_label = ttk.Label(self.analysis_tab, textvariable=self.pmhf_var, foreground="blue")
         self.pmhf_label.pack(side=tk.BOTTOM, fill=tk.X, pady=2)
+
+        # --- Analyses Group ---
+        self.analysis_group = ttk.LabelFrame(self.analysis_tab, text="Analyses")
+        self.analysis_group.pack(fill=tk.BOTH, expand=True)
+
+        self.analysis_tree = ttk.Treeview(self.analysis_group)
+        self.analysis_tree.pack(fill=tk.BOTH, expand=True)
+        self.analysis_tree.bind("<Double-1>", self.on_analysis_tree_double_click)
         self.canvas_frame = ttk.Frame(self.main_pane)
         self.main_pane.add(self.canvas_frame, stretch="always")
         self.canvas = tk.Canvas(self.canvas_frame, bg="white")
