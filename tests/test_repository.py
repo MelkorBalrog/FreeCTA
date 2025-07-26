@@ -2,7 +2,7 @@ import unittest
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from sysml_repository import SysMLRepository
+from sysml.sysml_repository import SysMLRepository
 
 class RepositoryTests(unittest.TestCase):
     def setUp(self):
@@ -30,7 +30,7 @@ class RepositoryTests(unittest.TestCase):
         self.assertIn(blk.elem_id, js)
 
     def test_sysml_properties_port(self):
-        from sysml_spec import SYSML_PROPERTIES
+        from sysml.sysml_spec import SYSML_PROPERTIES
         self.assertIn("PortUsage", SYSML_PROPERTIES)
         self.assertIn("direction", SYSML_PROPERTIES["PortUsage"])
 

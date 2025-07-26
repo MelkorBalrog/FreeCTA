@@ -1,4 +1,4 @@
-from models import ASIL_ORDER, ASIL_TARGETS, component_fit_map
+from analysis.models import ASIL_ORDER, ASIL_TARGETS, component_fit_map
 
 
 def _aggregate_goal_metrics(entries, components, sg_to_asil, sg_targets=None, get_node=lambda x: x):

@@ -3,7 +3,7 @@ from tkinter import ttk, filedialog, messagebox, simpledialog
 import csv
 import copy
 import textwrap
-from models import (
+from analysis.models import (
     ReliabilityComponent,
     ReliabilityAnalysis,
     HazopEntry,
@@ -19,8 +19,8 @@ from models import (
     component_fit_map,
     calc_asil,
 )
-from fmeda_utils import compute_fmeda_metrics
-from constants import CHECK_MARK, CROSS_MARK
+from analysis.fmeda_utils import compute_fmeda_metrics
+from analysis.constants import CHECK_MARK, CROSS_MARK
 
 
 def _total_fit_from_boms(boms):

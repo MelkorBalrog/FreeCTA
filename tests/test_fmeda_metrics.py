@@ -1,6 +1,6 @@
 import unittest
-from fmeda_utils import compute_fmeda_metrics
-from models import ReliabilityComponent
+from analysis.fmeda_utils import compute_fmeda_metrics
+from analysis.models import ReliabilityComponent
 
 class DummyNode:
     def __init__(self, comp, ftype, frac, fit, diag_cov=0.0, sg=""):
