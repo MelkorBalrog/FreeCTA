@@ -2,6 +2,78 @@
 
 This repository contains a graphical fault tree analysis tool. The latest update adds a **Review Toolbox** supporting peer and joint review workflows. The explorer pane now includes an **Analyses** tab listing all FMEAs, FMEDAs, HAZOPs, HARAs and AutoML diagrams so they can be opened directly. Architecture objects can now be resized either by editing width and height values or by dragging the red handles that appear when an item is selected. Fork and join bars keep a constant thickness so only their length changes.
 
+## HAZOP Analysis
+
+The **HAZOP Analysis** window lets you list system functions with one or more associated malfunctions. Each entry records the malfunction guideword (*No/Not*, *Unintended*, *Excessive*, *Insufficient* or *Reverse*), the related scenario, driving conditions and hazard, and whether it is safety relevant. Covered malfunctions may reference other entries as mitigation. When a function is allocated to an active component in a reliability analysis, its malfunctions become selectable failure modes in the FMEDA table.
+
+## HARA Analysis
+
+The **HARA Analysis** view builds on the safety relevant malfunctions from one or more selected HAZOPs. When creating a new HARA you can pick multiple HAZOP documents; only malfunctions from those selections appear in the table. Each HARA table contains the following columns:
+
+1. **Malfunction** – combo box listing malfunctions flagged as safety relevant in the chosen HAZOP documents.
+2. **Hazard** – textual description of the resulting hazard.
+3. **Severity** – ISO&nbsp;26262 severity level (1–3).
+4. **Severity Rationale** – free text explanation for the chosen severity.
+5. **Controllability** – ISO&nbsp;26262 controllability level (1–3).
+6. **Controllability Rationale** – free text explanation for the chosen controllability.
+7. **Exposure** – ISO&nbsp;26262 exposure level (1–4).
+8. **Exposure Rationale** – free text explanation for the chosen exposure.
+9. **ASIL** – automatically calculated from severity, controllability and exposure using the ISO&nbsp;26262 risk graph.
+10. **Safety Goal** – combo box listing all defined safety goals in the project.
+
+The calculated ASIL from each row is propagated to the referenced safety goal so that inherited ASIL levels appear consistently in all analyses and documentation, including FTA top level events.
+
+The **Hazard Explorer** window lists all hazards from every HARA in a read-only table for quick review or CSV export.
+
+## Requirements Creation and Management
+
+Safety requirements are defined directly on FTA nodes and FMEA entries. In the edit dialog for a node or table row use **Add New** to create a fresh requirement or **Add Existing** to reuse one from the global registry. A new requirement records an ID, type (vehicle or operational), ASIL and descriptive text. Requirements can be split into two with the **Decompose** button which assigns ASIL values according to ISO 26262 decomposition rules. All requirements are stored in a project-wide list so they can be attached to multiple elements.
+
+Open the **Requirements Matrix** from the Requirements menu to see every requirement with its allocation to basic events and any traced safety goals. The matrix view links to a **Requirements Editor** where you can add, edit or delete entries and modify traceability. Requirement statuses automatically change from draft to *in review*, *peer reviewed*, *pending approval* and finally *approved* as associated reviews progress. Updating a requirement reopens affected reviews so feedback is always tracked against the latest version.
+
+## AutoML Diagrams and Safety Analyses
+
+Use case, activity, block and internal block diagrams can be created from the **Architecture** menu. Diagrams are stored inside a built-in SysML repository and appear in the *Analyses* explorer tab so they can be reopened alongside FMEAs and other documents. Each object keeps its saved size and properties so layouts remain stable when returning to the project.
+
+Activity diagrams list individual **actions** that describe the expected behavior for a block. These actions can be referenced directly in HAZOP tables as potential malfunctions. When a block is linked to a circuit, any actions in its internal block diagram are inherited as additional failure modes for that circuit. The inherited actions automatically show up in new FMEDA tables along with the failure modes already defined for the circuit's components.
+
+Elements on a diagram may reference reliability analyses. Choosing a **circuit** or **component** automatically fills the **fit**, **qualification** and **failureModes** fields using data from FMEA and FMEDA tables. These values show up in a *Reliability* compartment for blocks or below parts. When a block references a circuit, the components from that circuit's BOM can be inserted as parts in the linked internal block diagram with their failure modes already listed.
+
+Requirements can also be attached to diagram elements to keep architecture and safety analyses synchronized. The same safety goals referenced in HAZOP or HARA tables can therefore be traced directly to the blocks and parts that implement them.
+
+## BOM Integration with AutoML Diagrams
+
+Blocks in block diagrams may reference circuits defined in a saved BOM via the new **circuit** property while parts reference individual components using the **component** property. Both element types also provide **fit**, **qualification** and **failureModes** attributes. Entering values for these fields shows them in a *Reliability* compartment for blocks or as additional lines beneath parts so FIT rates and qualification information remain visible in the AutoML model. When editing a block or part you can now pick from drop-down lists containing all circuits or components from saved reliability analyses. Selecting an item automatically fills in its FIT rate, qualification certificate and any failure modes found in FMEA tables.
+
+## Component Qualifications
+
+Reliability calculations take the qualification certificate of each passive component into account. When computing FIT rates, a multiplier based on the certificate (e.g. *AEC‑Q200* or *MIL‑STD‑883*) is applied so qualified parts yield lower failure rates. Active components currently use a neutral factor. Additional datasheet parameters such as diode forward voltage or MOSFET `RDS(on)` can be entered when configuring components to better document the parts used in the analysis.
+
+## Mission Profiles and Probability Formulas
+
+The **Reliability** menu lets you define mission profiles describing the on/off time, temperatures and other conditions for your system. When a profile is present its total `TAU` value is used to convert FIT rates into failure probabilities for each basic event.
+
+In the *Edit Node* dialog for a basic event you can choose how the FIT rate is interpreted:
+
+* **linear** – probability is calculated as `λ × τ` where `λ` is the FIT value expressed as failures per hour and `τ` comes from the selected mission profile.
+* **exponential** – uses the exponential model `1 − exp(−λ × τ)`.
+* **constant** – probability comes from the basic event's *Failure Probability* field and does not use the FIT rate or mission time.
+
+Mission profiles and the selected formula for each basic event are stored in the JSON model so results remain consistent when reloading the file.
+
+## SOTIF Analysis
+
+The **Qualitative Analysis** menu also provides dedicated SOTIF tools. Selecting **Triggering Conditions** or **Functional Insufficiencies** opens read-only lists of each node type with an **Export CSV** button. These views gather all triggering condition and functional insufficiency nodes from the FTAs so the information can be reviewed separately.
+
+Two additional tables support tracing between these elements:
+
+* **FI2TC Analysis** – links each functional insufficiency to the triggering conditions, scenarios and mitigation measures that reveal the hazard.
+* **TC2FI Analysis** – starts from the triggering condition and lists the impacted functions, architecture elements and related insufficiencies.
+
+HARA values such as severity and the associated safety goal flow into these tables so SOTIF considerations remain connected to the overall risk assessment. Minimal cut sets calculated from the FTAs highlight combinations of FIs and TCs that form *CTAs*. From a CTA entry you can generate a functional modification requirement describing how the design must change to avoid the unsafe behaviour.
+
+All FI2TC and TC2FI documents appear under the **Analyses** tab so they can be opened alongside HARA tables, FTAs and CTAs for a complete view of functional safety and SOTIF issues.
+
 ## Review Toolbox
 
 Launch the review features from the **Review** menu:
@@ -15,168 +87,35 @@ Launch the review features from the **Review** menu:
 * **Update Decomposition** – after splitting a requirement into two, select either child and use the new button in the node dialog to pick a different ASIL pair.
 * The target selector within the toolbox only lists nodes and FMEA items that were chosen when the review was created, so comments can only be attached to the scoped elements.
 
-Nodes with unresolved comments show a small yellow circle to help locate feedback quickly.
-When a review document is opened it automatically compares the current model to the previous approved version. Added elements appear in blue and removed ones in red just like the **Compare Versions** tool, but only for the FTAs and FMEAs included in that review.
+Nodes with unresolved comments show a small yellow circle to help locate feedback quickly. When a review document is opened it automatically compares the current model to the previous approved version. Added elements appear in blue and removed ones in red just like the **Compare Versions** tool, but only for the FTAs and FMEAs included in that review.
 
-When comparing versions, added nodes and connections are drawn in blue while removed ones are drawn in red. Text differences highlight deleted portions in red and new text in blue so changes to descriptions, rationales or FMEA fields stand out. Deleted links between FTA nodes are shown with red connectors.
-Requirement lists are compared as well so allocation changes show up alongside description and rationale edits. The Requirements Matrix window now lists every requirement with the nodes and FMEA items where it is allocated and the safety goals traced to each one.
+When comparing versions, added nodes and connections are drawn in blue while removed ones are drawn in red. Text differences highlight deleted portions in red and new text in blue so changes to descriptions, rationales or FMEA fields stand out. Deleted links between FTA nodes are shown with red connectors. Requirement lists are compared as well so allocation changes show up alongside description and rationale edits. The Requirements Matrix window now lists every requirement with the nodes and FMEA items where it is allocated and the safety goals traced to each one.
 
 Comments can be attached to FMEA entries and individual requirements. Resolving a comment prompts for a short explanation which is shown with the original text.
 
 Review information (participants, comments, review names, descriptions and approval state) is saved as part of the model file and restored on load.
 
+## Additional Tools
+
+### Common Cause Toolbox
+
+The **Common Cause Toolbox** groups failures that share the same cause across FMEAs, FMEDAs and FTAs. It highlights events that may lead to common cause failures and supports exporting the aggregated list to CSV.
+
+### Risk & Assurance Gate Calculator
+
+A built-in calculator derives a Prototype Assurance Level (PAL) from confidence, robustness and direct assurance inputs. Gates aggregate assurance from child nodes to help judge whether additional testing or design changes are needed before road trials.
+
+### Safety Goal Export
+
+Use **Export SG Requirements** in the Requirements menu to generate a CSV listing each safety goal with its associated requirements and ASIL ratings.
+
 ## Email Setup
 
-When sending review summaries, the application asks for SMTP settings and login details.
-If you use Gmail with two-factor authentication enabled, create an **app password**
-and enter it instead of your normal account password. Authentication failures will
-prompt you to re-enter these settings.
+When sending review summaries, the application asks for SMTP settings and login details. If you use Gmail with two-factor authentication enabled, create an **app password** and enter it instead of your normal account password. Authentication failures will prompt you to re-enter these settings.
 
-Each summary email embeds PNG images showing the differences between the current
-model and the last approved version for the selected FTAs so reviewers can view
-the diagrams directly in the message. CSV files containing the FMEA tables are
-attached so they can be opened in Excel or another spreadsheet application. Requirement changes with allocations and safety goal traces are listed below the diagrams.
+Each summary email embeds PNG images showing the differences between the current model and the last approved version for the selected FTAs so reviewers can view the diagrams directly in the message. CSV files containing the FMEA tables are attached so they can be opened in Excel or another spreadsheet application. Requirement changes with allocations and safety goal traces are listed below the diagrams.
 
-If sending fails with a connection error, the dialog will prompt again so you
-can correct the server address or port.
-
-## Mission Profiles and Probability Formulas
-
-The **Reliability** menu lets you define mission profiles describing the on/off
-time, temperatures and other conditions for your system.  When a profile is
-present its total `TAU` value is used to convert FIT rates into failure
-probabilities for each basic event.
-
-In the *Edit Node* dialog for a basic event you can choose how the FIT rate is
-interpreted:
-
-* **linear** – probability is calculated as `λ × τ` where `λ` is the FIT value
-  expressed as failures per hour and `τ` comes from the selected mission profile.
-* **exponential** – uses the exponential model `1 − exp(−λ × τ)`.
-* **constant** – probability comes from the basic event's *Failure Probability*
-  field and does not use the FIT rate or mission time.
-
-Mission profiles and the selected formula for each basic event are stored in the
-JSON model so results remain consistent when reloading the file.
-
-### Component Qualifications
-
-Reliability calculations now take the qualification certificate of each passive
-component into account.  When computing FIT rates, a multiplier based on the
-certificate (e.g. *AEC‑Q200* or *MIL‑STD‑883*) is applied so qualified parts
-yield lower failure rates.  Active components currently use a neutral factor.
-Additional datasheet parameters such as diode forward voltage or MOSFET
-`RDS(on)` can be entered when configuring components to better document the
-parts used in the analysis.
-
-### BOM Integration with AutoML Diagrams
-
-Blocks in block diagrams may reference circuits defined in a saved BOM via the
-new **circuit** property while parts reference individual components using the
-**component** property.  Both element types also provide **fit**,
-**qualification** and **failureModes** attributes.  Entering values for these
-fields shows them in a *Reliability* compartment for blocks or as additional
-lines beneath parts so FIT rates and qualification information remain visible in
-the AutoML model. When editing a block or part you can now pick from
-drop-down lists containing all circuits or components from saved reliability
-analyses. Selecting an item automatically fills in its FIT rate, qualification
-certificate and any failure modes found in FMEA tables.
-
-### AutoML Diagrams and Safety Analyses
-
-Use case, activity, block and internal block diagrams can be created from the
-**Architecture** menu. Diagrams are stored inside the model and appear in the
-*Analyses* explorer tab so they can be reopened alongside FMEAs and other
-documents. Each object keeps its saved size and properties so layouts remain
-stable when returning to the project.
-
-Activity diagrams list individual **actions** that describe the expected
-behavior for a block. These actions can be referenced directly in HAZOP tables
-as potential malfunctions. When a block is linked to a circuit, any actions in
-its internal block diagram are inherited as additional failure modes for that
-circuit. The inherited actions automatically show up in new FMEDA tables along
-with the failure modes already defined for the circuit's components.
-
-Elements on a diagram may reference reliability analyses. Choosing a
-**circuit** or **component** automatically fills the **fit**, **qualification**
-and **failureModes** fields using data from FMEA and FMEDA tables. These values
-show up in a *Reliability* compartment for blocks or below parts. When a block
-references a circuit, the components from that circuit's BOM can be inserted as
-parts in the linked internal block diagram with their failure modes already
-listed.
-
-Requirements can also be attached to diagram elements to keep architecture and
-safety analyses synchronized. The same safety goals referenced in HAZOP or HARA
-tables can therefore be traced directly to the blocks and parts that implement
-them.
-
-### HAZOP Analysis
-
-The **HAZOP Analysis** window lets you list system functions with one or more
-associated malfunctions. Each entry records the malfunction guideword
-(*No/Not*, *Unintended*, *Excessive*, *Insufficient* or *Reverse*), the related
-scenario, driving conditions and hazard, and whether it is safety relevant.
-Covered malfunctions may reference other entries as mitigation. When a function
-is allocated to an active component in a reliability analysis, its malfunctions
-become selectable failure modes in the FMEDA table.
-
-### HARA Analysis
-
-The **HARA Analysis** view builds on the safety relevant malfunctions from one
-or more selected HAZOPs. When creating a new HARA you can pick multiple HAZOP
-documents; only malfunctions from those selections appear in the table.
-Each HARA table contains the following columns:
-
-1. **Malfunction** – combo box listing malfunctions flagged as safety relevant
-   in the chosen HAZOP documents.
-2. **Hazard** – textual description of the resulting hazard.
-3. **Severity** – ISO&nbsp;26262 severity level (1–3).
-4. **Severity Rationale** – free text explanation for the chosen severity.
-5. **Controllability** – ISO&nbsp;26262 controllability level (1–3).
-6. **Controllability Rationale** – free text explanation for the chosen
-   controllability.
-7. **Exposure** – ISO&nbsp;26262 exposure level (1–4).
-8. **Exposure Rationale** – free text explanation for the chosen exposure.
-9. **ASIL** – automatically calculated from severity, controllability and
-   exposure using the ISO&nbsp;26262 risk graph.
-10. **Safety Goal** – combo box listing all defined safety goals in the project.
-
-The calculated ASIL from each row is propagated to the referenced safety goal so
-that inherited ASIL levels appear consistently in all analyses and
-documentation, including FTA top level events.
-
-The **Hazard Explorer** window lists all hazards from every HARA in a read-only table for quick review or CSV export.
-
-### Requirements Creation and Management
-
-Safety requirements are defined directly on FTA nodes and FMEA entries. In the edit dialog for a node or table row use **Add New** to create a fresh requirement or **Add Existing** to reuse one from the global registry. A new requirement records an ID, type (vehicle or operational), ASIL and descriptive text. Requirements can be split into two with the **Decompose** button which assigns ASIL values according to ISO 26262 decomposition rules. All requirements are stored in a project-wide list so they can be attached to multiple elements.
-
-Open the **Requirements Matrix** from the Requirements menu to see every requirement with its allocation to basic events and any traced safety goals. The matrix view links to a **Requirements Editor** where you can add, edit or delete entries and modify traceability. Requirement statuses automatically change from draft to *in review*, *peer reviewed*, *pending approval* and finally *approved* as associated reviews progress. Updating a requirement reopens affected reviews so feedback is always tracked against the latest version.
-
-### SOTIF Analysis
-
-The **Qualitative Analysis** menu also provides dedicated SOTIF tools.  Selecting
-**Triggering Conditions** or **Functional Insufficiencies** opens read-only lists
-of each node type with an **Export CSV** button.  These views gather all
-triggering condition and functional insufficiency nodes from the FTAs so the
-information can be reviewed separately.
-
-Two additional tables support tracing between these elements:
-
-* **FI2TC Analysis** – links each functional insufficiency to the triggering
-  conditions, scenarios and mitigation measures that reveal the hazard.
-* **TC2FI Analysis** – starts from the triggering condition and lists the
-  impacted functions, architecture elements and related insufficiencies.
-
-HARA values such as severity and the associated safety goal flow into these
-tables so SOTIF considerations remain connected to the overall risk assessment.
-Minimal cut sets calculated from the FTAs highlight combinations of FIs and TCs
-that form *CTAs*.  From a CTA entry you can generate a functional modification
-requirement describing how the design must change to avoid the unsafe behaviour.
-
-All FI2TC and TC2FI documents appear under the **Analyses** tab so they can be
-opened alongside HARA tables, FTAs and CTAs for a complete view of functional
-safety and SOTIF issues.
+If sending fails with a connection error, the dialog will prompt again so you can correct the server address or port.
 
 ## License
 
