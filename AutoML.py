@@ -7513,9 +7513,13 @@ class FaultTreeApp:
             tc2fi_root = tree.insert("", "end", text="TC2FI Analyses", open=True)
             for idx, doc in enumerate(self.tc2fi_docs):
                 tree.insert(tc2fi_root, "end", text=doc.name, tags=("tc2fi", str(idx)))
+            repo = SysMLRepository.get_instance()
+            self.arch_diagrams = sorted(
+                repo.diagrams.values(), key=lambda d: d.name or d.diag_id
+            )
             arch_root = tree.insert("", "end", text="AutoML Diagrams", open=True)
             for idx, diag in enumerate(self.arch_diagrams):
-                name = diag.get('name', f'Diagram {idx+1}')
+                name = diag.name or f"Diagram {idx + 1}"
                 tree.insert(arch_root, "end", text=name, tags=("arch", str(idx)))
 
         if hasattr(self, "page_diagram") and self.page_diagram is not None:
@@ -10921,6 +10925,7 @@ class FaultTreeApp:
         win = UseCaseDiagramWindow(self.root, self, diagram_id=diag.diag_id)
         win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.use_case_windows))
         self.use_case_windows.append(win)
+        self.update_views()
 
     def open_activity_diagram(self):
         """Prompt for a diagram name then open a new activity diagram."""
@@ -10932,6 +10937,7 @@ class FaultTreeApp:
         win = ActivityDiagramWindow(self.root, self, diagram_id=diag.diag_id)
         win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.activity_windows))
         self.activity_windows.append(win)
+        self.update_views()
 
     def open_block_diagram(self):
         """Prompt for a diagram name then open a new block diagram."""
@@ -10943,6 +10949,7 @@ class FaultTreeApp:
         win = BlockDiagramWindow(self.root, self, diagram_id=diag.diag_id)
         win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.block_windows))
         self.block_windows.append(win)
+        self.update_views()
 
     def open_internal_block_diagram(self):
         """Prompt for a diagram name then open a new internal block diagram."""
@@ -10954,9 +10961,32 @@ class FaultTreeApp:
         win = InternalBlockDiagramWindow(self.root, self, diagram_id=diag.diag_id)
         win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.ibd_windows))
         self.ibd_windows.append(win)
+        self.update_views()
 
     def manage_architecture(self):
         ArchitectureManagerDialog(self.root, self)
+
+    def open_arch_window(self, idx: int) -> None:
+        """Open an existing architecture diagram from the repository."""
+        if idx < 0 or idx >= len(self.arch_diagrams):
+            return
+        diag = self.arch_diagrams[idx]
+        if diag.diag_type == "Use Case Diagram":
+            win = UseCaseDiagramWindow(self.root, self, diagram_id=diag.diag_id)
+            win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.use_case_windows))
+            self.use_case_windows.append(win)
+        elif diag.diag_type == "Activity Diagram":
+            win = ActivityDiagramWindow(self.root, self, diagram_id=diag.diag_id)
+            win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.activity_windows))
+            self.activity_windows.append(win)
+        elif diag.diag_type == "Block Diagram":
+            win = BlockDiagramWindow(self.root, self, diagram_id=diag.diag_id)
+            win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.block_windows))
+            self.block_windows.append(win)
+        elif diag.diag_type == "Internal Block Diagram":
+            win = InternalBlockDiagramWindow(self.root, self, diagram_id=diag.diag_id)
+            win.protocol("WM_DELETE_WINDOW", self._register_close(win, self.ibd_windows))
+            self.ibd_windows.append(win)
         
     def copy_node(self):
         if self.selected_node and self.selected_node != self.root_node:
