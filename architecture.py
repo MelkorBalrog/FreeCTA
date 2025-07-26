@@ -239,7 +239,10 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.current_tool = None
         self.start = None
         self.selected_obj: SysMLObject | None = None
+        self.selected_conn: DiagramConnection | None = None
         self.drag_offset = (0, 0)
+        self.dragging_point_index: int | None = None
+        self.conn_drag_offset: tuple[float, float] | None = None
         self.clipboard: SysMLObject | None = None
         self.resizing_obj: SysMLObject | None = None
         self.resize_edge: str | None = None
@@ -280,6 +283,9 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.start = None
         self.temp_line_end = None
         self.selected_obj = None
+        self.selected_conn = None
+        self.dragging_point_index = None
+        self.conn_drag_offset = None
         cursor = "arrow"
         if tool != "Select":
             cursor = "crosshair" if tool in (
@@ -408,16 +414,35 @@ class SysMLDiagramWindow(tk.Toplevel):
                     self.resizing_obj = obj
                 self.redraw()
             else:
-                # allow clicking on the resize handle even if outside the object
-                if self.selected_obj:
-                    self.resize_edge = self.hit_resize_handle(self.selected_obj, x, y)
-                    if self.resize_edge:
-                        self.resizing_obj = self.selected_obj
-                        return
-                self.selected_obj = None
-                self.resizing_obj = None
-                self.resize_edge = None
-                self.redraw()
+                conn = self.find_connection(x, y)
+                if conn:
+                    if (event.state & 0x0001) and conn.style == "Custom":
+                        conn.points.append((x / self.zoom, y / self.zoom))
+                        self._sync_to_repository()
+                    self.selected_conn = conn
+                    self.selected_obj = None
+                    self.dragging_point_index = None
+                    if conn.style == "Custom":
+                        for idx, (px, py) in enumerate(conn.points):
+                            hx = px * self.zoom
+                            hy = py * self.zoom
+                            if abs(hx - x) <= 4 and abs(hy - y) <= 4:
+                                self.dragging_point_index = idx
+                                self.conn_drag_offset = (x - hx, y - hy)
+                                break
+                    self.redraw()
+                else:
+                    # allow clicking on the resize handle even if outside the object
+                    if self.selected_obj:
+                        self.resize_edge = self.hit_resize_handle(self.selected_obj, x, y)
+                        if self.resize_edge:
+                            self.resizing_obj = self.selected_obj
+                            return
+                    self.selected_obj = None
+                    self.selected_conn = None
+                    self.resizing_obj = None
+                    self.resize_edge = None
+                    self.redraw()
 
     def on_left_drag(self, event):
         if self.start and self.current_tool in (
@@ -430,6 +455,18 @@ class SysMLDiagramWindow(tk.Toplevel):
             x = self.canvas.canvasx(event.x)
             y = self.canvas.canvasy(event.y)
             self.temp_line_end = (x, y)
+            self.redraw()
+            return
+        if (
+            self.dragging_point_index is not None
+            and self.selected_conn
+            and self.current_tool == "Select"
+        ):
+            x = self.canvas.canvasx(event.x)
+            y = self.canvas.canvasy(event.y)
+            px = (x - self.conn_drag_offset[0]) / self.zoom
+            py = (y - self.conn_drag_offset[1]) / self.zoom
+            self.selected_conn.points[self.dragging_point_index] = (px, py)
             self.redraw()
             return
         if not self.selected_obj:
@@ -510,6 +547,10 @@ class SysMLDiagramWindow(tk.Toplevel):
         self.temp_line_end = None
         self.resizing_obj = None
         self.resize_edge = None
+        if self.dragging_point_index is not None and self.selected_conn:
+            self._sync_to_repository()
+        self.dragging_point_index = None
+        self.conn_drag_offset = None
         if self.selected_obj and self.current_tool == "Select":
             if self.selected_obj.obj_type != "System Boundary":
                 b = self.find_boundary_for_obj(self.selected_obj)
@@ -815,7 +856,7 @@ class SysMLDiagramWindow(tk.Toplevel):
             src = self.get_object(conn.src)
             dst = self.get_object(conn.dst)
             if src and dst:
-                self.draw_connection(src, dst, conn)
+                self.draw_connection(src, dst, conn, conn is self.selected_conn)
         if (
             self.start
             and self.temp_line_end
@@ -1173,7 +1214,9 @@ class SysMLDiagramWindow(tk.Toplevel):
                 self.canvas.create_rectangle(hx - s, hy - s, hx + s, hy + s,
                                              outline="red", fill="white")
 
-    def draw_connection(self, a: SysMLObject, b: SysMLObject, conn: DiagramConnection):
+    def draw_connection(
+        self, a: SysMLObject, b: SysMLObject, conn: DiagramConnection, selected: bool = False
+    ):
         axc, ayc = a.x * self.zoom, a.y * self.zoom
         bxc, byc = b.x * self.zoom, b.y * self.zoom
         ax, ay = self.edge_point(a, bxc, byc)
@@ -1195,7 +1238,15 @@ class SysMLDiagramWindow(tk.Toplevel):
                 points.extend([(x, last[1]), (x, y)])
         points.append((bx, by))
         flat = [coord for pt in points for coord in pt]
-        self.canvas.create_line(*flat, arrow=tk.LAST, dash=dash)
+        color = "red" if selected else "black"
+        width = 2 if selected else 1
+        self.canvas.create_line(*flat, arrow=tk.LAST, dash=dash, fill=color, width=width)
+        if selected and conn.style == "Custom":
+            for px, py in conn.points:
+                hx = px * self.zoom
+                hy = py * self.zoom
+                s = 3
+                self.canvas.create_rectangle(hx - s, hy - s, hx + s, hy + s, outline="red", fill="white")
         if label:
             mx, my = (ax + bx) / 2, (ay + by) / 2
             self.canvas.create_text(
