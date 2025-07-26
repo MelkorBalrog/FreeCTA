@@ -723,33 +723,44 @@ class EditNodeDialog(simpledialog.Dialog):
         super().__init__(parent, title="Edit Node")
 
     def body(self, master):
+        self.resizable(False, False)
         dialog_font = tkFont.Font(family="Arial", size=10)
-        ttk.Label(master, text="Node ID:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        self.id_entry = tk.Entry(master, font=dialog_font, state="disabled")
+
+        nb = ttk.Notebook(master)
+        nb.pack(fill=tk.BOTH, expand=True)
+        general_frame = ttk.Frame(nb)
+        safety_frame = ttk.Frame(nb)
+        adv_frame = ttk.Frame(nb)
+        nb.add(general_frame, text="General")
+        nb.add(safety_frame, text="Safety")
+        nb.add(adv_frame, text="Advanced")
+
+        ttk.Label(general_frame, text="Node ID:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        self.id_entry = tk.Entry(general_frame, font=dialog_font, state="disabled")
         self.id_entry.insert(0, f"Node {self.node.unique_id}")
         self.id_entry.grid(row=0, column=1, padx=5, pady=5)
 
-        ttk.Label(master, text="User Name:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
-        self.user_name_entry = tk.Entry(master, font=dialog_font)
+        ttk.Label(general_frame, text="User Name:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        self.user_name_entry = tk.Entry(general_frame, font=dialog_font)
         self.user_name_entry.insert(0, self.node.user_name)
         self.user_name_entry.grid(row=1, column=1, padx=5, pady=5)
 
-        ttk.Label(master, text="Description:").grid(row=2, column=0, padx=5, pady=5, sticky="ne")
-        self.desc_text = tk.Text(master, width=40, height=3, font=dialog_font, wrap="word")
+        ttk.Label(general_frame, text="Description:").grid(row=2, column=0, padx=5, pady=5, sticky="ne")
+        self.desc_text = tk.Text(general_frame, width=40, height=3, font=dialog_font, wrap="word")
         self.desc_text.insert("1.0", self.node.description)
         self.desc_text.grid(row=2, column=1, padx=5, pady=5)
         self.desc_text.bind("<Return>", self.on_enter_pressed)
 
-        ttk.Label(master, text="\nRationale:").grid(row=3, column=0, padx=5, pady=5, sticky="ne")
-        self.rationale_text = tk.Text(master, width=40, height=3, font=dialog_font, wrap="word")
+        ttk.Label(general_frame, text="\nRationale:").grid(row=3, column=0, padx=5, pady=5, sticky="ne")
+        self.rationale_text = tk.Text(general_frame, width=40, height=3, font=dialog_font, wrap="word")
         self.rationale_text.insert("1.0", self.node.rationale)
         self.rationale_text.grid(row=3, column=1, padx=5, pady=5)
         self.rationale_text.bind("<Return>", self.on_enter_pressed)
 
         row_next = 4
         if self.node.node_type.upper() in ["CONFIDENCE LEVEL", "ROBUSTNESS SCORE"]:
-            ttk.Label(master, text="Value (1-5):").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-            self.value_combo = ttk.Combobox(master, values=["1", "2", "3", "4", "5"],
+            ttk.Label(general_frame, text="Value (1-5):").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+            self.value_combo = ttk.Combobox(general_frame, values=["1", "2", "3", "4", "5"],
                                             state="readonly", width=5, font=dialog_font)
             current_val = self.node.quant_value if self.node.quant_value is not None else 1
             self.value_combo.set(str(int(current_val)))
@@ -760,8 +771,8 @@ class EditNodeDialog(simpledialog.Dialog):
             # Ensure the node has the attribute.
             if not hasattr(self.node, "safety_requirements"):
                 self.node.safety_requirements = []
-            ttk.Label(master, text="Safety Requirements:").grid(row=row_next, column=0, padx=5, pady=5, sticky="ne")
-            self.safety_req_frame = ttk.Frame(master)
+            ttk.Label(safety_frame, text="Safety Requirements:").grid(row=row_next, column=0, padx=5, pady=5, sticky="ne")
+            self.safety_req_frame = ttk.Frame(safety_frame)
             self.safety_req_frame.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
             row_next += 1
 
@@ -787,12 +798,12 @@ class EditNodeDialog(simpledialog.Dialog):
             self.update_decomp_button.grid(row=1, column=5, padx=2, pady=2)
 
         elif self.node.node_type.upper() == "BASIC EVENT":
-            ttk.Label(master, text="Failure Probability:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-            self.prob_entry = tk.Entry(master, font=dialog_font)
+            ttk.Label(safety_frame, text="Failure Probability:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+            self.prob_entry = tk.Entry(safety_frame, font=dialog_font)
             self.prob_entry.grid(row=row_next, column=1, padx=5, pady=5)
             row_next += 1
 
-            ttk.Label(master, text="Represents FM:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+            ttk.Label(safety_frame, text="Represents FM:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
             modes = self.app.get_all_failure_modes()
             self.fm_map = {self.app.format_failure_mode_label(m): m.unique_id for m in modes}
             self.fm_var = tk.StringVar()
@@ -802,15 +813,15 @@ class EditNodeDialog(simpledialog.Dialog):
                 if n:
                     current = self.app.format_failure_mode_label(n)
             self.fm_var.set(current)
-            self.fm_combo = ttk.Combobox(master, textvariable=self.fm_var, values=list(self.fm_map.keys()), state='readonly', width=40)
+            self.fm_combo = ttk.Combobox(safety_frame, textvariable=self.fm_var, values=list(self.fm_map.keys()), state='readonly', width=40)
             self.fm_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky='w')
             self.fm_combo.bind("<<ComboboxSelected>>", self.update_probability)
             row_next += 1
 
 
-            ttk.Label(master, text="Probability Formula:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+            ttk.Label(safety_frame, text="Probability Formula:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
             self.formula_var = tk.StringVar(value=getattr(self.node, 'prob_formula', 'linear'))
-            self.formula_combo = ttk.Combobox(master, textvariable=self.formula_var,
+            self.formula_combo = ttk.Combobox(safety_frame, textvariable=self.formula_var,
                          values=['linear', 'exponential', 'constant'],
                          state='readonly', width=12)
             self.formula_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky='w')
@@ -821,8 +832,8 @@ class EditNodeDialog(simpledialog.Dialog):
 
             if not hasattr(self.node, "safety_requirements"):
                 self.node.safety_requirements = []
-            ttk.Label(master, text="Safety Requirements:").grid(row=row_next, column=0, padx=5, pady=5, sticky="ne")
-            self.safety_req_frame = ttk.Frame(master)
+            ttk.Label(safety_frame, text="Safety Requirements:").grid(row=row_next, column=0, padx=5, pady=5, sticky="ne")
+            self.safety_req_frame = ttk.Frame(safety_frame)
             self.safety_req_frame.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
             row_next += 1
 
@@ -844,40 +855,40 @@ class EditNodeDialog(simpledialog.Dialog):
             self.update_decomp_button.grid(row=1, column=5, padx=2, pady=2)
 
         elif self.node.node_type.upper() in ["GATE", "RIGOR LEVEL", "TOP EVENT"]:
-            ttk.Label(master, text="Gate Type:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+            ttk.Label(general_frame, text="Gate Type:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
             self.gate_var = tk.StringVar(value=self.node.gate_type if self.node.gate_type else "AND")
-            self.gate_combo = ttk.Combobox(master, textvariable=self.gate_var, values=["AND", "OR"],
+            self.gate_combo = ttk.Combobox(general_frame, textvariable=self.gate_var, values=["AND", "OR"],
                                            state="readonly", width=10)
             self.gate_combo.grid(row=row_next, column=1, padx=5, pady=5)
             row_next += 1
             if self.node.node_type.upper() == "TOP EVENT":
-                ttk.Label(master, text="Severity (1-3):").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-                self.sev_combo = ttk.Combobox(master, values=["1", "2", "3"],
+                ttk.Label(safety_frame, text="Severity (1-3):").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.sev_combo = ttk.Combobox(safety_frame, values=["1", "2", "3"],
                                               state="disabled", width=5, font=dialog_font)
                 current_sev = self.node.severity if self.node.severity is not None else 3
                 self.sev_combo.set(str(int(current_sev)))
                 self.sev_combo.grid(row=row_next, column=1, padx=5, pady=5)
                 row_next += 1
 
-                ttk.Label(master, text="Controllability (1-3):").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-                self.cont_combo = ttk.Combobox(master, values=["1", "2", "3"],
+                ttk.Label(safety_frame, text="Controllability (1-3):").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.cont_combo = ttk.Combobox(safety_frame, values=["1", "2", "3"],
                                               state="disabled", width=5, font=dialog_font)
                 current_cont = self.node.controllability if self.node.controllability is not None else 3
                 self.cont_combo.set(str(int(current_cont)))
                 self.cont_combo.grid(row=row_next, column=1, padx=5, pady=5)
                 row_next += 1
 
-                ttk.Label(master, text="Safety Goal Description:").grid(row=row_next, column=0, padx=5, pady=5, sticky="ne")
-                self.safety_goal_text = tk.Text(master, width=40, height=3, font=dialog_font, wrap="word")
+                ttk.Label(safety_frame, text="Safety Goal Description:").grid(row=row_next, column=0, padx=5, pady=5, sticky="ne")
+                self.safety_goal_text = tk.Text(safety_frame, width=40, height=3, font=dialog_font, wrap="word")
                 self.safety_goal_text.insert("1.0", self.node.safety_goal_description)
                 self.safety_goal_text.grid(row=row_next, column=1, padx=5, pady=5)
                 self.safety_goal_text.bind("<Return>", self.on_enter_pressed)
                 row_next += 1
 
-                ttk.Label(master, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                ttk.Label(safety_frame, text="Safety Goal ASIL:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
                 self.sg_asil_var = tk.StringVar(value=self.node.safety_goal_asil if self.node.safety_goal_asil else "QM")
                 self.sg_asil_combo = ttk.Combobox(
-                    master,
+                    safety_frame,
                     textvariable=self.sg_asil_var,
                     values=ASIL_LEVEL_OPTIONS,
                     state="disabled",
@@ -886,35 +897,35 @@ class EditNodeDialog(simpledialog.Dialog):
                 self.sg_asil_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
-                ttk.Label(master, text="Safe State:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-                self.safe_state_entry = tk.Entry(master, width=40, font=dialog_font)
+                ttk.Label(safety_frame, text="Safe State:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.safe_state_entry = tk.Entry(safety_frame, width=40, font=dialog_font)
                 self.safe_state_entry.insert(0, self.node.safe_state)
                 self.safe_state_entry.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
-                ttk.Label(master, text="FTTI:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
-                self.ftti_entry = tk.Entry(master, width=20, font=dialog_font)
+                ttk.Label(safety_frame, text="FTTI:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                self.ftti_entry = tk.Entry(safety_frame, width=20, font=dialog_font)
                 self.ftti_entry.insert(0, getattr(self.node, "ftti", ""))
                 self.ftti_entry.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
-                ttk.Label(master, text="DC Target:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                ttk.Label(safety_frame, text="DC Target:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
                 self.dc_target_var = tk.DoubleVar(value=getattr(self.node, "sg_dc_target", 0.0))
-                tk.Entry(master, textvariable=self.dc_target_var, width=8).grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
+                tk.Entry(safety_frame, textvariable=self.dc_target_var, width=8).grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
-                ttk.Label(master, text="SPFM Target:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                ttk.Label(safety_frame, text="SPFM Target:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
                 self.spfm_target_var = tk.DoubleVar(value=getattr(self.node, "sg_spfm_target", 0.0))
-                tk.Entry(master, textvariable=self.spfm_target_var, width=8).grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
+                tk.Entry(safety_frame, textvariable=self.spfm_target_var, width=8).grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
-                ttk.Label(master, text="LPFM Target:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+                ttk.Label(safety_frame, text="LPFM Target:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
                 self.lpfm_target_var = tk.DoubleVar(value=getattr(self.node, "sg_lpfm_target", 0.0))
-                tk.Entry(master, textvariable=self.lpfm_target_var, width=8).grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
+                tk.Entry(safety_frame, textvariable=self.lpfm_target_var, width=8).grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
                 row_next += 1
 
-                ttk.Label(master, text="Acceptance Criteria:").grid(row=row_next, column=0, padx=5, pady=5, sticky="ne")
-                self.ac_text = tk.Text(master, width=40, height=3, font=dialog_font, wrap="word")
+                ttk.Label(safety_frame, text="Acceptance Criteria:").grid(row=row_next, column=0, padx=5, pady=5, sticky="ne")
+                self.ac_text = tk.Text(safety_frame, width=40, height=3, font=dialog_font, wrap="word")
                 self.ac_text.insert("1.0", getattr(self.node, "acceptance_criteria", ""))
                 self.ac_text.grid(row=row_next, column=1, padx=5, pady=5)
                 self.ac_text.bind("<Return>", self.on_enter_pressed)
@@ -923,7 +934,7 @@ class EditNodeDialog(simpledialog.Dialog):
 
         if self.node.node_type.upper() not in ["TOP EVENT", "BASIC EVENT"]:
             self.is_page_var = tk.BooleanVar(value=self.node.is_page)
-            ttk.Checkbutton(master, text="Is Page Gate?", variable=self.is_page_var)\
+            ttk.Checkbutton(general_frame, text="Is Page Gate?", variable=self.is_page_var)\
                 .grid(row=row_next, column=0, columnspan=2, padx=5, pady=5, sticky="w")
             row_next += 1
 
@@ -944,11 +955,11 @@ class EditNodeDialog(simpledialog.Dialog):
         valid_subtypes = VALID_SUBTYPES.get(base_name, [])
         if not valid_subtypes:
             valid_subtypes = ["None"]
-        ttk.Label(master, text="Subtype:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
+        ttk.Label(adv_frame, text="Subtype:").grid(row=row_next, column=0, padx=5, pady=5, sticky="e")
         initial_subtype = self.node.input_subtype if self.node.input_subtype else valid_subtypes[0]
         self.subtype_var = tk.StringVar(value=initial_subtype)
         state = "disabled" if base_name == "Maturity" else "readonly"
-        self.subtype_combo = ttk.Combobox(master, textvariable=self.subtype_var, values=valid_subtypes,
+        self.subtype_combo = ttk.Combobox(adv_frame, textvariable=self.subtype_var, values=valid_subtypes,
                                           state=state, width=20)
         self.subtype_combo.grid(row=row_next, column=1, padx=5, pady=5, sticky="w")
         row_next += 1
@@ -8566,8 +8577,14 @@ class FaultTreeApp:
 
         def body(self, master):
             self.resizable(False, False)
+            nb = ttk.Notebook(master)
+            nb.pack(fill=tk.BOTH, expand=True)
+            gen_frame = ttk.Frame(nb)
+            metric_frame = ttk.Frame(nb)
+            nb.add(gen_frame, text="General")
+            nb.add(metric_frame, text="Metrics")
 
-            ttk.Label(master, text="Component:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(gen_frame, text="Component:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
             if self.node.parents:
                 comp = self.node.parents[0].user_name or f"Node {self.node.parents[0].unique_id}"
             else:
@@ -8584,12 +8601,12 @@ class FaultTreeApp:
                         comp_names.add(name)
             self.comp_var = tk.StringVar(value=comp)
             self.comp_combo = ttk.Combobox(
-                master, textvariable=self.comp_var,
+                gen_frame, textvariable=self.comp_var,
                 values=sorted(comp_names), width=30
             )
             self.comp_combo.grid(row=0, column=1, padx=5, pady=5)
 
-            ttk.Label(master, text="Failure Mode:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(gen_frame, text="Failure Mode:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
             # Include failure modes from both the FTA and any FMEA specific
             # entries so the combo box always lists all available modes.
             self.mode_map = {
@@ -8608,7 +8625,7 @@ class FaultTreeApp:
                     self.mode_map[label] = obj
             mode_names = list(self.mode_map.keys())
             self.mode_var = tk.StringVar(value=self.node.description or self.node.user_name)
-            self.mode_combo = ttk.Combobox(master, textvariable=self.mode_var,
+            self.mode_combo = ttk.Combobox(gen_frame, textvariable=self.mode_var,
                                           values=mode_names, width=30)
             self.mode_combo.grid(row=1, column=1, padx=5, pady=5)
 
@@ -8626,25 +8643,25 @@ class FaultTreeApp:
 
             self.mode_combo.bind("<<ComboboxSelected>>", mode_sel)
 
-            ttk.Label(master, text="Failure Effect:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
-            self.effect_text = tk.Text(master, width=30, height=3)
+            ttk.Label(gen_frame, text="Failure Effect:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
+            self.effect_text = tk.Text(gen_frame, width=30, height=3)
             self.effect_text.insert("1.0", self.node.fmea_effect)
             self.effect_text.grid(row=2, column=1, padx=5, pady=5)
 
-            ttk.Label(master, text="Potential Cause:").grid(row=3, column=0, sticky="e", padx=5, pady=5)
-            self.cause_text = tk.Text(master, width=30, height=3)
+            ttk.Label(gen_frame, text="Potential Cause:").grid(row=3, column=0, sticky="e", padx=5, pady=5)
+            self.cause_text = tk.Text(gen_frame, width=30, height=3)
             self.cause_text.insert("1.0", getattr(self.node, 'fmea_cause', ''))
             self.cause_text.grid(row=3, column=1, padx=5, pady=5)
 
-            ttk.Label(master, text="Related Malfunction:").grid(row=4, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(gen_frame, text="Related Malfunction:").grid(row=4, column=0, sticky="e", padx=5, pady=5)
             self.mal_var = tk.StringVar(value=getattr(self.node, 'fmeda_malfunction', ''))
-            ttk.Entry(master, textvariable=self.mal_var, width=30).grid(row=4, column=1, padx=5, pady=5)
+            ttk.Entry(gen_frame, textvariable=self.mal_var, width=30).grid(row=4, column=1, padx=5, pady=5)
 
-            ttk.Label(master, text="Violates Safety Goal:").grid(row=5, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(gen_frame, text="Violates Safety Goal:").grid(row=5, column=0, sticky="e", padx=5, pady=5)
             preset_goals = self.app.get_top_event_safety_goals(self.node)
             sg_value = ", ".join(preset_goals) if preset_goals else getattr(self.node, 'fmeda_safety_goal', '')
             self.sg_var = tk.StringVar(value=sg_value)
-            self.sg_entry = ttk.Entry(master, textvariable=self.sg_var, width=30)
+            self.sg_entry = ttk.Entry(gen_frame, textvariable=self.sg_var, width=30)
             if preset_goals:
                 self.sg_entry.config(state='readonly')
             self.sg_entry.grid(row=5, column=1, padx=5, pady=5)
@@ -8660,36 +8677,36 @@ class FaultTreeApp:
                             )
                         )
 
-                ttk.Button(master, text="Select", command=choose_goals).grid(row=5, column=2, padx=5, pady=5)
+                ttk.Button(gen_frame, text="Select", command=choose_goals).grid(row=5, column=2, padx=5, pady=5)
 
-            ttk.Label(master, text="Severity (1-10):").grid(row=6, column=0, sticky="e", padx=5, pady=5)
-            self.sev_spin = tk.Spinbox(master, from_=1, to=10, width=5)
+            ttk.Label(metric_frame, text="Severity (1-10):").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+            self.sev_spin = tk.Spinbox(metric_frame, from_=1, to=10, width=5)
             self.sev_spin.delete(0, tk.END)
             self.sev_spin.insert(0, str(self.node.fmea_severity))
-            self.sev_spin.grid(row=6, column=1, sticky="w", padx=5, pady=5)
+            self.sev_spin.grid(row=0, column=1, sticky="w", padx=5, pady=5)
 
-            ttk.Label(master, text="Occurrence (1-10):").grid(row=7, column=0, sticky="e", padx=5, pady=5)
-            self.occ_spin = tk.Spinbox(master, from_=1, to=10, width=5)
+            ttk.Label(metric_frame, text="Occurrence (1-10):").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+            self.occ_spin = tk.Spinbox(metric_frame, from_=1, to=10, width=5)
             self.occ_spin.delete(0, tk.END)
             self.occ_spin.insert(0, str(self.node.fmea_occurrence))
-            self.occ_spin.grid(row=7, column=1, sticky="w", padx=5, pady=5)
+            self.occ_spin.grid(row=1, column=1, sticky="w", padx=5, pady=5)
 
-            ttk.Label(master, text="Detection (1-10):").grid(row=8, column=0, sticky="e", padx=5, pady=5)
-            self.det_spin = tk.Spinbox(master, from_=1, to=10, width=5)
+            ttk.Label(metric_frame, text="Detection (1-10):").grid(row=2, column=0, sticky="e", padx=5, pady=5)
+            self.det_spin = tk.Spinbox(metric_frame, from_=1, to=10, width=5)
             self.det_spin.delete(0, tk.END)
             self.det_spin.insert(0, str(self.node.fmea_detection))
-            self.det_spin.grid(row=8, column=1, sticky="w", padx=5, pady=5)
+            self.det_spin.grid(row=2, column=1, sticky="w", padx=5, pady=5)
 
-            row = 9
+            row = 3
             if not self.hide_diagnostics:
-                ttk.Label(master, text="Diag Coverage (0-1):").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+                ttk.Label(metric_frame, text="Diag Coverage (0-1):").grid(row=row, column=0, sticky="e", padx=5, pady=5)
                 self.dc_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_diag_cov', 0.0))
-                ttk.Entry(master, textvariable=self.dc_var, width=5).grid(row=row, column=1, sticky="w", padx=5, pady=5)
+                ttk.Entry(metric_frame, textvariable=self.dc_var, width=5).grid(row=row, column=1, sticky="w", padx=5, pady=5)
                 row += 1
 
-                ttk.Label(master, text="Mechanism:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+                ttk.Label(metric_frame, text="Mechanism:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
                 self.mech_var = tk.StringVar(value=getattr(self.node, 'fmeda_mechanism', ''))
-                self.mech_combo = ttk.Combobox(master, textvariable=self.mech_var, values=[m.name for m in self.mechanisms], state='readonly', width=30)
+                self.mech_combo = ttk.Combobox(metric_frame, textvariable=self.mech_var, values=[m.name for m in self.mechanisms], state='readonly', width=30)
                 self.mech_combo.grid(row=row, column=1, padx=5, pady=5)
 
                 def mech_sel(_):
@@ -8705,19 +8722,19 @@ class FaultTreeApp:
                 self.dc_var = tk.DoubleVar(value=0.0)
                 self.mech_var = tk.StringVar(value="")
 
-            ttk.Label(master, text="Fault Type:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(metric_frame, text="Fault Type:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
             self.ftype_var = tk.StringVar(value=getattr(self.node, 'fmeda_fault_type', 'permanent'))
-            ttk.Combobox(master, textvariable=self.ftype_var, values=['permanent', 'transient'], state='readonly', width=10).grid(row=row, column=1, sticky="w", padx=5, pady=5)
+            ttk.Combobox(metric_frame, textvariable=self.ftype_var, values=['permanent', 'transient'], state='readonly', width=10).grid(row=row, column=1, sticky="w", padx=5, pady=5)
 
             row += 1
-            ttk.Label(master, text="Fault Fraction:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(metric_frame, text="Fault Fraction:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
             self.ffrac_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_fault_fraction', 1.0))
-            ttk.Entry(master, textvariable=self.ffrac_var, width=5).grid(row=row, column=1, sticky="w", padx=5, pady=5)
+            ttk.Entry(metric_frame, textvariable=self.ffrac_var, width=5).grid(row=row, column=1, sticky="w", padx=5, pady=5)
 
             row += 1
-            ttk.Label(master, text="FIT Rate:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(metric_frame, text="FIT Rate:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
             self.fit_var = tk.DoubleVar(value=getattr(self.node, 'fmeda_fit', 0.0))
-            ttk.Entry(master, textvariable=self.fit_var, width=10).grid(row=row, column=1, sticky="w", padx=5, pady=5)
+            ttk.Entry(metric_frame, textvariable=self.fit_var, width=10).grid(row=row, column=1, sticky="w", padx=5, pady=5)
 
             def comp_sel(_=None):
                 name = self.comp_var.get()
@@ -8729,30 +8746,30 @@ class FaultTreeApp:
             comp_sel()
 
             row += 1
-            ttk.Label(master, text="DC Target:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(metric_frame, text="DC Target:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
             fta_goal = next((g for g in self.app.top_events if g.user_name == self.sg_var.get()), None)
             val = getattr(fta_goal, "sg_dc_target", 0.0) if fta_goal else getattr(self.node, 'fmeda_dc_target', 0.0)
             state = 'disabled' if fta_goal else 'normal'
             self.dc_target_var = tk.DoubleVar(value=val)
-            tk.Entry(master, textvariable=self.dc_target_var, width=8, state=state).grid(row=row, column=1, sticky="w", padx=5, pady=5)
+            tk.Entry(metric_frame, textvariable=self.dc_target_var, width=8, state=state).grid(row=row, column=1, sticky="w", padx=5, pady=5)
 
             row += 1
-            ttk.Label(master, text="SPFM Target:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(metric_frame, text="SPFM Target:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
             val = getattr(fta_goal, "sg_spfm_target", 0.0) if fta_goal else getattr(self.node, 'fmeda_spfm_target', 0.0)
             state = 'disabled' if fta_goal else 'normal'
             self.spfm_target_var = tk.DoubleVar(value=val)
-            tk.Entry(master, textvariable=self.spfm_target_var, width=8, state=state).grid(row=row, column=1, sticky="w", padx=5, pady=5)
+            tk.Entry(metric_frame, textvariable=self.spfm_target_var, width=8, state=state).grid(row=row, column=1, sticky="w", padx=5, pady=5)
 
             row += 1
-            ttk.Label(master, text="LPFM Target:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
+            ttk.Label(metric_frame, text="LPFM Target:").grid(row=row, column=0, sticky="e", padx=5, pady=5)
             val = getattr(fta_goal, "sg_lpfm_target", 0.0) if fta_goal else getattr(self.node, 'fmeda_lpfm_target', 0.0)
             state = 'disabled' if fta_goal else 'normal'
             self.lpfm_target_var = tk.DoubleVar(value=val)
-            tk.Entry(master, textvariable=self.lpfm_target_var, width=8, state=state).grid(row=row, column=1, sticky="w", padx=5, pady=5)
+            tk.Entry(metric_frame, textvariable=self.lpfm_target_var, width=8, state=state).grid(row=row, column=1, sticky="w", padx=5, pady=5)
 
             row += 1
-            ttk.Label(master, text="Requirements:").grid(row=row, column=0, sticky="ne", padx=5, pady=5)
-            self.req_frame = ttk.Frame(master)
+            ttk.Label(metric_frame, text="Requirements:").grid(row=row, column=0, sticky="ne", padx=5, pady=5)
+            self.req_frame = ttk.Frame(metric_frame)
             self.req_frame.grid(row=row, column=1, padx=5, pady=5, sticky="w")
             self.req_listbox = tk.Listbox(self.req_frame, height=4, width=40)
             self.req_listbox.grid(row=0, column=0, columnspan=3, sticky="w")
