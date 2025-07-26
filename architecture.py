@@ -832,6 +832,39 @@ class SysMLDiagramWindow(tk.Toplevel):
             self.canvas.create_line(sx, sy, ex, ey, dash=(2, 2), arrow=tk.LAST)
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
 
+    def _create_round_rect(self, x1, y1, x2, y2, radius=10, **kwargs):
+        """Draw a rectangle with rounded corners on the canvas."""
+        rad = min(radius, abs(x2 - x1) / 2, abs(y2 - y1) / 2)
+        points = [
+            x1 + rad,
+            y1,
+            x2 - rad,
+            y1,
+            x2,
+            y1,
+            x2,
+            y1 + rad,
+            x2,
+            y2 - rad,
+            x2,
+            y2,
+            x2 - rad,
+            y2,
+            x1 + rad,
+            y2,
+            x1,
+            y2,
+            x1,
+            y2 - rad,
+            x1,
+            y1 + rad,
+            x1,
+            y1,
+        ]
+        return self.canvas.create_polygon(
+            points, smooth=True, splinesteps=36, **kwargs
+        )
+
     def draw_object(self, obj: SysMLObject):
         x = obj.x * self.zoom
         y = obj.y * self.zoom
@@ -876,11 +909,12 @@ class SysMLDiagramWindow(tk.Toplevel):
                 outline=outline,
             )
         elif obj.obj_type == "System Boundary":
-            self.canvas.create_rectangle(
+            self._create_round_rect(
                 x - w,
                 y - h,
                 x + w,
                 y + h,
+                radius=12 * self.zoom,
                 dash=(4, 2),
                 outline=outline,
                 fill=color,
@@ -955,23 +989,36 @@ class SysMLDiagramWindow(tk.Toplevel):
                     font=self.font,
                 )
             else:
-                self.canvas.create_rectangle(
-                    x - w,
-                    y - h,
-                    x + w,
-                    y + h,
-                    dash=dash,
-                    fill=fill,
-                    outline=outline,
-                )
+                if obj.obj_type in ("Action Usage", "Action", "CallBehaviorAction"):
+                    self._create_round_rect(
+                        x - w,
+                        y - h,
+                        x + w,
+                        y + h,
+                        radius=8 * self.zoom,
+                        dash=dash,
+                        fill=fill,
+                        outline=outline,
+                    )
+                else:
+                    self.canvas.create_rectangle(
+                        x - w,
+                        y - h,
+                        x + w,
+                        y + h,
+                        dash=dash,
+                        fill=fill,
+                        outline=outline,
+                    )
         elif obj.obj_type == "Block":
             left, top = x - w, y - h
             right, bottom = x + w, y + h
-            self.canvas.create_rectangle(
+            self._create_round_rect(
                 left,
                 top,
                 right,
                 bottom,
+                radius=6 * self.zoom,
                 fill=color,
                 outline=outline,
             )
@@ -1057,11 +1104,12 @@ class SysMLDiagramWindow(tk.Toplevel):
                                         x + half, y + 5 * self.zoom,
                                         fill="black")
         else:
-            self.canvas.create_rectangle(
+            self._create_round_rect(
                 x - w,
                 y - h,
                 x + w,
                 y + h,
+                radius=6 * self.zoom,
                 fill=color,
                 outline=outline,
             )
