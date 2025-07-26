@@ -299,26 +299,35 @@ class ReliabilityWindow(tk.Toplevel):
 
         class ParamDialog(simpledialog.Dialog):
             def body(self, master):
+                self.resizable(False, False)
                 self.vars = {}
+                nb = ttk.Notebook(master)
+                nb.pack(fill=tk.BOTH, expand=True)
+                gen_tab = ttk.Frame(nb)
+                attr_tab = ttk.Frame(nb)
+                nb.add(gen_tab, text="General")
+                nb.add(attr_tab, text="Attributes")
+
                 row = 0
-                ttk.Label(master, text="Quantity").grid(row=row, column=0, padx=5, pady=5, sticky="e")
+                ttk.Label(gen_tab, text="Quantity").grid(row=row, column=0, padx=5, pady=5, sticky="e")
                 qty_var = tk.IntVar(value=comp.quantity)
-                ttk.Entry(master, textvariable=qty_var).grid(row=row, column=1, padx=5, pady=5)
+                ttk.Entry(gen_tab, textvariable=qty_var).grid(row=row, column=1, padx=5, pady=5)
                 self.vars["__qty__"] = qty_var
                 row += 1
-                ttk.Label(master, text="Qualification").grid(row=row, column=0, padx=5, pady=5, sticky="e")
+                ttk.Label(gen_tab, text="Qualification").grid(row=row, column=0, padx=5, pady=5, sticky="e")
                 qual_var = tk.StringVar(value=comp.qualification)
-                ttk.Combobox(master, textvariable=qual_var, values=QUALIFICATIONS, state="readonly").grid(row=row, column=1, padx=5, pady=5)
+                ttk.Combobox(gen_tab, textvariable=qual_var, values=QUALIFICATIONS, state="readonly").grid(row=row, column=1, padx=5, pady=5)
                 self.vars["__qual__"] = qual_var
-                row += 1
+
+                row = 0
                 for k, v in comp.attributes.items():
-                    ttk.Label(master, text=k).grid(row=row, column=0, padx=5, pady=5, sticky="e")
+                    ttk.Label(attr_tab, text=k).grid(row=row, column=0, padx=5, pady=5, sticky="e")
                     if isinstance(template.get(k), list):
                         var = tk.StringVar(value=str(v))
-                        ttk.Combobox(master, textvariable=var, values=template[k], state="readonly").grid(row=row, column=1, padx=5, pady=5)
+                        ttk.Combobox(attr_tab, textvariable=var, values=template[k], state="readonly").grid(row=row, column=1, padx=5, pady=5)
                     else:
                         var = tk.StringVar(value=str(v))
-                        ttk.Entry(master, textvariable=var).grid(row=row, column=1, padx=5, pady=5)
+                        ttk.Entry(attr_tab, textvariable=var).grid(row=row, column=1, padx=5, pady=5)
                     self.vars[k] = var
                     row += 1
 

@@ -79,27 +79,36 @@ class ParticipantDialog(simpledialog.Dialog):
         super().__init__(parent, title="Review Participants")
 
     def body(self, master):
-        tk.Label(master, text="Moderators:").pack(anchor="w")
-        header = tk.Frame(master)
+        self.resizable(False, False)
+        nb = ttk.Notebook(master)
+        nb.pack(fill=tk.BOTH, expand=True)
+
+        mod_tab = ttk.Frame(nb)
+        part_tab = ttk.Frame(nb)
+        nb.add(mod_tab, text="Moderators")
+        nb.add(part_tab, text="Participants")
+
+        tk.Label(mod_tab, text="Moderators:").pack(anchor="w")
+        header = tk.Frame(mod_tab)
         header.pack(fill=tk.X)
         tk.Label(header, text="Name", width=15).pack(side=tk.LEFT)
         tk.Label(header, text="Email", width=20).pack(side=tk.LEFT, padx=5)
-        self.mod_frame = tk.Frame(master)
+        self.mod_frame = tk.Frame(mod_tab)
         self.mod_frame.pack(fill=tk.BOTH, expand=True)
-        tk.Button(master, text="Add Moderator", command=self.add_mod_row).pack(pady=5)
+        tk.Button(mod_tab, text="Add Moderator", command=self.add_mod_row).pack(pady=5)
         for m in (self.initial_mods or [None]):
             self.add_mod_row(m)
 
-        tk.Label(master, text="Participants:").pack(anchor="w")
-        phead = tk.Frame(master)
+        tk.Label(part_tab, text="Participants:").pack(anchor="w")
+        phead = tk.Frame(part_tab)
         phead.pack(fill=tk.X)
         tk.Label(phead, text="Name", width=15).pack(side=tk.LEFT)
         tk.Label(phead, text="Email", width=20).pack(side=tk.LEFT, padx=5)
         if self.joint:
             tk.Label(phead, text="Role", width=10).pack(side=tk.LEFT, padx=5)
-        self.part_frame = tk.Frame(master)
+        self.part_frame = tk.Frame(part_tab)
         self.part_frame.pack(fill=tk.BOTH, expand=True)
-        tk.Button(master, text="Add Participant", command=self.add_part_row).pack(pady=5)
+        tk.Button(part_tab, text="Add Participant", command=self.add_part_row).pack(pady=5)
         for p in (self.initial_parts or [None]):
             self.add_part_row(p)
 
@@ -183,26 +192,35 @@ class EmailConfigDialog(simpledialog.Dialog):
         super().__init__(parent, title="Email Settings")
 
     def body(self, master):
-        tk.Label(master, text="SMTP Server:").grid(row=0, column=0, sticky="w")
-        self.server_entry = tk.Entry(master)
+        self.resizable(False, False)
+        nb = ttk.Notebook(master)
+        nb.pack(fill=tk.BOTH, expand=True)
+
+        server_tab = ttk.Frame(nb)
+        cred_tab = ttk.Frame(nb)
+        nb.add(server_tab, text="Server")
+        nb.add(cred_tab, text="Credentials")
+
+        tk.Label(server_tab, text="SMTP Server:").grid(row=0, column=0, sticky="w")
+        self.server_entry = tk.Entry(server_tab)
         self.server_entry.grid(row=0, column=1, pady=2)
 
-        tk.Label(master, text="Port:").grid(row=1, column=0, sticky="w")
-        self.port_entry = tk.Entry(master)
+        tk.Label(server_tab, text="Port:").grid(row=1, column=0, sticky="w")
+        self.port_entry = tk.Entry(server_tab)
         self.port_entry.insert(0, "465")
         self.port_entry.grid(row=1, column=1, pady=2)
 
-        tk.Label(master, text="Email:").grid(row=2, column=0, sticky="w")
-        self.email_entry = tk.Entry(master)
+        tk.Label(cred_tab, text="Email:").grid(row=0, column=0, sticky="w")
+        self.email_entry = tk.Entry(cred_tab)
         if self.default_email:
             self.email_entry.insert(0, self.default_email)
-        self.email_entry.grid(row=2, column=1, pady=2)
+        self.email_entry.grid(row=0, column=1, pady=2)
 
-        tk.Label(master, text="Password:").grid(row=3, column=0, sticky="w")
-        self.pass_entry = tk.Entry(master, show="*")
-        self.pass_entry.grid(row=3, column=1, pady=2)
-        tk.Label(master, text="Use an app password for Gmail with 2FA.",
-                 font=(None, 8)).grid(row=4, column=0, columnspan=2, pady=(2,0))
+        tk.Label(cred_tab, text="Password:").grid(row=1, column=0, sticky="w")
+        self.pass_entry = tk.Entry(cred_tab, show="*")
+        self.pass_entry.grid(row=1, column=1, pady=2)
+        tk.Label(cred_tab, text="Use an app password for Gmail with 2FA.",
+                 font=(None, 8)).grid(row=2, column=0, columnspan=2, pady=(2,0))
         return self.email_entry
 
     def apply(self):
@@ -226,6 +244,7 @@ class ReviewScopeDialog(simpledialog.Dialog):
         super().__init__(parent, title="Select Review Scope")
 
     def body(self, master):
+        self.resizable(False, False)
         tk.Label(master, text="FTAs:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.fta_vars = []
         fta_frame = tk.Frame(master)
@@ -293,6 +312,7 @@ class UserSelectDialog(simpledialog.Dialog):
         super().__init__(parent, title="Select User")
 
     def body(self, master):
+        self.resizable(False, False)
         tk.Label(master, text="Name:").grid(row=0, column=0, sticky="w")
         names = [p.name for p in self.participants]
         self.name_var = tk.StringVar()
