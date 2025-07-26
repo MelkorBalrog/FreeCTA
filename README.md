@@ -147,6 +147,31 @@ documentation, including FTA top level events.
 
 The **Hazard Explorer** window lists all hazards from every HARA in a read-only table for quick review or CSV export.
 
+### SOTIF Analysis
+
+The **Qualitative Analysis** menu also provides dedicated SOTIF tools.  Selecting
+**Triggering Conditions** or **Functional Insufficiencies** opens read-only lists
+of each node type with an **Export CSV** button.  These views gather all
+triggering condition and functional insufficiency nodes from the FTAs so the
+information can be reviewed separately.
+
+Two additional tables support tracing between these elements:
+
+* **FI2TC Analysis** – links each functional insufficiency to the triggering
+  conditions, scenarios and mitigation measures that reveal the hazard.
+* **TC2FI Analysis** – starts from the triggering condition and lists the
+  impacted functions, architecture elements and related insufficiencies.
+
+HARA values such as severity and the associated safety goal flow into these
+tables so SOTIF considerations remain connected to the overall risk assessment.
+Minimal cut sets calculated from the FTAs highlight combinations of FIs and TCs
+that form *CTAs*.  From a CTA entry you can generate a functional modification
+requirement describing how the design must change to avoid the unsafe behaviour.
+
+All FI2TC and TC2FI documents appear under the **Analyses** tab so they can be
+opened alongside HARA tables, FTAs and CTAs for a complete view of functional
+safety and SOTIF issues.
+
 ## License
 
 This project is licensed under the GNU General Public License version 3. See the [LICENSE](LICENSE) file for details.
