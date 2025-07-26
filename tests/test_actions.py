@@ -11,10 +11,10 @@ class ActionNameTests(unittest.TestCase):
 
     def test_activity_actions(self):
         diag = self.repo.create_diagram("Activity Diagram", name="MainFlow")
-        act = self.repo.create_element("Action Usage", name="DoThing")
+        act = self.repo.create_element("Action", name="DoThing")
         obj = {
             "obj_id": 1,
-            "obj_type": "Action Usage",
+            "obj_type": "Action",
             "x": 10,
             "y": 10,
             "element_id": act.elem_id,
@@ -29,11 +29,26 @@ class ActionNameTests(unittest.TestCase):
 
     def test_activity_actions_from_elements(self):
         diag = self.repo.create_diagram("Activity Diagram", name="Flow")
-        act = self.repo.create_element("Action Usage", name="Act")
+        act = self.repo.create_element("Action", name="Act")
         self.repo.add_element_to_diagram(diag.diag_id, act.elem_id)
         names = self.repo.get_activity_actions()
         self.assertIn("Flow", names)
         self.assertIn("Act", names)
+
+    def test_call_behavior_action_names(self):
+        diag = self.repo.create_diagram("Activity Diagram", name="Top")
+        cba = self.repo.create_element("CallBehaviorAction", name="Invoke")
+        diag.objects.append({
+            "obj_id": 2,
+            "obj_type": "CallBehaviorAction",
+            "x": 0,
+            "y": 0,
+            "element_id": cba.elem_id,
+            "properties": {"name": "Invoke"},
+        })
+        names = self.repo.get_activity_actions()
+        self.assertIn("Invoke", names)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -232,7 +232,7 @@ class SysMLRepository:
                 names.append(diag.name)
             for obj in diag.objects:
                 typ = obj.get("obj_type") or obj.get("type")
-                if typ in ("Action Usage", "Action"):
+                if typ in ("Action Usage", "Action", "CallBehaviorAction"):
                     name = obj.get("properties", {}).get("name", "")
                     elem_id = obj.get("element_id")
                     if not name and elem_id in self.elements:
@@ -241,7 +241,7 @@ class SysMLRepository:
                         names.append(name)
             for elem_id in getattr(diag, "elements", []):
                 elem = self.elements.get(elem_id)
-                if elem and elem.elem_type in ("Action Usage", "Action"):
+                if elem and elem.elem_type in ("Action Usage", "Action", "CallBehaviorAction"):
                     if elem.name:
                         names.append(elem.name)
         return sorted(set(n for n in names if n))

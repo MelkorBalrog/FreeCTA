@@ -1,7 +1,8 @@
 import tkinter as tk
 import tkinter.font as tkFont
 from tkinter import ttk, simpledialog, messagebox
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Tuple
 
 from sysml_repository import SysMLRepository, SysMLDiagram, SysMLElement
@@ -20,6 +21,7 @@ OBJECT_COLORS: dict[str, str] = {
     "System Boundary": "#ECEFF1",
     "Action Usage": "#E8F5E9",
     "Action": "#E8F5E9",
+    "CallBehaviorAction": "#E8F5E9",
     "Part": "#FFFDE7",
     "Port": "#F3E5F5",
     "Block": "#E0E0E0",
@@ -125,6 +127,22 @@ class SysMLObject:
     requirements: List[dict] = field(default_factory=list)
 
 
+@dataclass
+class OperationParameter:
+    """Representation of a SysML parameter."""
+    name: str
+    type: str = ""
+    direction: str = "in"
+
+
+@dataclass
+class OperationDefinition:
+    """Operation with a list of parameters and an optional return type."""
+    name: str
+    parameters: List[OperationParameter] = field(default_factory=list)
+    return_type: str = ""
+
+
 def calculate_allocated_asil(requirements: List[dict]) -> str:
     """Return highest ASIL level from the given requirement list."""
     asil = "QM"
@@ -146,6 +164,34 @@ def remove_orphan_ports(objs: List[SysMLObject]) -> None:
                 continue
         filtered.append(o)
     objs[:] = filtered
+
+
+def parse_operations(raw: str) -> List[OperationDefinition]:
+    """Return a list of operations parsed from *raw* JSON or comma text."""
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        ops = []
+        for o in data:
+            params = [OperationParameter(**p) for p in o.get("parameters", [])]
+            ops.append(OperationDefinition(o.get("name", ""), params, o.get("return_type", "")))
+        return ops
+    except Exception:
+        return [OperationDefinition(n) for n in [p.strip() for p in raw.split(",") if p.strip()]]
+
+
+def format_operation(op: OperationDefinition) -> str:
+    """Return a readable string for an operation."""
+    plist = ", ".join(
+        f"{p.name}: {p.type}" if p.type else p.name for p in op.parameters
+    )
+    ret = f" : {op.return_type}" if op.return_type else ""
+    return f"{op.name}({plist}){ret}"
+
+
+def operations_to_json(ops: List[OperationDefinition]) -> str:
+    return json.dumps([asdict(o) for o in ops])
 
 
 @dataclass
@@ -505,15 +551,8 @@ class SysMLDiagramWindow(tk.Toplevel):
         y = self.canvas.canvasy(event.y)
         obj = self.find_object(x, y)
         if obj:
-            diag_id = self.repo.get_linked_diagram(obj.element_id)
-            if diag_id and diag_id in self.repo.diagrams:
-                diag = self.repo.diagrams[diag_id]
-                if diag.diag_type == "Activity Diagram":
-                    ActivityDiagramWindow(self.master, self.app, diagram_id=diag_id)
-                    return
-                if diag.diag_type == "Internal Block Diagram":
-                    InternalBlockDiagramWindow(self.master, self.app, diagram_id=diag_id)
-                    return
+            if self._open_linked_diagram(obj):
+                return
             SysMLObjectDialog(self, obj)
             self.redraw()
         else:
@@ -544,7 +583,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         menu = tk.Menu(self, tearoff=0)
         menu.add_command(label="Properties", command=lambda: self._edit_object(obj))
         diag_id = self.repo.get_linked_diagram(obj.element_id)
-        if diag_id and diag_id in self.repo.diagrams:
+        if diag_id and diag_id in self.repo.diagrams or obj.properties.get("view"):
             menu.add_command(label="Open Linked Diagram", command=lambda: self._open_linked_diagram(obj))
         menu.add_separator()
         menu.add_command(label="Copy", command=self.copy_selected)
@@ -558,20 +597,28 @@ class SysMLDiagramWindow(tk.Toplevel):
         self._sync_to_repository()
         self.redraw()
 
-    def _open_linked_diagram(self, obj):
+    def _open_linked_diagram(self, obj) -> bool:
         diag_id = self.repo.get_linked_diagram(obj.element_id)
-        if not diag_id or diag_id not in self.repo.diagrams:
-            return
-        diag = self.repo.diagrams[diag_id]
+        view_id = obj.properties.get("view")
+        if obj.obj_type == "CallBehaviorAction" and diag_id and view_id and view_id in self.repo.diagrams:
+            if messagebox.askyesno("Open Diagram", "Open Behavior Diagram?\nChoose No for View"):
+                chosen = diag_id
+            else:
+                chosen = view_id
+        else:
+            chosen = diag_id or view_id
+        if not chosen or chosen not in self.repo.diagrams:
+            return False
+        diag = self.repo.diagrams[chosen]
         if diag.diag_type == "Use Case Diagram":
-            UseCaseDiagramWindow(self.master, self.app, diagram_id=diag_id)
+            UseCaseDiagramWindow(self.master, self.app, diagram_id=chosen)
         elif diag.diag_type == "Activity Diagram":
-            ActivityDiagramWindow(self.master, self.app, diagram_id=diag_id)
+            ActivityDiagramWindow(self.master, self.app, diagram_id=chosen)
         elif diag.diag_type == "Block Diagram":
-            BlockDiagramWindow(self.master, self.app, diagram_id=diag_id)
+            BlockDiagramWindow(self.master, self.app, diagram_id=chosen)
         elif diag.diag_type == "Internal Block Diagram":
-            InternalBlockDiagramWindow(self.master, self.app, diagram_id=diag_id)
-
+            InternalBlockDiagramWindow(self.master, self.app, diagram_id=chosen)
+        return True
     def on_ctrl_mousewheel(self, event):
         if event.delta > 0:
             self.zoom_in()
@@ -849,7 +896,7 @@ class SysMLDiagramWindow(tk.Toplevel):
                     anchor="s",
                     font=self.font,
                 )
-        elif obj.obj_type in ("Action Usage", "Action", "Part", "Port"):
+        elif obj.obj_type in ("Action Usage", "Action", "CallBehaviorAction", "Part", "Port"):
             dash = ()
             fill = color
             if obj.obj_type == "Part":
@@ -941,7 +988,15 @@ class SysMLDiagramWindow(tk.Toplevel):
                 ("Attributes", obj.properties.get("valueProperties", "")),
                 ("Parts", obj.properties.get("partProperties", "")),
                 ("References", obj.properties.get("referenceProperties", "")),
-                ("Operations", obj.properties.get("operations", "")),
+                (
+                    "Operations",
+                    "; ".join(
+                        format_operation(op)
+                        for op in parse_operations(
+                            obj.properties.get("operations", "")
+                        )
+                    ),
+                ),
                 ("Constraints", obj.properties.get("constraintProperties", "")),
                 ("Ports", obj.properties.get("ports", "")),
                 (
@@ -1293,6 +1348,7 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.height_var = tk.StringVar(value=str(self.obj.height))
         self.entries = {}
         self.listboxes = {}
+        self._operations: List[OperationDefinition] = []
         prop_row = 0
         rel_row = 0
         if self.obj.obj_type == "Part":
@@ -1313,7 +1369,19 @@ class SysMLObjectDialog(simpledialog.Dialog):
             frame = rel_frame if prop in reliability_props else prop_frame
             row = rel_row if prop in reliability_props else prop_row
             ttk.Label(frame, text=f"{prop}:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
-            if prop in list_props:
+            if prop == "operations":
+                lb = tk.Listbox(frame, height=4)
+                self._operations = parse_operations(self.obj.properties.get(prop, ""))
+                for op in self._operations:
+                    lb.insert(tk.END, format_operation(op))
+                lb.grid(row=row, column=1, padx=4, pady=2, sticky="we")
+                btnf = ttk.Frame(frame)
+                btnf.grid(row=row, column=2, padx=2)
+                ttk.Button(btnf, text="Add", command=self.add_operation).pack(side=tk.TOP)
+                ttk.Button(btnf, text="Edit", command=self.edit_operation).pack(side=tk.TOP)
+                ttk.Button(btnf, text="Remove", command=self.remove_operation).pack(side=tk.TOP)
+                self.listboxes[prop] = lb
+            elif prop in list_props:
                 lb = tk.Listbox(frame, height=4)
                 items = [p.strip() for p in self.obj.properties.get(prop, "").split(",") if p.strip()]
                 for it in items:
@@ -1476,16 +1544,30 @@ class SysMLObjectDialog(simpledialog.Dialog):
             ttk.Combobox(link_frame, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=link_row, column=1, padx=4, pady=2)
             link_row += 1
         elif self.obj.obj_type in ("Action Usage", "Action"):
-            diagrams = [
-                d for d in repo.diagrams.values()
-                if d.diag_type in ("Activity Diagram", "Internal Block Diagram")
-            ]
+            diagrams = [d for d in repo.diagrams.values() if d.diag_type == "Activity Diagram"]
             self.behavior_map = {d.name or d.diag_id: d.diag_id for d in diagrams}
             ttk.Label(link_frame, text="Behavior Diagram:").grid(row=link_row, column=0, sticky="e", padx=4, pady=2)
             cur_id = repo.get_linked_diagram(self.obj.element_id)
             cur_name = next((n for n, i in self.behavior_map.items() if i == cur_id), "")
             self.behavior_var = tk.StringVar(value=cur_name)
             ttk.Combobox(link_frame, textvariable=self.behavior_var, values=list(self.behavior_map.keys())).grid(row=link_row, column=1, padx=4, pady=2)
+            link_row += 1
+        elif self.obj.obj_type == "CallBehaviorAction":
+            bdiags = [d for d in repo.diagrams.values() if d.diag_type == "Activity Diagram"]
+            self.behavior_map = {d.name or d.diag_id: d.diag_id for d in bdiags}
+            ttk.Label(link_frame, text="Behavior Diagram:").grid(row=link_row, column=0, sticky="e", padx=4, pady=2)
+            cur_id = repo.get_linked_diagram(self.obj.element_id)
+            cur_name = next((n for n, i in self.behavior_map.items() if i == cur_id), "")
+            self.behavior_var = tk.StringVar(value=cur_name)
+            ttk.Combobox(link_frame, textvariable=self.behavior_var, values=list(self.behavior_map.keys())).grid(row=link_row, column=1, padx=4, pady=2)
+            link_row += 1
+            vdiags = [d for d in repo.diagrams.values() if d.diag_type == "Internal Block Diagram"]
+            self.view_map = {d.name or d.diag_id: d.diag_id for d in vdiags}
+            ttk.Label(link_frame, text="View:").grid(row=link_row, column=0, sticky="e", padx=4, pady=2)
+            view_id = self.obj.properties.get("view", "")
+            vname = next((n for n, i in self.view_map.items() if i == view_id), "")
+            self.view_var = tk.StringVar(value=vname)
+            ttk.Combobox(link_frame, textvariable=self.view_var, values=list(self.view_map.keys())).grid(row=link_row, column=1, padx=4, pady=2)
             link_row += 1
         elif self.obj.obj_type == "Part":
             blocks = [e for e in repo.elements.values() if e.elem_type == "Block"]
@@ -1532,6 +1614,67 @@ class SysMLObjectDialog(simpledialog.Dialog):
         sel = list(lb.curselection())
         for idx in reversed(sel):
             lb.delete(idx)
+
+    class OperationDialog(simpledialog.Dialog):
+        def __init__(self, parent, operation=None):
+            self.operation = operation
+            super().__init__(parent, title="Operation")
+
+        def body(self, master):
+            ttk.Label(master, text="Name:").grid(row=0, column=0, padx=4, pady=2, sticky="e")
+            self.name_var = tk.StringVar(value=getattr(self.operation, "name", ""))
+            ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, padx=4, pady=2)
+            ttk.Label(master, text="Parameters (name:type:dir)").grid(row=1, column=0, columnspan=2, padx=4, pady=2)
+            self.param_text = tk.Text(master, height=4, width=30)
+            if self.operation:
+                lines = [f"{p.name}:{p.type}:{p.direction}" for p in self.operation.parameters]
+                self.param_text.insert("1.0", "\n".join(lines))
+            self.param_text.grid(row=2, column=0, columnspan=2, padx=4, pady=2)
+            ttk.Label(master, text="Return type:").grid(row=3, column=0, padx=4, pady=2, sticky="e")
+            self.ret_var = tk.StringVar(value=getattr(self.operation, "return_type", ""))
+            ttk.Entry(master, textvariable=self.ret_var).grid(row=3, column=1, padx=4, pady=2)
+
+        def apply(self):
+            name = self.name_var.get().strip()
+            params = []
+            for line in self.param_text.get("1.0", tk.END).splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(":")
+                if len(parts) == 1:
+                    params.append(OperationParameter(name=parts[0]))
+                elif len(parts) == 2:
+                    params.append(OperationParameter(name=parts[0], type=parts[1]))
+                else:
+                    params.append(OperationParameter(name=parts[0], type=parts[1], direction=parts[2]))
+            self.result = OperationDefinition(name, params, self.ret_var.get().strip())
+
+    def add_operation(self):
+        dlg = self.OperationDialog(self)
+        if dlg.result:
+            self._operations.append(dlg.result)
+            self.listboxes["operations"].insert(tk.END, format_operation(dlg.result))
+
+    def edit_operation(self):
+        lb = self.listboxes["operations"]
+        sel = lb.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        op = self._operations[idx]
+        dlg = self.OperationDialog(self, op)
+        if dlg.result:
+            self._operations[idx] = dlg.result
+            lb.delete(idx)
+            lb.insert(idx, format_operation(dlg.result))
+
+    def remove_operation(self):
+        lb = self.listboxes["operations"]
+        sel = list(lb.curselection())
+        for idx in reversed(sel):
+            lb.delete(idx)
+            del self._operations[idx]
 
     def add_requirement(self):
         if not global_requirements:
@@ -1591,11 +1734,16 @@ class SysMLObjectDialog(simpledialog.Dialog):
             if self.obj.element_id and self.obj.element_id in repo.elements:
                 repo.elements[self.obj.element_id].properties[prop] = var.get()
         for prop, lb in self.listboxes.items():
-            items = [lb.get(i) for i in range(lb.size())]
-            joined = ", ".join(items)
-            self.obj.properties[prop] = joined
-            if self.obj.element_id and self.obj.element_id in repo.elements:
-                repo.elements[self.obj.element_id].properties[prop] = joined
+            if prop == "operations":
+                self.obj.properties[prop] = operations_to_json(self._operations)
+                if self.obj.element_id and self.obj.element_id in repo.elements:
+                    repo.elements[self.obj.element_id].properties[prop] = self.obj.properties[prop]
+            else:
+                items = [lb.get(i) for i in range(lb.size())]
+                joined = ", ".join(items)
+                self.obj.properties[prop] = joined
+                if self.obj.element_id and self.obj.element_id in repo.elements:
+                    repo.elements[self.obj.element_id].properties[prop] = joined
         try:
             self.obj.width = float(self.width_var.get())
             self.obj.height = float(self.height_var.get())
@@ -1633,6 +1781,16 @@ class SysMLObjectDialog(simpledialog.Dialog):
             link_id = self.diag_map.get(self.diagram_var.get())
         if hasattr(self, "behavior_var") or hasattr(self, "diagram_var"):
             repo.link_diagram(self.obj.element_id, link_id)
+        if hasattr(self, "view_var"):
+            view_id = self.view_map.get(self.view_var.get())
+            if view_id:
+                self.obj.properties["view"] = view_id
+                if self.obj.element_id and self.obj.element_id in repo.elements:
+                    repo.elements[self.obj.element_id].properties["view"] = view_id
+            else:
+                self.obj.properties.pop("view", None)
+                if self.obj.element_id and self.obj.element_id in repo.elements:
+                    repo.elements[self.obj.element_id].properties.pop("view", None)
         if hasattr(self, "def_var"):
             name = self.def_var.get()
             def_id = self.def_map.get(name)
@@ -1796,7 +1954,8 @@ class UseCaseDiagramWindow(SysMLDiagramWindow):
 class ActivityDiagramWindow(SysMLDiagramWindow):
     def __init__(self, master, app, diagram_id: str | None = None):
         tools = [
-            "Action Usage",
+            "Action",
+            "CallBehaviorAction",
             "Initial",
             "Final",
             "Decision",
@@ -2398,15 +2557,20 @@ class ArchitectureManagerDialog(tk.Toplevel):
         if elem_id.startswith("obj_"):
             messagebox.showerror("Drop Error", "Objects cannot be dropped on a diagram.")
             return
-        # Dropping a diagram onto an Activity Diagram creates a referenced action
+        # Dropping a diagram onto an Activity Diagram creates a CallBehaviorAction
         if elem_id.startswith("diag_"):
             src_diag = repo.diagrams.get(elem_id[5:])
             if src_diag and diagram.diag_type == "Activity Diagram" and src_diag.diag_type in ("Activity Diagram", "Internal Block Diagram"):
-                act = repo.create_element("Action Usage", name=src_diag.name, owner=diagram.package)
+                act = repo.create_element("CallBehaviorAction", name=src_diag.name, owner=diagram.package)
                 repo.add_element_to_diagram(diagram.diag_id, act.elem_id)
-                obj = SysMLObject(_get_next_id(), "Action Usage", 50.0, 50.0, element_id=act.elem_id, properties={"name": src_diag.name})
+                props = {"name": src_diag.name}
+                if src_diag.diag_type == "Internal Block Diagram":
+                    props["view"] = src_diag.diag_id
+                    repo.link_diagram(act.elem_id, None)
+                else:
+                    repo.link_diagram(act.elem_id, src_diag.diag_id)
+                obj = SysMLObject(_get_next_id(), "CallBehaviorAction", 50.0, 50.0, element_id=act.elem_id, properties=props)
                 diagram.objects.append(obj.__dict__)
-                repo.link_diagram(act.elem_id, src_diag.diag_id)
                 return
             messagebox.showerror("Drop Error", "This item cannot be dropped on that diagram.")
             return
