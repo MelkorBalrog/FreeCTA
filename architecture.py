@@ -1,7 +1,8 @@
 import tkinter as tk
 import tkinter.font as tkFont
 from tkinter import ttk, simpledialog, messagebox
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Tuple
 
 from sysml_repository import SysMLRepository, SysMLDiagram, SysMLElement
@@ -125,6 +126,22 @@ class SysMLObject:
     requirements: List[dict] = field(default_factory=list)
 
 
+@dataclass
+class OperationParameter:
+    """Representation of a SysML parameter."""
+    name: str
+    type: str = ""
+    direction: str = "in"
+
+
+@dataclass
+class OperationDefinition:
+    """Operation with a list of parameters and an optional return type."""
+    name: str
+    parameters: List[OperationParameter] = field(default_factory=list)
+    return_type: str = ""
+
+
 def calculate_allocated_asil(requirements: List[dict]) -> str:
     """Return highest ASIL level from the given requirement list."""
     asil = "QM"
@@ -146,6 +163,34 @@ def remove_orphan_ports(objs: List[SysMLObject]) -> None:
                 continue
         filtered.append(o)
     objs[:] = filtered
+
+
+def parse_operations(raw: str) -> List[OperationDefinition]:
+    """Return a list of operations parsed from *raw* JSON or comma text."""
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        ops = []
+        for o in data:
+            params = [OperationParameter(**p) for p in o.get("parameters", [])]
+            ops.append(OperationDefinition(o.get("name", ""), params, o.get("return_type", "")))
+        return ops
+    except Exception:
+        return [OperationDefinition(n) for n in [p.strip() for p in raw.split(",") if p.strip()]]
+
+
+def format_operation(op: OperationDefinition) -> str:
+    """Return a readable string for an operation."""
+    plist = ", ".join(
+        f"{p.name}: {p.type}" if p.type else p.name for p in op.parameters
+    )
+    ret = f" : {op.return_type}" if op.return_type else ""
+    return f"{op.name}({plist}){ret}"
+
+
+def operations_to_json(ops: List[OperationDefinition]) -> str:
+    return json.dumps([asdict(o) for o in ops])
 
 
 @dataclass
@@ -941,7 +986,15 @@ class SysMLDiagramWindow(tk.Toplevel):
                 ("Attributes", obj.properties.get("valueProperties", "")),
                 ("Parts", obj.properties.get("partProperties", "")),
                 ("References", obj.properties.get("referenceProperties", "")),
-                ("Operations", obj.properties.get("operations", "")),
+                (
+                    "Operations",
+                    "; ".join(
+                        format_operation(op)
+                        for op in parse_operations(
+                            obj.properties.get("operations", "")
+                        )
+                    ),
+                ),
                 ("Constraints", obj.properties.get("constraintProperties", "")),
                 ("Ports", obj.properties.get("ports", "")),
                 (
@@ -1293,6 +1346,7 @@ class SysMLObjectDialog(simpledialog.Dialog):
             self.height_var = tk.StringVar(value=str(self.obj.height))
         self.entries = {}
         self.listboxes = {}
+        self._operations: List[OperationDefinition] = []
         prop_row = 0
         rel_row = 0
         if self.obj.obj_type == "Part":
@@ -1313,7 +1367,19 @@ class SysMLObjectDialog(simpledialog.Dialog):
             frame = rel_frame if prop in reliability_props else prop_frame
             row = rel_row if prop in reliability_props else prop_row
             ttk.Label(frame, text=f"{prop}:").grid(row=row, column=0, sticky="e", padx=4, pady=2)
-            if prop in list_props:
+            if prop == "operations":
+                lb = tk.Listbox(frame, height=4)
+                self._operations = parse_operations(self.obj.properties.get(prop, ""))
+                for op in self._operations:
+                    lb.insert(tk.END, format_operation(op))
+                lb.grid(row=row, column=1, padx=4, pady=2, sticky="we")
+                btnf = ttk.Frame(frame)
+                btnf.grid(row=row, column=2, padx=2)
+                ttk.Button(btnf, text="Add", command=self.add_operation).pack(side=tk.TOP)
+                ttk.Button(btnf, text="Edit", command=self.edit_operation).pack(side=tk.TOP)
+                ttk.Button(btnf, text="Remove", command=self.remove_operation).pack(side=tk.TOP)
+                self.listboxes[prop] = lb
+            elif prop in list_props:
                 lb = tk.Listbox(frame, height=4)
                 items = [p.strip() for p in self.obj.properties.get(prop, "").split(",") if p.strip()]
                 for it in items:
@@ -1533,6 +1599,67 @@ class SysMLObjectDialog(simpledialog.Dialog):
         for idx in reversed(sel):
             lb.delete(idx)
 
+    class OperationDialog(simpledialog.Dialog):
+        def __init__(self, parent, operation=None):
+            self.operation = operation
+            super().__init__(parent, title="Operation")
+
+        def body(self, master):
+            ttk.Label(master, text="Name:").grid(row=0, column=0, padx=4, pady=2, sticky="e")
+            self.name_var = tk.StringVar(value=getattr(self.operation, "name", ""))
+            ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, padx=4, pady=2)
+            ttk.Label(master, text="Parameters (name:type:dir)").grid(row=1, column=0, columnspan=2, padx=4, pady=2)
+            self.param_text = tk.Text(master, height=4, width=30)
+            if self.operation:
+                lines = [f"{p.name}:{p.type}:{p.direction}" for p in self.operation.parameters]
+                self.param_text.insert("1.0", "\n".join(lines))
+            self.param_text.grid(row=2, column=0, columnspan=2, padx=4, pady=2)
+            ttk.Label(master, text="Return type:").grid(row=3, column=0, padx=4, pady=2, sticky="e")
+            self.ret_var = tk.StringVar(value=getattr(self.operation, "return_type", ""))
+            ttk.Entry(master, textvariable=self.ret_var).grid(row=3, column=1, padx=4, pady=2)
+
+        def apply(self):
+            name = self.name_var.get().strip()
+            params = []
+            for line in self.param_text.get("1.0", tk.END).splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(":")
+                if len(parts) == 1:
+                    params.append(OperationParameter(name=parts[0]))
+                elif len(parts) == 2:
+                    params.append(OperationParameter(name=parts[0], type=parts[1]))
+                else:
+                    params.append(OperationParameter(name=parts[0], type=parts[1], direction=parts[2]))
+            self.result = OperationDefinition(name, params, self.ret_var.get().strip())
+
+    def add_operation(self):
+        dlg = self.OperationDialog(self)
+        if dlg.result:
+            self._operations.append(dlg.result)
+            self.listboxes["operations"].insert(tk.END, format_operation(dlg.result))
+
+    def edit_operation(self):
+        lb = self.listboxes["operations"]
+        sel = lb.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        op = self._operations[idx]
+        dlg = self.OperationDialog(self, op)
+        if dlg.result:
+            self._operations[idx] = dlg.result
+            lb.delete(idx)
+            lb.insert(idx, format_operation(dlg.result))
+
+    def remove_operation(self):
+        lb = self.listboxes["operations"]
+        sel = list(lb.curselection())
+        for idx in reversed(sel):
+            lb.delete(idx)
+            del self._operations[idx]
+
     def add_requirement(self):
         if not global_requirements:
             messagebox.showinfo("No Requirements", "No requirements defined.")
@@ -1591,11 +1718,16 @@ class SysMLObjectDialog(simpledialog.Dialog):
             if self.obj.element_id and self.obj.element_id in repo.elements:
                 repo.elements[self.obj.element_id].properties[prop] = var.get()
         for prop, lb in self.listboxes.items():
-            items = [lb.get(i) for i in range(lb.size())]
-            joined = ", ".join(items)
-            self.obj.properties[prop] = joined
-            if self.obj.element_id and self.obj.element_id in repo.elements:
-                repo.elements[self.obj.element_id].properties[prop] = joined
+            if prop == "operations":
+                self.obj.properties[prop] = operations_to_json(self._operations)
+                if self.obj.element_id and self.obj.element_id in repo.elements:
+                    repo.elements[self.obj.element_id].properties[prop] = self.obj.properties[prop]
+            else:
+                items = [lb.get(i) for i in range(lb.size())]
+                joined = ", ".join(items)
+                self.obj.properties[prop] = joined
+                if self.obj.element_id and self.obj.element_id in repo.elements:
+                    repo.elements[self.obj.element_id].properties[prop] = joined
         try:
             self.obj.width = float(self.width_var.get())
             self.obj.height = float(self.height_var.get())
