@@ -1730,16 +1730,15 @@ class FaultTreeApp:
         file_menu.add_command(label="New AutoML Model", command=self.new_model, accelerator="Ctrl+N")
         file_menu.add_command(label="Save AutoML Model", command=self.save_model, accelerator="Ctrl+S")
         file_menu.add_command(label="Load AutoML Model", command=self.load_model, accelerator="Ctrl+O")
+        file_menu.add_command(label="Project Properties", command=self.edit_project_properties)
+        file_menu.add_command(label="Save PDF Report", command=self.generate_pdf_report)
+        file_menu.add_command(label="Save PDF Without Assurance", command=self.generate_pdf_without_assurance)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.confirm_close)
         menubar.add_cascade(label="File", menu=file_menu)
 
         fta_menu = tk.Menu(menubar, tearoff=0)
         fta_menu.add_command(label="Add Top Level Event", command=self.add_top_level_event)
-        fta_menu.add_command(label="Project Properties", command=self.edit_project_properties)
-        fta_menu.add_command(label="Save PDF Report", command=self.generate_pdf_report)
-        fta_menu.add_command(label="Save PDF Without Assurance", command=self.generate_pdf_without_assurance)
-        fta_menu.add_command(label="Export SG Requirements", command=self.export_safety_goal_requirements)
         fta_menu.add_separator()
         fta_menu.add_command(label="Add Confidence", command=lambda: self.add_node_of_type("Confidence Level"), accelerator="Ctrl+Shift+C")
         fta_menu.add_command(label="Add Robustness", command=lambda: self.add_node_of_type("Robustness Score"), accelerator="Ctrl+Shift+R")
@@ -1788,6 +1787,7 @@ class FaultTreeApp:
         requirements_menu.add_command(label="Requirements Editor", command=self.show_requirements_editor)
         requirements_menu.add_command(label="Safety Goals Matrix", command=self.show_safety_goals_matrix)
         requirements_menu.add_command(label="Safety Goals Editor", command=self.show_safety_goals_editor)
+        requirements_menu.add_command(label="Export SG Requirements", command=self.export_safety_goal_requirements)
         menubar.add_cascade(label="Requirements", menu=requirements_menu)
         review_menu = tk.Menu(menubar, tearoff=0)
         review_menu.add_command(label="Start Peer Review", command=self.start_peer_review)
@@ -3003,7 +3003,7 @@ class FaultTreeApp:
         chk_grid.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="w")
 
         var_bw = tk.BooleanVar(value=self.project_properties.get("black_white", False))
-        chk_bw = tk.Checkbutton(prop_win, text="Black and White FTA", variable=var_bw, font=dialog_font)
+        chk_bw = tk.Checkbutton(prop_win, text="Black and White Diagram", variable=var_bw, font=dialog_font)
         chk_bw.grid(row=3, column=0, columnspan=2, padx=10, pady=5, sticky="w")
 
         def save_props():
