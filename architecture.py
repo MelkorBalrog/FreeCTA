@@ -21,6 +21,7 @@ OBJECT_COLORS: dict[str, str] = {
     "System Boundary": "#ECEFF1",
     "Action Usage": "#E8F5E9",
     "Action": "#E8F5E9",
+    "CallBehaviorAction": "#E8F5E9",
     "Part": "#FFFDE7",
     "Port": "#F3E5F5",
     "Block": "#E0E0E0",
@@ -550,15 +551,8 @@ class SysMLDiagramWindow(tk.Toplevel):
         y = self.canvas.canvasy(event.y)
         obj = self.find_object(x, y)
         if obj:
-            diag_id = self.repo.get_linked_diagram(obj.element_id)
-            if diag_id and diag_id in self.repo.diagrams:
-                diag = self.repo.diagrams[diag_id]
-                if diag.diag_type == "Activity Diagram":
-                    ActivityDiagramWindow(self.master, self.app, diagram_id=diag_id)
-                    return
-                if diag.diag_type == "Internal Block Diagram":
-                    InternalBlockDiagramWindow(self.master, self.app, diagram_id=diag_id)
-                    return
+            if self._open_linked_diagram(obj):
+                return
             SysMLObjectDialog(self, obj)
             self.redraw()
         else:
@@ -589,7 +583,7 @@ class SysMLDiagramWindow(tk.Toplevel):
         menu = tk.Menu(self, tearoff=0)
         menu.add_command(label="Properties", command=lambda: self._edit_object(obj))
         diag_id = self.repo.get_linked_diagram(obj.element_id)
-        if diag_id and diag_id in self.repo.diagrams:
+        if diag_id and diag_id in self.repo.diagrams or obj.properties.get("view"):
             menu.add_command(label="Open Linked Diagram", command=lambda: self._open_linked_diagram(obj))
         menu.add_separator()
         menu.add_command(label="Copy", command=self.copy_selected)
@@ -603,20 +597,28 @@ class SysMLDiagramWindow(tk.Toplevel):
         self._sync_to_repository()
         self.redraw()
 
-    def _open_linked_diagram(self, obj):
+    def _open_linked_diagram(self, obj) -> bool:
         diag_id = self.repo.get_linked_diagram(obj.element_id)
-        if not diag_id or diag_id not in self.repo.diagrams:
-            return
-        diag = self.repo.diagrams[diag_id]
+        view_id = obj.properties.get("view")
+        if obj.obj_type == "CallBehaviorAction" and diag_id and view_id and view_id in self.repo.diagrams:
+            if messagebox.askyesno("Open Diagram", "Open Behavior Diagram?\nChoose No for View"):
+                chosen = diag_id
+            else:
+                chosen = view_id
+        else:
+            chosen = diag_id or view_id
+        if not chosen or chosen not in self.repo.diagrams:
+            return False
+        diag = self.repo.diagrams[chosen]
         if diag.diag_type == "Use Case Diagram":
-            UseCaseDiagramWindow(self.master, self.app, diagram_id=diag_id)
+            UseCaseDiagramWindow(self.master, self.app, diagram_id=chosen)
         elif diag.diag_type == "Activity Diagram":
-            ActivityDiagramWindow(self.master, self.app, diagram_id=diag_id)
+            ActivityDiagramWindow(self.master, self.app, diagram_id=chosen)
         elif diag.diag_type == "Block Diagram":
-            BlockDiagramWindow(self.master, self.app, diagram_id=diag_id)
+            BlockDiagramWindow(self.master, self.app, diagram_id=chosen)
         elif diag.diag_type == "Internal Block Diagram":
-            InternalBlockDiagramWindow(self.master, self.app, diagram_id=diag_id)
-
+            InternalBlockDiagramWindow(self.master, self.app, diagram_id=chosen)
+        return True
     def on_ctrl_mousewheel(self, event):
         if event.delta > 0:
             self.zoom_in()
@@ -894,7 +896,7 @@ class SysMLDiagramWindow(tk.Toplevel):
                     anchor="s",
                     font=self.font,
                 )
-        elif obj.obj_type in ("Action Usage", "Action", "Part", "Port"):
+        elif obj.obj_type in ("Action Usage", "Action", "CallBehaviorAction", "Part", "Port"):
             dash = ()
             fill = color
             if obj.obj_type == "Part":
@@ -1542,16 +1544,30 @@ class SysMLObjectDialog(simpledialog.Dialog):
             ttk.Combobox(link_frame, textvariable=self.diagram_var, values=list(ids.keys())).grid(row=link_row, column=1, padx=4, pady=2)
             link_row += 1
         elif self.obj.obj_type in ("Action Usage", "Action"):
-            diagrams = [
-                d for d in repo.diagrams.values()
-                if d.diag_type in ("Activity Diagram", "Internal Block Diagram")
-            ]
+            diagrams = [d for d in repo.diagrams.values() if d.diag_type == "Activity Diagram"]
             self.behavior_map = {d.name or d.diag_id: d.diag_id for d in diagrams}
             ttk.Label(link_frame, text="Behavior Diagram:").grid(row=link_row, column=0, sticky="e", padx=4, pady=2)
             cur_id = repo.get_linked_diagram(self.obj.element_id)
             cur_name = next((n for n, i in self.behavior_map.items() if i == cur_id), "")
             self.behavior_var = tk.StringVar(value=cur_name)
             ttk.Combobox(link_frame, textvariable=self.behavior_var, values=list(self.behavior_map.keys())).grid(row=link_row, column=1, padx=4, pady=2)
+            link_row += 1
+        elif self.obj.obj_type == "CallBehaviorAction":
+            bdiags = [d for d in repo.diagrams.values() if d.diag_type == "Activity Diagram"]
+            self.behavior_map = {d.name or d.diag_id: d.diag_id for d in bdiags}
+            ttk.Label(link_frame, text="Behavior Diagram:").grid(row=link_row, column=0, sticky="e", padx=4, pady=2)
+            cur_id = repo.get_linked_diagram(self.obj.element_id)
+            cur_name = next((n for n, i in self.behavior_map.items() if i == cur_id), "")
+            self.behavior_var = tk.StringVar(value=cur_name)
+            ttk.Combobox(link_frame, textvariable=self.behavior_var, values=list(self.behavior_map.keys())).grid(row=link_row, column=1, padx=4, pady=2)
+            link_row += 1
+            vdiags = [d for d in repo.diagrams.values() if d.diag_type == "Internal Block Diagram"]
+            self.view_map = {d.name or d.diag_id: d.diag_id for d in vdiags}
+            ttk.Label(link_frame, text="View:").grid(row=link_row, column=0, sticky="e", padx=4, pady=2)
+            view_id = self.obj.properties.get("view", "")
+            vname = next((n for n, i in self.view_map.items() if i == view_id), "")
+            self.view_var = tk.StringVar(value=vname)
+            ttk.Combobox(link_frame, textvariable=self.view_var, values=list(self.view_map.keys())).grid(row=link_row, column=1, padx=4, pady=2)
             link_row += 1
         elif self.obj.obj_type == "Part":
             blocks = [e for e in repo.elements.values() if e.elem_type == "Block"]
@@ -1765,6 +1781,16 @@ class SysMLObjectDialog(simpledialog.Dialog):
             link_id = self.diag_map.get(self.diagram_var.get())
         if hasattr(self, "behavior_var") or hasattr(self, "diagram_var"):
             repo.link_diagram(self.obj.element_id, link_id)
+        if hasattr(self, "view_var"):
+            view_id = self.view_map.get(self.view_var.get())
+            if view_id:
+                self.obj.properties["view"] = view_id
+                if self.obj.element_id and self.obj.element_id in repo.elements:
+                    repo.elements[self.obj.element_id].properties["view"] = view_id
+            else:
+                self.obj.properties.pop("view", None)
+                if self.obj.element_id and self.obj.element_id in repo.elements:
+                    repo.elements[self.obj.element_id].properties.pop("view", None)
         if hasattr(self, "def_var"):
             name = self.def_var.get()
             def_id = self.def_map.get(name)
@@ -1928,7 +1954,8 @@ class UseCaseDiagramWindow(SysMLDiagramWindow):
 class ActivityDiagramWindow(SysMLDiagramWindow):
     def __init__(self, master, app, diagram_id: str | None = None):
         tools = [
-            "Action Usage",
+            "Action",
+            "CallBehaviorAction",
             "Initial",
             "Final",
             "Decision",
@@ -2530,15 +2557,20 @@ class ArchitectureManagerDialog(tk.Toplevel):
         if elem_id.startswith("obj_"):
             messagebox.showerror("Drop Error", "Objects cannot be dropped on a diagram.")
             return
-        # Dropping a diagram onto an Activity Diagram creates a referenced action
+        # Dropping a diagram onto an Activity Diagram creates a CallBehaviorAction
         if elem_id.startswith("diag_"):
             src_diag = repo.diagrams.get(elem_id[5:])
             if src_diag and diagram.diag_type == "Activity Diagram" and src_diag.diag_type in ("Activity Diagram", "Internal Block Diagram"):
-                act = repo.create_element("Action Usage", name=src_diag.name, owner=diagram.package)
+                act = repo.create_element("CallBehaviorAction", name=src_diag.name, owner=diagram.package)
                 repo.add_element_to_diagram(diagram.diag_id, act.elem_id)
-                obj = SysMLObject(_get_next_id(), "Action Usage", 50.0, 50.0, element_id=act.elem_id, properties={"name": src_diag.name})
+                props = {"name": src_diag.name}
+                if src_diag.diag_type == "Internal Block Diagram":
+                    props["view"] = src_diag.diag_id
+                    repo.link_diagram(act.elem_id, None)
+                else:
+                    repo.link_diagram(act.elem_id, src_diag.diag_id)
+                obj = SysMLObject(_get_next_id(), "CallBehaviorAction", 50.0, 50.0, element_id=act.elem_id, properties=props)
                 diagram.objects.append(obj.__dict__)
-                repo.link_diagram(act.elem_id, src_diag.diag_id)
                 return
             messagebox.showerror("Drop Error", "This item cannot be dropped on that diagram.")
             return
