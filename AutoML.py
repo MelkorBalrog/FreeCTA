@@ -1735,7 +1735,6 @@ class FaultTreeApp:
         file_menu.add_command(label="Save PDF Without Assurance", command=self.generate_pdf_without_assurance)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.confirm_close)
-        menubar.add_cascade(label="File", menu=file_menu)
 
         fta_menu = tk.Menu(menubar, tearoff=0)
         fta_menu.add_command(label="Add Top Level Event", command=self.add_top_level_event)
@@ -1751,7 +1750,6 @@ class FaultTreeApp:
         fta_menu.add_command(label="FTA-FMEA Traceability", command=self.show_traceability_matrix)
         fta_menu.add_command(label="FTA Cut Sets", command=self.show_cut_sets)
         fta_menu.add_command(label="Common Cause Toolbox", command=self.show_common_cause_view)
-        menubar.add_cascade(label="FTA/CTA", menu=fta_menu)
 
         edit_menu = tk.Menu(menubar, tearoff=0)
         edit_menu.add_command(label="Edit Selected", command=self.edit_selected)
@@ -1771,16 +1769,13 @@ class FaultTreeApp:
         edit_menu.add_command(label="Edit Severity", command=self.edit_severity, accelerator="Ctrl+E")
         edit_menu.add_command(label="Edit Controllability", command=self.edit_controllability)
         edit_menu.add_command(label="Edit Page Flag", command=self.edit_page_flag)
-        menubar.add_cascade(label="Edit", menu=edit_menu)
         process_menu = tk.Menu(menubar, tearoff=0)
         process_menu.add_command(label="Calc Prototype Assurance Level (PAL)", command=self.calculate_overall, accelerator="Ctrl+R")
         process_menu.add_command(label="Calc PMHF", command=self.calculate_pmfh, accelerator="Ctrl+M")
-        menubar.add_cascade(label="Process", menu=process_menu)
         view_menu = tk.Menu(menubar, tearoff=0)
         view_menu.add_command(label="Zoom In", command=self.zoom_in, accelerator="Ctrl++")
         view_menu.add_command(label="Zoom Out", command=self.zoom_out, accelerator="Ctrl+-")
         view_menu.add_command(label="Auto Arrange", command=self.auto_arrange, accelerator="Ctrl+A")
-        menubar.add_cascade(label="View", menu=view_menu)
 
         requirements_menu = tk.Menu(menubar, tearoff=0)
         requirements_menu.add_command(label="Requirements Matrix", command=self.show_requirements_matrix)
@@ -1788,7 +1783,6 @@ class FaultTreeApp:
         requirements_menu.add_command(label="Safety Goals Matrix", command=self.show_safety_goals_matrix)
         requirements_menu.add_command(label="Safety Goals Editor", command=self.show_safety_goals_editor)
         requirements_menu.add_command(label="Export SG Requirements", command=self.export_safety_goal_requirements)
-        menubar.add_cascade(label="Requirements", menu=requirements_menu)
         review_menu = tk.Menu(menubar, tearoff=0)
         review_menu.add_command(label="Start Peer Review", command=self.start_peer_review)
         review_menu.add_command(label="Start Joint Review", command=self.start_joint_review)
@@ -1796,7 +1790,6 @@ class FaultTreeApp:
         review_menu.add_command(label="Set Current User", command=self.set_current_user)
         review_menu.add_command(label="Merge Review Comments", command=self.merge_review_comments)
         review_menu.add_command(label="Compare Versions", command=self.compare_versions)
-        menubar.add_cascade(label="Review", menu=review_menu)
         architecture_menu = tk.Menu(menubar, tearoff=0)
         architecture_menu.add_command(label="Use Case Diagram", command=self.open_use_case_diagram)
         architecture_menu.add_command(label="Activity Diagram", command=self.open_activity_diagram)
@@ -1804,7 +1797,6 @@ class FaultTreeApp:
         architecture_menu.add_command(label="Internal Block Diagram", command=self.open_internal_block_diagram)
         architecture_menu.add_separator()
         architecture_menu.add_command(label="AutoML Explorer", command=self.manage_architecture)
-        menubar.add_cascade(label="Architecture", menu=architecture_menu)
 
         # --- Qualitative Analysis Menu ---
         qualitative_menu = tk.Menu(menubar, tearoff=0)
@@ -1819,7 +1811,6 @@ class FaultTreeApp:
         qualitative_menu.add_command(label="TC2FI Analysis", command=self.open_tc2fi_window)
         qualitative_menu.add_separator()
         qualitative_menu.add_command(label="FMEA Manager", command=self.show_fmea_list)
-        menubar.add_cascade(label="Qualitative Analysis", menu=qualitative_menu)
         # --- Quantitative Analysis Menu ---
         quantitative_menu = tk.Menu(menubar, tearoff=0)
         quantitative_menu.add_command(label="Mission Profiles", command=self.manage_mission_profiles)
@@ -1827,12 +1818,24 @@ class FaultTreeApp:
         quantitative_menu.add_command(label="Reliability Analysis", command=self.open_reliability_window)
         quantitative_menu.add_command(label="FMEDA Analysis", command=self.open_fmeda_window)
         quantitative_menu.add_command(label="FMEDA Manager", command=self.show_fmeda_list)
-        menubar.add_cascade(label="Quantitative Analysis", menu=quantitative_menu)
 
         libs_menu = tk.Menu(menubar, tearoff=0)
         libs_menu.add_command(label="Scenario Libraries", command=self.manage_scenario_libraries)
         libs_menu.add_command(label="ODD Libraries", command=self.manage_odd_libraries)
+
+        # Add menus to the bar in the desired order
+        menubar.add_cascade(label="File", menu=file_menu)
+        menubar.add_cascade(label="Edit", menu=edit_menu)
+        menubar.add_cascade(label="View", menu=view_menu)
+        menubar.add_cascade(label="Requirements", menu=requirements_menu)
+        menubar.add_cascade(label="Architecture", menu=architecture_menu)
         menubar.add_cascade(label="Scenario", menu=libs_menu)
+        menubar.add_cascade(label="Qualitative Analysis", menu=qualitative_menu)
+        menubar.add_cascade(label="Quantitative Analysis", menu=quantitative_menu)
+        menubar.add_cascade(label="FTA/CTA", menu=fta_menu)
+        menubar.add_cascade(label="Process", menu=process_menu)
+        menubar.add_cascade(label="Review", menu=review_menu)
+
         root.config(menu=menubar)
         root.bind("<Control-n>", lambda event: self.new_model())
         root.bind("<Control-s>", lambda event: self.save_model())
@@ -1863,12 +1866,14 @@ class FaultTreeApp:
         self.explorer_nb = ttk.Notebook(self.main_pane)
         self.main_pane.add(self.explorer_nb, width=300)
 
-        self.fta_tab = ttk.Frame(self.explorer_nb)
         self.analysis_tab = ttk.Frame(self.explorer_nb)
-        self.explorer_nb.add(self.fta_tab, text="FTAs")
-        self.explorer_nb.add(self.analysis_tab, text="Analyses")
+        self.explorer_nb.add(self.analysis_tab, text="File Explorer")
 
-        self.top_event_controls = ttk.Frame(self.fta_tab)
+        # --- FTA Explorer Group ---
+        self.fta_group = ttk.LabelFrame(self.analysis_tab, text="FTAs")
+        self.fta_group.pack(fill=tk.BOTH, expand=True)
+
+        self.top_event_controls = ttk.Frame(self.fta_group)
         self.top_event_controls.pack(side=tk.TOP, fill=tk.X)
 
         self.move_up_btn = ttk.Button(self.top_event_controls, text="Move Up", command=self.move_top_event_up)
@@ -1876,18 +1881,22 @@ class FaultTreeApp:
         self.move_down_btn = ttk.Button(self.top_event_controls, text="Move Down", command=self.move_top_event_down)
         self.move_down_btn.pack(side=tk.LEFT, padx=2)
 
-        self.treeview = ttk.Treeview(self.fta_tab)
+        self.treeview = ttk.Treeview(self.fta_group)
         self.treeview.pack(fill=tk.BOTH, expand=True)
         self.treeview.bind("<Double-1>", lambda e: self.edit_selected())
         self.treeview.bind("<ButtonRelease-1>", self.on_treeview_click)
 
-        self.analysis_tree = ttk.Treeview(self.analysis_tab)
+        self.pmhf_var = tk.StringVar(value="")
+        self.pmhf_label = ttk.Label(self.fta_group, textvariable=self.pmhf_var, foreground="blue")
+        self.pmhf_label.pack(side=tk.BOTTOM, fill=tk.X, pady=2)
+
+        # --- Analyses Group ---
+        self.analysis_group = ttk.LabelFrame(self.analysis_tab, text="Analyses")
+        self.analysis_group.pack(fill=tk.BOTH, expand=True)
+
+        self.analysis_tree = ttk.Treeview(self.analysis_group)
         self.analysis_tree.pack(fill=tk.BOTH, expand=True)
         self.analysis_tree.bind("<Double-1>", self.on_analysis_tree_double_click)
-
-        self.pmhf_var = tk.StringVar(value="")
-        self.pmhf_label = ttk.Label(self.fta_tab, textvariable=self.pmhf_var, foreground="blue")
-        self.pmhf_label.pack(side=tk.BOTTOM, fill=tk.X, pady=2)
         self.canvas_frame = ttk.Frame(self.main_pane)
         self.main_pane.add(self.canvas_frame, stretch="always")
         self.canvas = tk.Canvas(self.canvas_frame, bg="white")
