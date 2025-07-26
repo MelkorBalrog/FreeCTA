@@ -1869,25 +1869,15 @@ class FaultTreeApp:
         self.analysis_tab = ttk.Frame(self.explorer_nb)
         self.explorer_nb.add(self.analysis_tab, text="File Explorer")
 
-        # --- FTA Explorer Group ---
-        self.fta_group = ttk.LabelFrame(self.analysis_tab, text="FTAs")
-        self.fta_group.pack(fill=tk.BOTH, expand=True)
+        self.analysis_tree = ttk.Treeview(self.analysis_tab)
+        self.analysis_tree.pack(fill=tk.BOTH, expand=True)
+        self.analysis_tree.bind("<Double-1>", self.on_analysis_tree_double_click)
 
-        self.top_event_controls = ttk.Frame(self.fta_group)
-        self.top_event_controls.pack(side=tk.TOP, fill=tk.X)
-
-        self.move_up_btn = ttk.Button(self.top_event_controls, text="Move Up", command=self.move_top_event_up)
-        self.move_up_btn.pack(side=tk.LEFT, padx=2)
-        self.move_down_btn = ttk.Button(self.top_event_controls, text="Move Down", command=self.move_top_event_down)
-        self.move_down_btn.pack(side=tk.LEFT, padx=2)
-
-        self.treeview = ttk.Treeview(self.fta_group)
-        self.treeview.pack(fill=tk.BOTH, expand=True)
-        self.treeview.bind("<Double-1>", lambda e: self.edit_selected())
-        self.treeview.bind("<ButtonRelease-1>", self.on_treeview_click)
+        # Placeholder treeview for legacy FTA functions
+        self.treeview = ttk.Treeview(self.analysis_tab)
 
         self.pmhf_var = tk.StringVar(value="")
-        self.pmhf_label = ttk.Label(self.fta_group, textvariable=self.pmhf_var, foreground="blue")
+        self.pmhf_label = ttk.Label(self.analysis_tab, textvariable=self.pmhf_var, foreground="blue")
         self.pmhf_label.pack(side=tk.BOTTOM, fill=tk.X, pady=2)
 
         # --- Analyses Group ---
@@ -7044,6 +7034,10 @@ class FaultTreeApp:
                 doc = self.tc2fi_docs[idx]
                 self._tc2fi_window.doc_var.set(doc.name)
                 self._tc2fi_window.select_doc()
+        elif kind == "fta":
+            te = next((t for t in self.top_events if t.unique_id == idx), None)
+            if te:
+                self.open_page_diagram(te)
         elif kind == "arch":
             self.open_arch_window(idx)
 
@@ -7490,15 +7484,17 @@ class FaultTreeApp:
         return rec(node)
 
     def update_views(self):
-        self.treeview.delete(*self.treeview.get_children())
-        for top_event in self.top_events:
-            self.insert_node_in_tree("", top_event)
-        # NEW: Compute the occurrence counts from the current tree:
+        # Compute occurrence counts from the current tree
         self.occurrence_counts = self.compute_occurrence_counts()
 
         if hasattr(self, "analysis_tree"):
             tree = self.analysis_tree
             tree.delete(*tree.get_children())
+
+            fta_root = tree.insert("", "end", text="FTAs", open=True)
+            for idx, te in enumerate(self.top_events):
+                tree.insert(fta_root, "end", text=te.name, tags=("fta", str(te.unique_id)))
+
             fmea_root = tree.insert("", "end", text="FMEAs", open=True)
             for idx, fmea in enumerate(self.fmeas):
                 tree.insert(fmea_root, "end", text=fmea['name'], tags=("fmea", str(idx)))
