@@ -1,5 +1,11 @@
 import unittest
-from architecture import parse_operations, operations_to_json, OperationDefinition, OperationParameter, format_operation
+from gui.architecture import (
+    parse_operations,
+    operations_to_json,
+    OperationDefinition,
+    OperationParameter,
+    format_operation,
+)
 
 class OperationParseTests(unittest.TestCase):
     def test_parse_json(self):

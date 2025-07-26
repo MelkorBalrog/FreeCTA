@@ -226,7 +226,7 @@ import math
 import sys
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
-from review_toolbox import (
+from gui.review_toolbox import (
     ReviewToolbox,
     ReviewData,
     ReviewParticipant,
@@ -239,16 +239,23 @@ from review_toolbox import (
     VersionCompareDialog,
 )
 from dataclasses import asdict
-from mechanisms import DiagnosticMechanism, MechanismLibrary, ANNEX_D_MECHANISMS
+from analysis.mechanisms import DiagnosticMechanism, MechanismLibrary, ANNEX_D_MECHANISMS
 import json
 import csv
 try:
     from openpyxl import load_workbook
 except Exception:  # openpyxl may not be installed
     load_workbook = None
-from drawing_helper import FTADrawingHelper, fta_drawing_helper
-from risk_assessment import DERIVED_MATURITY_TABLE, ASSURANCE_AGGREGATION_AND, AND_DECOMPOSITION_TABLE, OR_DECOMPOSITION_TABLE, boolify, AutoMLHelper
-from models import (
+from gui.drawing_helper import FTADrawingHelper, fta_drawing_helper
+from analysis.risk_assessment import (
+    DERIVED_MATURITY_TABLE,
+    ASSURANCE_AGGREGATION_AND,
+    AND_DECOMPOSITION_TABLE,
+    OR_DECOMPOSITION_TABLE,
+    boolify,
+    AutoMLHelper,
+)
+from analysis.models import (
     MissionProfile,
     ReliabilityComponent,
     ReliabilityAnalysis,
@@ -270,15 +277,15 @@ from models import (
     calc_asil,
     global_requirements,
 )
-from architecture import (
+from gui.architecture import (
     UseCaseDiagramWindow,
     ActivityDiagramWindow,
     BlockDiagramWindow,
     InternalBlockDiagramWindow,
     ArchitectureManagerDialog,
 )
-from sysml_repository import SysMLRepository
-from fmeda_utils import compute_fmeda_metrics
+from sysml.sysml_repository import SysMLRepository
+from analysis.fmeda_utils import compute_fmeda_metrics
 import copy
 import tkinter.font as tkFont
 from PIL import Image, ImageDraw, ImageFont, ImageTk
@@ -312,9 +319,9 @@ preformatted_style = ParagraphStyle(name="Preformatted", fontName="Courier", fon
 styles.add(preformatted_style)
 
 # Characters used to display pass/fail status in metrics labels.
-from constants import CHECK_MARK, CROSS_MARK
+from analysis.constants import CHECK_MARK, CROSS_MARK
 
-from toolboxes import (
+from gui.toolboxes import (
     ReliabilityWindow,
     FI2TCWindow,
     HazopWindow,

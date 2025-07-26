@@ -5,10 +5,10 @@ import json
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Tuple
 
-from sysml_repository import SysMLRepository, SysMLDiagram, SysMLElement
+from sysml.sysml_repository import SysMLRepository, SysMLDiagram, SysMLElement
 
-from sysml_spec import SYSML_PROPERTIES
-from models import global_requirements, ASIL_ORDER
+from sysml.sysml_spec import SYSML_PROPERTIES
+from analysis.models import global_requirements, ASIL_ORDER
 
 # ---------------------------------------------------------------------------
 # Appearance customization

@@ -1,6 +1,6 @@
 import unittest
-from sysml_repository import SysMLRepository
-from architecture import extend_block_parts_with_parents
+from sysml.sysml_repository import SysMLRepository
+from gui.architecture import extend_block_parts_with_parents
 
 class InheritPartsTests(unittest.TestCase):
     def setUp(self):

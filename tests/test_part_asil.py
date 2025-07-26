@@ -1,6 +1,6 @@
 import unittest
-from architecture import calculate_allocated_asil
-from models import global_requirements
+from gui.architecture import calculate_allocated_asil
+from analysis.models import global_requirements
 
 class PartASILTests(unittest.TestCase):
     def setUp(self):
