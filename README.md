@@ -85,7 +85,7 @@ certificate and any failure modes found in FMEA tables.
 ### AutoML Diagrams and Safety Analyses
 
 Use case, activity, block and internal block diagrams can be created from the
-**AutoML** menu. Diagrams are stored inside the model and appear in the
+**Architecture** menu. Diagrams are stored inside the model and appear in the
 *Analyses* explorer tab so they can be reopened alongside FMEAs and other
 documents. Each object keeps its saved size and properties so layouts remain
 stable when returning to the project.
