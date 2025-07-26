@@ -1,5 +1,5 @@
 import unittest
-from architecture import SysMLObject, remove_orphan_ports
+from gui.architecture import SysMLObject, remove_orphan_ports
 
 class PortParentTests(unittest.TestCase):
     def test_remove_orphan_ports(self):
